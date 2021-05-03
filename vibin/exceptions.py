@@ -1,0 +1,2 @@
+class VibinError(Exception):
+    pass
