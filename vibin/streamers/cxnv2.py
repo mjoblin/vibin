@@ -28,6 +28,25 @@ from .. import utils
 # TODO: Consider migrating core (if any) capabilities to Streamer class
 # TODO: Can end up with multiple subscriptions to each service
 
+# open websocket:
+#   ws://10.0.0.13:80/smoip
+# send: {"path": "/zone/play_state/position", "params": {"update": 1}}
+# will then receive an update on position per second
+# "position" appears to be the number of seconds into the track
+# get a message for 0, then 1, 2, 3, etc...
+#
+# {
+#   "path": "/zone/play_state/position",
+#   "type": "update",
+#   "result": 200,
+#   "message": "OK",
+#   "params": {
+#     "zone": "ZONE1",
+#     "data": {
+#       "position": 21
+#     }
+#   }
+# }
 
 class StoppableThread(threading.Thread):
     def __init__(self,  *args, **kwargs):
