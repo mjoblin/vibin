@@ -1,0 +1,6 @@
+/build
+/dist
+/venv*
+/vibin.egg-info
+
+__pycache__

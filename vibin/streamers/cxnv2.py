@@ -1,6 +1,8 @@
 import array
+import asyncio
 import atexit
 import base64
+import json
 import math
 import sys
 import threading
@@ -14,6 +16,7 @@ import requests
 from requests.exceptions import HTTPError
 import upnpclient
 from upnpclient.marshal import marshal_value
+import websockets
 import xmltodict
 
 from ..logger import logger
@@ -74,9 +77,11 @@ class CXNv2(Streamer):
             self,
             device: upnpclient.Device,
             subscribe_callback_base: Optional[str],
+            updates_handler=None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
+        self._updates_handler = updates_handler
 
         self._device_hostname = urlparse(device.location).hostname
 
@@ -87,7 +92,10 @@ class CXNv2(Streamer):
             "current_audio_source": None,
             "current_playlist": None,
             "current_playlist_track_index": None,
+            "current_playback_details": None,
         }
+
+        self._play_state = {}
 
         # TODO: Add support for service name not just var name.
         self._state_var_handlers: StateVarHandlers = {
@@ -176,6 +184,12 @@ class CXNv2(Streamer):
             # TODO
             pass
 
+        if self._updates_handler:
+            self._websocket_thread = StoppableThread(
+                target=self._handle_websocket_to_streamer
+            )
+            self._websocket_thread.start()
+
     def disconnect(self):
         if self._disconnected:
             return
@@ -191,6 +205,8 @@ class CXNv2(Streamer):
 
         # Clean up any UPnP subscriptions.
         self._cancel_subscriptions()
+
+        # TODO: Shut down updates websocket connection.
 
         if self._subscription_renewal_thread:
             logger.info("Stopping subscription renewal thread")
@@ -350,6 +366,19 @@ class CXNv2(Streamer):
 
         return enabled
 
+    def transport_position(self) -> Optional[int]:
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_state/position"
+        )
+
+        if response.status_code != 200:
+            return None
+
+        try:
+            return response.json()["data"]["position"]
+        except (KeyError, json.decoder.JSONDecodeError) as e:
+            return None
+
     def transport_actions(self):
         actions = self._av_transport.GetCurrentTransportActions(
             InstanceID=self._instance_id
@@ -448,6 +477,50 @@ class CXNv2(Streamer):
                 pass
 
         return results
+
+    def _handle_websocket_to_streamer(self):
+        async def async_websocket_manager():
+            # TODO: Externalize the Websocket host/path
+            uri = "ws://streamer.local:80/smoip"
+
+            logger.info(f"Connecting to {self.name} Websocket server on {uri}")
+
+            async with websockets.connect(
+                uri,
+                ssl=None,
+                extra_headers={
+                    "Origin": "vibin",
+                }
+            ) as websocket:
+                logger.info(
+                    f"Successfully connected to {self.name} Websocket server"
+                )
+
+                # Request playhead position updates (these arrive one per sec).
+                await websocket.send(
+                    '{"path": "/zone/play_state/position", "params": {"update": 1}}'
+                )
+
+                # Request play state updates (these arrive one per track change).
+                await websocket.send(
+                    '{"path": "/zone/play_state", "params": {"update": 1}}'
+                )
+
+                # TODO: The stop check will never be performed if messages
+                #   aren't coming in from the websocket (due to the recv await).
+                while not self._websocket_thread.stop_event.is_set():
+                    update = await websocket.recv()
+
+                    try:
+                        update_dict = json.loads(update)
+                        if update_dict["path"] == "/zone/play_state":
+                            self._play_state = update_dict
+                    except (KeyError, json.decoder.JSONDecodeError) as e:
+                        pass
+
+                    self._updates_handler(update)
+
+        asyncio.run(async_websocket_manager())
 
     def _renew_subscriptions(self):
         renewal_buffer = 10
@@ -561,6 +634,10 @@ class CXNv2(Streamer):
     def vibin_vars(self):
         return self._vibin_vars
 
+    @property
+    def play_state(self):
+        return self._play_state
+
     def _last_change_event_handler(
             self, service_name: ServiceName, element: etree.Element,
     ):
@@ -649,6 +726,13 @@ class CXNv2(Streamer):
         except KeyError:
             pass
 
+        try:
+            self._set_current_playback_details(
+                self._state_vars["UuVolControl"]["PlaybackJSON"]["reciva"]["playback-details"]
+            )
+        except KeyError:
+            pass
+
     def _set_current_audio_source_name(self, source_number: int):
         try:
             self._vibin_vars["current_audio_source"] = (
@@ -668,6 +752,9 @@ class CXNv2(Streamer):
             self._vibin_vars["current_playlist_track_index"] = index
         except KeyError:
             pass
+
+    def _set_current_playback_details(self, details):
+         self._vibin_vars["current_playback_details"] = details
 
     def on_event(self, service_name: ServiceName, event: str):
         logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")

@@ -24,6 +24,7 @@ setup(
         "aiofiles",
         "click",
         "fastapi",
+        "httpx",
         "lxml",
         "requests",
         "rich",

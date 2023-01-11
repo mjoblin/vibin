@@ -98,6 +98,10 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def transport_position(self):
+        pass
+
+    @abstractmethod
     def transport_actions(self):
         pass
 
@@ -119,4 +123,8 @@ class Streamer(metaclass=ABCMeta):
 
     @abstractmethod
     def vibin_vars(self):
+        pass
+
+    @abstractmethod
+    def play_state(self):
         pass

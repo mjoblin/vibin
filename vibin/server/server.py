@@ -1,5 +1,8 @@
 import asyncio
+import json
 import socket
+import time
+import uuid
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket
@@ -18,6 +21,7 @@ from vibin.logger import logger
 
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
+HOSTNAME = "192.168.1.30"
 
 
 def get_local_ip():
@@ -79,7 +83,7 @@ def server_start(
     @vibin_app.get("/")
     async def ui(response: Response):
         async with httpx.AsyncClient() as client:
-            proxy = await client.get("http://10.0.0.3:3000")
+            proxy = await client.get(f"http://{HOSTNAME}:3000")
             response.body = proxy.content
             response.status_code = proxy.status_code
 
@@ -88,7 +92,7 @@ def server_start(
     @vibin_app.get("/ui/{path:path}")
     async def ui(path, response: Response):
         async with httpx.AsyncClient() as client:
-            proxy = await client.get(f"http://10.0.0.3:3000/{path}")
+            proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
             response.body = proxy.content
             response.status_code = proxy.status_code
 
@@ -125,6 +129,12 @@ def server_start(
     @vibin_app.post("/transport/seek")
     async def transport_seek(target: SeekTarget):
         vibin.seek(target)
+
+    @vibin_app.get("/transport/position")
+    async def transport_position():
+        return {
+            "position": vibin.transport_position()
+        }
 
     @vibin_app.post("/transport/play/{media_id}")
     async def transport_play_media_id(media_id: str):
@@ -176,6 +186,10 @@ def server_start(
     async def state_vars() -> dict:
         return vibin.state_vars
 
+    @vibin_app.get("/playstate")
+    async def play_state() -> dict:
+        return vibin.play_state
+
     @vibin_app.api_route(
         UPNP_EVENTS_BASE_ROUTE + "/{service}",
         methods=["NOTIFY"],
@@ -192,7 +206,10 @@ def server_start(
             self.state_vars_queue = asyncio.Queue()
             self.sender_task = None
 
+            # TODO: Clean up using "state_vars_handler" for both state_vars
+            #   (UPnP) updates and websocket updates.
             vibin.on_state_vars_update(self.state_vars_handler)
+            vibin.on_websocket_update(self.websocket_update_handler)
 
         async def on_connect(self, websocket: WebSocket) -> None:
             await websocket.accept()
@@ -201,7 +218,15 @@ def server_start(
                 f"Websocket connection accepted from {client_ip}:{client_port}"
             )
             self.sender_task = asyncio.create_task(self.sender(websocket))
-            await websocket.send_json(vibin.state_vars)
+
+            # Send initial state to new client connection.
+            await websocket.send_text(
+                self.build_message(json.dumps(vibin.state_vars), "StateVars")
+            )
+
+            await websocket.send_text(
+                self.build_message(json.dumps(vibin.play_state), "PlayState")
+            )
 
         async def on_disconnect(
                 self, websocket: WebSocket, close_code: int
@@ -214,12 +239,60 @@ def server_start(
             )
 
         def state_vars_handler(self, data: str):
-            self.state_vars_queue.put_nowait(item=data)
+            self.state_vars_queue.put_nowait(
+                item=json.dumps({"type": "StateVars", "data": json.loads(data)})
+            )
+
+        def websocket_update_handler(self, data: str):
+            # TODO: Don't override state_vars queue for both state vars and
+            #   websocket updates.
+            self.state_vars_queue.put_nowait(
+                item=json.dumps({"type": "PlayState", "data": json.loads(data)})
+            )
+
+        def inject_id(self, data: str):
+            data_dict = json.loads(data)
+            data_dict["id"] = str(uuid.uuid4())
+
+            return json.dumps(data_dict)
+
+        def build_message(self, data: str, messageType: str) -> str:
+            data_as_dict = json.loads(data)
+
+            message = {
+                "id": str(uuid.uuid4()),
+                "time": int(time.time() * 1000),
+                "type": messageType,
+            }
+
+            if messageType == "StateVars":
+                message["payload"] = data_as_dict
+            elif messageType == "PlayState":
+                # There's two PlayState types: overall PlayState, and just the
+                # play position. We give these different message type names when
+                # building the message for the client.
+                if data_as_dict["path"] == "/zone/play_state/position":
+                    message["type"] = "Position"
+
+                try:
+                    message["payload"] = data_as_dict["params"]["data"]
+                except KeyError:
+                    # TODO: Add proper error handling support.
+                    message["payload"] = {}
+
+            return json.dumps(message)
 
         async def sender(self, websocket: WebSocket) -> None:
             while True:
-                state = await self.state_vars_queue.get()
-                await websocket.send_text(state)
+                to_send = await self.state_vars_queue.get()
+                to_send_dict = json.loads(to_send)
+
+                # TODO: All the json.loads()/dumps() down the path from the
+                #   source through the queue and into the message builder is
+                #   all a bit much -- most of it can probably be avoided.
+                await websocket.send_text(
+                    self.build_message(json.dumps(to_send_dict["data"]), to_send_dict["type"])
+                )
 
     @vibin_app.on_event("shutdown")
     def shutdown_event():

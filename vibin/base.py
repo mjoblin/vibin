@@ -21,6 +21,7 @@ class Vibin:
             media: Optional[str] = None,
             discovery_timeout: int = 5,
             subscribe_callback_base: Optional[str] = None,
+            on_streamer_websocket_update=None,
     ):
         logger.info("Initializing Vibin")
 
@@ -30,6 +31,9 @@ class Vibin:
         # Callables that want to be called (with all current state vars as
         # stringified JSON) whenever the state vars are updated.
         self._on_state_vars_update_handlers: List[Callable[[str], None]] = []
+
+        # TODO: Improve this hacked-in support for websocket updates.
+        self._on_websocket_update_handlers: List[Callable[[str], None]] = []
 
         logger.info("Discovering devices...")
         devices = upnpclient.discover(timeout=discovery_timeout)
@@ -95,6 +99,7 @@ class Vibin:
         self._current_streamer = streamer_class(
             device=streamer_device,
             subscribe_callback_base=subscribe_callback_base,
+            updates_handler=self._websocket_message_handler,
         )
 
         logger.info(f'Using streamer: "{self._current_streamer.name}"')
@@ -218,6 +223,9 @@ class Vibin:
     def seek(self, target):
         self.streamer.seek(target)
 
+    def transport_position(self):
+        return self.streamer.transport_position()
+
     def transport_actions(self):
         return self.streamer.transport_actions()
 
@@ -238,7 +246,16 @@ class Vibin:
 
     @property
     def state_vars(self):
+        # TODO: Do a pass at redefining the shape of state_vars. It should
+        #   include:
+        #   * Standard keys shared across all streamers/media (audience: any
+        #     client which wants to be device-agnostic). This will require some
+        #     well-defined keys in some sort of device interface definition.
+        #   * All streamer- and media-specific data (audience: any client which
+        #     is OK with understanding device-specific data).
         all_vars = {
+            "streamer_name": self.streamer.name,
+            "media_source_name": self.media.name,
             self.streamer.name: self.streamer.state_vars,
             "vibin": {
                 "last_played_id": self._last_played_id,
@@ -248,8 +265,23 @@ class Vibin:
 
         return all_vars
 
+    @property
+    def play_state(self):
+        return self.streamer.play_state
+
+    # TODO: Fix handling of state_vars (UPNP) and updates (Websocket) to be
+    #   more consistent. One option: more clearly configure handling of UPNP
+    #   subscriptions and Websocket events from the streamer; both can be
+    #   passed back to the client on the same Vibin->Client websocket
+    #   connection, perhaps with different message type identifiers.
+
     def on_state_vars_update(self, handler):
         self._on_state_vars_update_handlers.append(handler)
+
+    # NOTE: Intended use: For an external entity to register interest in
+    #   receiving websocket messages as they come in.
+    def on_websocket_update(self, handler):
+        self._on_websocket_update_handlers.append(handler)
 
     def upnp_event(self, service_name: str, event: str):
         # Extract the event.
@@ -266,6 +298,10 @@ class Vibin:
             # Send state vars to interested recipients.
             for handler in self._on_state_vars_update_handlers:
                 handler(json.dumps(self.state_vars))
+
+    def _websocket_message_handler(self, data: str):
+        for handler in self._on_websocket_update_handlers:
+            handler(data)
 
     def shutdown(self):
         logger.info("Vibin is shutting down")
