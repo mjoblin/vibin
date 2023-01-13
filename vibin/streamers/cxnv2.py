@@ -224,10 +224,11 @@ class CXNv2(Streamer):
     def subscriptions(self) -> ServiceSubscriptions:
         return self._subscriptions
 
-    def play_metadata(self, metadata: str):
+    # TODO: Consider renaming to modify_playlist() or similar
+    def play_metadata(self, metadata: str, action: str = "REPLACE"):
         self._uu_vol_control.QueueFolder(
             ServerUDN=self._media_device.udn,
-            Action="REPLACE",
+            Action=action,  # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
             NavigatorId=self._navigator_id,
             ExtraInfo="",
             DIDL=metadata,
@@ -244,6 +245,24 @@ class CXNv2(Streamer):
             self.play_playlist_index(playlist_index)
         except ValueError:
             pass
+
+    def playlist_clear(self):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/delete",
+            json={"start": 0, "delete_all": True},
+        )
+
+    def playlist_delete_item(self, playlist_id: int):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/delete",
+            json={"ids": [playlist_id]},
+        )
+
+    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/move",
+            json={"id": playlist_id, "from": from_index, "to": to_index},
+        )
 
     def play(self):
         self._av_transport.Play(InstanceID=self._instance_id, Speed="1")

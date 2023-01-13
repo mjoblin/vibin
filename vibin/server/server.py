@@ -166,6 +166,11 @@ def server_start(
     async def playlist():
         return vibin.streamer.playlist()
 
+    @vibin_app.post("/playlist/modify/{media_id}")
+    async def playlist_modify(media_id: str, action: str = "REPLACE"):
+        logger.info("API: MODIFYING PLAYLIST")
+        return vibin.modify_playlist(media_id, action)
+
     @vibin_app.post("/playlist/play/id/{playlist_id}")
     async def playlist_play_id(playlist_id: int):
         return vibin.streamer.play_playlist_id(playlist_id)
@@ -173,6 +178,18 @@ def server_start(
     @vibin_app.post("/playlist/play/index/{index}")
     async def playlist_play_index(index: int):
         return vibin.streamer.play_playlist_index(index)
+
+    @vibin_app.post("/playlist/clear")
+    async def playlist_clear():
+        return vibin.streamer.playlist_clear()
+
+    @vibin_app.post("/playlist/delete/{playlist_id}")
+    async def playlist_delete_item(playlist_id: int):
+        return vibin.streamer.playlist_delete_item(playlist_id)
+
+    @vibin_app.post("/playlist/move/{playlist_id}")
+    async def playlist_move_item(playlist_id: int, from_index: int, to_index: int):
+        return vibin.streamer.playlist_move_item(playlist_id, from_index, to_index)
 
     @vibin_app.get("/browse/{parent_id}")
     async def browse(parent_id: str):

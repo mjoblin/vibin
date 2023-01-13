@@ -86,7 +86,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def play_metadata(self, metadata: str):
+    def play_metadata(self, metadata: str, action: str = "REPLACE"):
         pass
 
     @abstractmethod
@@ -95,6 +95,18 @@ class Streamer(metaclass=ABCMeta):
 
     @abstractmethod
     def play_playlist_id(self, playlist_id: int):
+        pass
+
+    @abstractmethod
+    def playlist_clear(self):
+        pass
+
+    @abstractmethod
+    def playlist_delete_item(self, playlist_id: int):
+        pass
+
+    @abstractmethod
+    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
         pass
 
     @abstractmethod
