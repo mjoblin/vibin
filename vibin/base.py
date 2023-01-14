@@ -166,9 +166,14 @@ class Vibin:
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
-    def modify_playlist(self, id: str, action: str = "REPLACE"):
-        self.streamer.play_metadata(self.media.get_metadata(id), action)
-        self._last_played_id = id
+    def modify_playlist(
+            self,
+            id: str,
+            action:
+            str = "REPLACE",
+            insert_index: Optional[int] = None,
+    ):
+        self.streamer.play_metadata(self.media.get_metadata(id), action, insert_index)
 
     def pause(self):
         try:

@@ -85,8 +85,15 @@ class Streamer(metaclass=ABCMeta):
     def shuffle(self, enabled: typing.Optional[bool]):
         pass
 
+    # TODO: Fix the name as it's not always going to result in playing
+    #   something. e.g. "APPEND" won't change what's playing.
     @abstractmethod
-    def play_metadata(self, metadata: str, action: str = "REPLACE"):
+    def play_metadata(
+            self,
+            metadata: str,
+            action: str = "REPLACE",
+            insert_index: typing.Optional[int] = None
+    ):
         pass
 
     @abstractmethod

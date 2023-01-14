@@ -3,7 +3,7 @@ import json
 import socket
 import time
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket
 from fastapi.responses import RedirectResponse
@@ -162,14 +162,21 @@ def server_start(
     async def albums() -> List[Album]:
         return vibin.media.albums
 
+    @vibin_app.get("/albums/{album_id}/tracks")
+    async def album_tracks(album_id: str) -> List[Album]:
+        return vibin.media.tracks(album_id)
+
     @vibin_app.get("/playlist")
     async def playlist():
         return vibin.streamer.playlist()
 
     @vibin_app.post("/playlist/modify/{media_id}")
-    async def playlist_modify(media_id: str, action: str = "REPLACE"):
-        logger.info("API: MODIFYING PLAYLIST")
-        return vibin.modify_playlist(media_id, action)
+    async def playlist_modify(
+            media_id: str,
+            action: str = "REPLACE",
+            insert_index: Optional[int] = None,
+    ):
+        return vibin.modify_playlist(media_id, action, insert_index)
 
     @vibin_app.post("/playlist/play/id/{playlist_id}")
     async def playlist_play_id(playlist_id: int):

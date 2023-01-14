@@ -225,14 +225,27 @@ class CXNv2(Streamer):
         return self._subscriptions
 
     # TODO: Consider renaming to modify_playlist() or similar
-    def play_metadata(self, metadata: str, action: str = "REPLACE"):
-        self._uu_vol_control.QueueFolder(
-            ServerUDN=self._media_device.udn,
-            Action=action,  # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-            NavigatorId=self._navigator_id,
-            ExtraInfo="",
-            DIDL=metadata,
-        )
+    def play_metadata(
+            self,
+            metadata: str,
+            action: str = "REPLACE",
+            insert_index: Optional[int] = None,  # Only used by INSERT action
+    ):
+        if action == "INSERT":
+            # INSERT. This works for Tracks only (not Albums).
+            # TODO: Add check to ensure metadata is for a Track.
+            self._uu_vol_control.InsertPlaylistTrack(
+                InsertPosition=insert_index, TrackData=metadata
+            )
+        else:
+            # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
+            self._uu_vol_control.QueueFolder(
+                ServerUDN=self._media_device.udn,
+                Action=action,
+                NavigatorId=self._navigator_id,
+                ExtraInfo="",
+                DIDL=metadata,
+            )
 
     def play_playlist_index(self, index: int):
         self._uu_vol_control.SetCurrentPlaylistTrack(

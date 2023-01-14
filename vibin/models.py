@@ -22,6 +22,7 @@ class Track:
     date: str
     artist: str
     album: str
+    duration: str
     genre: str
     album_art_uri: str
     original_track_number: str

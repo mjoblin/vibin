@@ -62,8 +62,8 @@ class Asset(MediaSource):
 
         return list(self._albums.values())
 
-    def tracks(self, album) -> typing.List[Track]:
-        album_tracks_xml = self._get_children_xml(album.id)
+    def tracks(self, album_id) -> typing.List[Track]:
+        album_tracks_xml = self._get_children_xml(album_id)
         album_tracks_elems = ET.fromstring(album_tracks_xml)
         all_tracks = []
 
@@ -75,10 +75,24 @@ class Asset(MediaSource):
                 track_elem.find("dc:date", namespaces=self._media_namespaces).text,
                 track_elem.find("upnp:artist", namespaces=self._media_namespaces).text,
                 track_elem.find("upnp:album", namespaces=self._media_namespaces).text,
+                track_elem.find("didl:res", namespaces=self._media_namespaces).attrib["duration"],
                 track_elem.find("upnp:genre", namespaces=self._media_namespaces).text,
                 track_elem.find("upnp:albumArtURI", namespaces=self._media_namespaces).text,
                 track_elem.find("upnp:originalTrackNumber", namespaces=self._media_namespaces).text,
             )
+
+            # track_elem.find("didl:res", namespaces=self._media_namespaces).attrib["duration"]
+            # available: size, bitrate, bitsPerSample, sampleFrequency, nrAudioChannels, protocolInfo
+            #
+            # {
+            #   'duration': '0:03:36.000',
+            #   'size': '15892752',
+            #   'bitrate': '176400',
+            #   'bitsPerSample': '16',
+            #   'sampleFrequency': '44100',
+            #   'nrAudioChannels': '2',
+            #   'protocolInfo': 'http-get:*:audio/x-flac:DLNA.ORG_PN=FLAC;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=03700000000000000000000000000000'
+            # }
 
             all_tracks.append(track)
 
