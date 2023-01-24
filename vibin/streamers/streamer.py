@@ -40,9 +40,14 @@ class Streamer(metaclass=ABCMeta):
     def name(self):
         pass
 
+
     @property
     @abstractmethod
     def subscriptions(self) -> ServiceSubscriptions:
+        pass
+
+    @abstractmethod
+    def power_toggle(self):
         pass
 
     @abstractmethod
@@ -134,6 +139,10 @@ class Streamer(metaclass=ABCMeta):
 
     @abstractmethod
     def subscribe(self):
+        pass
+
+    @abstractmethod
+    def system_state(self):
         pass
 
     @abstractmethod

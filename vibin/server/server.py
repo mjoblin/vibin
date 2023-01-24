@@ -98,6 +98,15 @@ def server_start(
 
             return response
 
+    # TODO: Do we want /system endpoints for both streamer and media?
+    @vibin_app.post("/system/power/toggle")
+    async def system_power_toggle():
+        try:
+            vibin.streamer.power_toggle()
+            return success
+        except VibinError as e:
+            raise HTTPException(status_code=500, detail=f"{e}")
+
     @vibin_app.post("/transport/pause")
     async def transport_pause():
         try:
@@ -243,6 +252,14 @@ def server_start(
             )
             self.sender_task = asyncio.create_task(self.sender(websocket))
 
+            await websocket.send_text(
+                # TODO: Fix this hack which encforces streamer-system-status
+                #    (ignoring system_state["media_device"]).
+                self.build_message(
+                    json.dumps(vibin.system_state["streamer"]), "System"
+                )
+            )
+
             # Send initial state to new client connection.
             await websocket.send_text(
                 self.build_message(json.dumps(vibin.state_vars), "StateVars")
@@ -267,11 +284,12 @@ def server_start(
                 item=json.dumps({"type": "StateVars", "data": json.loads(data)})
             )
 
-        def websocket_update_handler(self, data: str):
+        def websocket_update_handler(self, message_type: str, data: str):
             # TODO: Don't override state_vars queue for both state vars and
             #   websocket updates.
             self.state_vars_queue.put_nowait(
-                item=json.dumps({"type": "PlayState", "data": json.loads(data)})
+                # item=json.dumps({"type": "PlayState", "data": json.loads(data)})
+                item=json.dumps({"type": message_type, "data": json.loads(data)})
             )
 
         def inject_id(self, data: str):
@@ -289,15 +307,19 @@ def server_start(
                 "type": messageType,
             }
 
-            if messageType == "StateVars":
-                message["payload"] = data_as_dict
-            elif messageType == "PlayState":
-                # There's two PlayState types: overall PlayState, and just the
-                # play position. We give these different message type names when
-                # building the message for the client.
-                if data_as_dict["path"] == "/zone/play_state/position":
-                    message["type"] = "Position"
+            # TODO: This (the streamer- and media-server-agnostic layer)
+            #   shouldn't have any awareness of the CXNv2 data shapes. So the
+            #   ["data"]["params"] stuff below should be abstracted away.
 
+            if messageType == "System":
+                # TODO: Fix this hack. We're assuming we're getting a streamer
+                #   system update, but it might be a media_source update.
+                message["payload"] = {
+                    "streamer": data_as_dict,
+                }
+            elif messageType == "StateVars":
+                message["payload"] = data_as_dict
+            elif messageType == "PlayState" or messageType == "Position":
                 try:
                     message["payload"] = data_as_dict["params"]["data"]
                 except KeyError:

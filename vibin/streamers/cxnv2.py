@@ -85,6 +85,11 @@ class CXNv2(Streamer):
 
         self._device_hostname = urlparse(device.location).hostname
 
+        self._system_state = {
+            "name": self._device.friendly_name,
+            "power": None,
+        }
+
         self._state_vars: StateVars = {}
 
         self._vibin_vars = {
@@ -224,6 +229,11 @@ class CXNv2(Streamer):
     def subscriptions(self) -> ServiceSubscriptions:
         return self._subscriptions
 
+    def power_toggle(self):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/system/power?power=toggle"
+        )
+
     # TODO: Consider renaming to modify_playlist() or similar
     def play_metadata(
             self,
@@ -289,15 +299,23 @@ class CXNv2(Streamer):
     def seek(self, target: SeekTarget):
         target_hmmss = None
 
+        # TODO: Fix handling of float vs. int. All numbers come in as floats,
+        #   so what to do with 1/1.0 is ambiguous (here we treat is as 1 second
+        #   not the end of the 0-1 normalized range).
         if isinstance(target, float):
-            media_info = self._av_transport.GetMediaInfo(InstanceID=0)
-            duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
+            if target == 0:
+                target_hmmss = utils.secs_to_hmmss(0)
+            elif target < 1:
+                logger.info("FLOAT")
+                media_info = self._av_transport.GetMediaInfo(InstanceID=0)
+                duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
 
-            target_hmmss = utils.secs_to_hmmss(
-                math.floor(duration_secs * target)
-            )
-        if isinstance(target, int):
-            target_hmmss = utils.secs_to_hmmss(target)
+                target_hmmss = utils.secs_to_hmmss(
+                    math.floor(duration_secs * target)
+                )
+            else:
+                logger.info("INT")
+                target_hmmss = utils.secs_to_hmmss(int(target))
         elif isinstance(target, str):
             if not utils.is_hmmss(target):
                 raise TypeError("Time must be in h:mm:ss format")
@@ -538,6 +556,11 @@ class CXNv2(Streamer):
                     '{"path": "/zone/play_state", "params": {"update": 1}}'
                 )
 
+                # Request power updates (on/off).
+                await websocket.send(
+                    '{"path": "/system/power", "params": {"update": 100}}'
+                )
+
                 # TODO: The stop check will never be performed if messages
                 #   aren't coming in from the websocket (due to the recv await).
                 while not self._websocket_thread.stop_event.is_set():
@@ -545,12 +568,24 @@ class CXNv2(Streamer):
 
                     try:
                         update_dict = json.loads(update)
+
                         if update_dict["path"] == "/zone/play_state":
                             self._play_state = update_dict
+                            self._updates_handler("PlayState", update)
+                        elif update_dict["path"] == "/zone/play_state/position":
+                            self._updates_handler("Position", update)
+                        elif update_dict["path"] == "/system/power":
+                            power = update_dict["params"]["data"]["power"]
+                            self._system_state["power"] = "on" if power == "ON" else "off"
+                            self._updates_handler("System", json.dumps(self._system_state))
+                        else:
+                            logger.warn(f"Unknown message: {update}")
+                            self._updates_handler("Unknown", update)
                     except (KeyError, json.decoder.JSONDecodeError) as e:
+                        # TODO: This currently quietly ignores unexpected
+                        #   payload formats or missing keys. Consider adding
+                        #   error handling if errors need to be announced.
                         pass
-
-                    self._updates_handler(update)
 
         asyncio.run(async_websocket_manager())
 
@@ -659,6 +694,10 @@ class CXNv2(Streamer):
         self._subscriptions = {}
 
     @property
+    def system_state(self):
+        return self._system_state
+
+    @property
     def state_vars(self) -> StateVars:
         return self._state_vars
 
@@ -668,6 +707,9 @@ class CXNv2(Streamer):
 
     @property
     def play_state(self):
+        # TODO: This is a raw CXNv2 Websocket payload shape. This should
+        #   probably be cleaned up before passing back to the streamer-agnostic
+        #   caller.
         return self._play_state
 
     def _last_change_event_handler(

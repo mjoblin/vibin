@@ -33,7 +33,7 @@ class Vibin:
         self._on_state_vars_update_handlers: List[Callable[[str], None]] = []
 
         # TODO: Improve this hacked-in support for websocket updates.
-        self._on_websocket_update_handlers: List[Callable[[str], None]] = []
+        self._on_websocket_update_handlers: List[Callable[[str, str], None]] = []
 
         logger.info("Discovering devices...")
         devices = upnpclient.discover(timeout=discovery_timeout)
@@ -275,6 +275,12 @@ class Vibin:
         return all_vars
 
     @property
+    def system_state(self):
+        return {
+            "streamer": self.streamer.system_state,
+        }
+
+    @property
     def play_state(self):
         return self.streamer.play_state
 
@@ -308,9 +314,9 @@ class Vibin:
             for handler in self._on_state_vars_update_handlers:
                 handler(json.dumps(self.state_vars))
 
-    def _websocket_message_handler(self, data: str):
+    def _websocket_message_handler(self, message_type: str, data: str):
         for handler in self._on_websocket_update_handlers:
-            handler(data)
+            handler(message_type, data)
 
     def shutdown(self):
         logger.info("Vibin is shutting down")
