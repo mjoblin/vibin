@@ -26,6 +26,7 @@ setup(
         "fastapi",
         "httpx",
         "lxml",
+        "lyricsgenius",
         "requests",
         "rich",
         "starlette",
