@@ -12,6 +12,7 @@ import httpx  # TODO: Not in requirements; using to proxy to react on 3000
 import starlette.requests
 from starlette.endpoints import WebSocketEndpoint
 import uvicorn
+import xmltodict
 
 from vibin import Vibin, VibinError
 from vibin.constants import VIBIN_PORT
@@ -175,6 +176,15 @@ def server_start(
     async def album_tracks(album_id: str) -> List[Album]:
         return vibin.media.tracks(album_id)
 
+    @vibin_app.get("/tracks/{track_id}/lyrics")
+    async def album_tracks(track_id: str):
+        lyrics = vibin.lyrics_for_track(track_id)
+
+        if lyrics is None:
+            raise HTTPException(status_code=404, detail="Lyrics not found")
+
+        return lyrics
+
     @vibin_app.get("/playlist")
     async def playlist():
         return vibin.streamer.playlist()
@@ -210,6 +220,10 @@ def server_start(
     @vibin_app.get("/browse/{parent_id}")
     async def browse(parent_id: str):
         return vibin.browse_media(parent_id)
+
+    @vibin_app.get("/metadata/{id}")
+    async def browse(id: str):
+        return xmltodict.parse(vibin.media.get_metadata(id))
 
     @vibin_app.post("/subscribe")
     async def transport_play_media_id():

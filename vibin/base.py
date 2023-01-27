@@ -1,9 +1,13 @@
 import inspect
 import json
+import re
 from typing import Callable, List, Optional
 
+import lyricsgenius
 import upnpclient
 from upnpclient.soap import SOAPError
+import xml
+import xmltodict
 
 from vibin import VibinError
 import vibin.mediasources as mediasources
@@ -51,6 +55,15 @@ class Vibin:
         )
 
         self._last_played_id = None
+
+        try:
+            self._genius = lyricsgenius.Genius()
+        except TypeError:
+            self._genius = None
+
+        # TODO: This could be a form of memory-capped cache where the oldest-
+        #   accessed entries are removed first.
+        self._lyrics_cache = {}
 
     def _determine_streamer(
             self, devices, streamer_name, subscribe_callback_base
@@ -289,6 +302,94 @@ class Vibin:
     #   subscriptions and Websocket events from the streamer; both can be
     #   passed back to the client on the same Vibin->Client websocket
     #   connection, perhaps with different message type identifiers.
+
+    def lyrics_for_track(self, track_id):
+        if track_id in self._lyrics_cache:
+            return self._lyrics_cache[track_id]
+
+        if not self._genius:
+            return
+
+        try:
+            track_info = xmltodict.parse(self.media.get_metadata(track_id))
+
+            artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
+            title = track_info["DIDL-Lite"]["item"]["dc:title"]
+
+            song = self._genius.search_song(title=title, artist=artist)
+
+            if song is None:
+                return None
+
+            # Munge the lyrics into a new shape. Currently they're one long
+            # string, where chunks (choruses, verses, etc) are separated by two
+            # newlines. Each chunk may or may not have a header of sorts, which
+            # looks like "[Header]". The goal is to create something like:
+            #
+            # [
+            #     {
+            #         "header": "Verse 1",
+            #         "body": [
+            #             "Line 1",
+            #             "Line 2",
+            #             "Line 3",
+            #         ],
+            #     },
+            #     {
+            #         "header": "Verse 2",
+            #         "body": [
+            #             "Line 1",
+            #             "Line 2",
+            #             "Line 3",
+            #         ],
+            #     },
+            # ]
+
+            chunks_as_strings = song.lyrics.split("\n\n")
+
+            # The lyrics scraper prepends the first line of lyrics with
+            # "<song title>Lyrics", so we remove that if we see it. This is
+            # flaky at best.
+            chunks_as_strings[0] = \
+                re.sub(r"^.*Lyrics", "", chunks_as_strings[0])
+
+            # The scraper also might append "3Embed" to the last line.
+            chunks_as_strings[-1] = re.sub(
+                r"\d+Embed$", "", chunks_as_strings[-1]
+            )
+
+            chunks_as_arrays = \
+                [chunk.split("\n") for chunk in chunks_as_strings]
+
+            results = []
+
+            for chunk in chunks_as_arrays:
+                chunk_header = re.match(r"^\[([^\[\]]+)\]$", chunk[0])
+                if chunk_header:
+                    results.append({
+                        "header": chunk_header.group(1),
+                        "body": chunk[1:],
+                    })
+                else:
+                    results.append({
+                        "header": None,
+                        "body": chunk,
+                    })
+
+            self._lyrics_cache[track_id] = results
+
+            return results
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(
+                f"Could not convert XML to JSON for track: {track_id}: {e}"
+            )
+        except (KeyError, IndexError) as e:
+            logger.error(
+                f"Could not extract track details for lyrics lookup for " +
+                f"track {track_id}: {e}"
+            )
+
+        return None
 
     def on_state_vars_update(self, handler):
         self._on_state_vars_update_handlers.append(handler)
