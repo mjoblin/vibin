@@ -323,8 +323,9 @@ class Vibin:
 
             # Munge the lyrics into a new shape. Currently they're one long
             # string, where chunks (choruses, verses, etc) are separated by two
-            # newlines. Each chunk may or may not have a header of sorts, which
-            # looks like "[Header]". The goal is to create something like:
+            # newlines (usually; sometimes it's just one newline). Each chunk
+            # may or may not have a header of sorts, which looks like
+            # "[Header]". The goal is to create something like:
             #
             # [
             #     {
@@ -345,17 +346,37 @@ class Vibin:
             #     },
             # ]
 
-            chunks_as_strings = song.lyrics.split("\n\n")
+            # TODO: If a line matches "^\[[^\[\]]+\]$" then start a new chunk
+
+            # The lyrics scraper allows some strings through which are not part
+            # of the lyrics for a song. This includes "You might also like"
+            # which could be anywhere, as well as "<digits>Embed" at the end of
+            # a line. We remove those. Doing this is prone to issues; it would
+            # be far better not to use a lyrics scraper.
+            3
+            # The lyrics also sometimes include a string like "[Chorus]" on its
+            # own line. These denote a "chunk". Usually a line like "[Chorus]"
+            # is preceded by two newlines, but sometimes it's not -- so we also
+            # enforce at least new newlines so we can later split on multiple
+            # newlines to isolate each chuck.
+
+            lyrics = song.lyrics
+
+            lyrics = lyrics.replace("You might also like", "")
+
+            # Enforce at least two newlines before any line looking like
+            # "[Chorus]".
+            chunks_as_strings = \
+                re.split(r"\n{2,}", re.sub(r'(\n\[[^\[\]]+\])', r"\n\1", lyrics))
 
             # The lyrics scraper prepends the first line of lyrics with
-            # "<song title>Lyrics", so we remove that if we see it. This is
-            # flaky at best.
+            # "<song title>Lyrics", so we remove that if we see it.
             chunks_as_strings[0] = \
                 re.sub(r"^.*Lyrics", "", chunks_as_strings[0])
 
-            # The scraper also might append "3Embed" to the last line.
+            # The scraper also might append "<digits>Embed" to the last line.
             chunks_as_strings[-1] = re.sub(
-                r"\d+Embed$", "", chunks_as_strings[-1]
+                r"\d*Embed$", "", chunks_as_strings[-1]
             )
 
             chunks_as_arrays = \
