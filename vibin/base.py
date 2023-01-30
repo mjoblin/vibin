@@ -224,19 +224,21 @@ class Vibin:
                 f"Unable to perform Previous transition: [{code}] {err}"
             )
 
-    def repeat(self, enabled: Optional[bool]):
+    def repeat(self, state: Optional[str] = "toggle"):
         try:
-            self.streamer.repeat(enabled)
+            self.streamer.repeat(state)
         except SOAPError as e:
+            # TODO: Will no longer get a SOAPError after switching to SMOIP
             code, err = e.args
             raise VibinError(
                 f"Unable to interact with Repeat setting: [{code}] {err}"
             )
 
-    def shuffle(self, enabled: Optional[bool]):
+    def shuffle(self, state: Optional[str] = "toggle"):
         try:
-            self.streamer.shuffle(enabled)
+            self.streamer.shuffle(state)
         except SOAPError as e:
+            # TODO: Will no longer get a SOAPError after switching to SMOIP
             code, err = e.args
             raise VibinError(
                 f"Unable to interact with Shuffle setting: [{code}] {err}"

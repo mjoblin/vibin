@@ -83,11 +83,11 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def repeat(self, enabled: typing.Optional[bool]):
+    def repeat(self, enabled: typing.Optional[str]):
         pass
 
     @abstractmethod
-    def shuffle(self, enabled: typing.Optional[bool]):
+    def shuffle(self, enabled: typing.Optional[str]):
         pass
 
     # TODO: Fix the name as it's not always going to result in playing

@@ -136,6 +136,15 @@ def server_start(
     async def transport_previous():
         vibin.previous_track()
 
+    # TODO: Consider whether repeat and shuffle should be toggles or not.
+    @vibin_app.post("/transport/repeat")
+    async def transport_repeat():
+        vibin.repeat("toggle")
+
+    @vibin_app.post("/transport/shuffle")
+    async def transport_shuffle():
+        vibin.shuffle("toggle")
+
     @vibin_app.post("/transport/seek")
     async def transport_seek(target: SeekTarget):
         vibin.seek(target)

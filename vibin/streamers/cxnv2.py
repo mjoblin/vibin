@@ -394,27 +394,39 @@ class CXNv2(Streamer):
         # else:
         #     self.seek("0:00:00")
 
-    def repeat(self, enabled: Optional[bool] = None) -> bool:
-        if enabled is None:
-            result = self._playlist_extension.Repeat()
-            return result["aRepeat"] == "true"
-
-        self._playlist_extension.SetRepeat(
-            aRepeat="true" if enabled else "false"
+    def repeat(self, state: Optional[str] = "toggle"):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
         )
 
-        return enabled
+        return self._playlist_extension.Repeat()
 
-    def shuffle(self, enabled: Optional[bool] = None) -> bool:
-        if enabled is None:
-            result = self._playlist_extension.Shuffle()
-            return result["aShuffle"] == "true"
+        # if enabled is None:
+        #     result = self._playlist_extension.Repeat()
+        #     return result["aRepeat"] == "true"
+        #
+        # self._playlist_extension.SetRepeat(
+        #     aRepeat="true" if enabled else "false"
+        # )
+        #
+        # return enabled
 
-        self._playlist_extension.SetShuffle(
-            aShuffle="true" if enabled else "false"
+    def shuffle(self, state: Optional[str] = "toggle"):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
         )
 
-        return enabled
+        return self._playlist_extension.Shuffle()
+
+        # if enabled is None:
+        #     result = self._playlist_extension.Shuffle()
+        #     return result["aShuffle"] == "true"
+        #
+        # self._playlist_extension.SetShuffle(
+        #     aShuffle="true" if enabled else "false"
+        # )
+        #
+        # return enabled
 
     def transport_position(self) -> Optional[int]:
         response = requests.get(
