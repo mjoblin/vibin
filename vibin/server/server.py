@@ -185,6 +185,10 @@ def server_start(
     async def album_tracks(album_id: str) -> List[Album]:
         return vibin.media.tracks(album_id)
 
+    @vibin_app.get("/albums/{album_id}/links")
+    async def album_links(album_id: str, all_types: bool = False):
+        return vibin.album_links(album_id, all_types)
+
     @vibin_app.get("/tracks/{track_id}/lyrics")
     async def album_tracks(track_id: str):
         lyrics = vibin.lyrics_for_track(track_id)
@@ -193,6 +197,10 @@ def server_start(
             raise HTTPException(status_code=404, detail="Lyrics not found")
 
         return lyrics
+
+    @vibin_app.get("/tracks/{track_id}/links")
+    async def track_links(track_id: str, all_types: bool = False):
+        return vibin.track_links(track_id, all_types)
 
     @vibin_app.get("/playlist")
     async def playlist():

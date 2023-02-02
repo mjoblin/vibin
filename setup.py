@@ -1,13 +1,15 @@
 from setuptools import setup, find_packages
 import pathlib
 
+from vibin import __version__
+
 here = pathlib.Path(__file__).parent.resolve()
 
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="vibin",
-    version="1.0.0",
+    version=__version__,
     description="The Vibin music server",
     long_description=long_description,
     long_description_content_type="text/markdown",
