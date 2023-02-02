@@ -1,3 +1,4 @@
+import concurrent.futures
 import inspect
 import json
 import os
@@ -83,62 +84,82 @@ class Vibin:
     def artist_links(self, artist: str):
         pass
 
-    def album_links(
+    def media_links(
             self,
-            album_id: str,
+            media_id: str,
             include_all: bool = False,
     ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
         if len(self._external_services) == 0:
             return {}
 
+        artist = album = title = media_class = None
         results = {}
 
+        # TODO: Have errors raise an exception which can be passed back to the
+        #   caller, rather than empty {} results.
+
         try:
-            album_info = xmltodict.parse(self.media.get_metadata(album_id))
+            media_info = xmltodict.parse(self.media.get_metadata(media_id))
+            didl = media_info["DIDL-Lite"]
 
-            artist = album_info["DIDL-Lite"]["item"]["dc:creator"]
-            album = album_info["DIDL-Lite"]["item"]["upnp:album"]
-
-            for service in self._external_services.values():
-                results[service.name] = service.links(
-                    artist=artist,
-                    album=album,
-                    link_type="Album" if not include_all else "All",
+            if "container" in didl:
+                # Album
+                artist = didl["container"]["dc:creator"]
+                album = didl["container"]["dc:title"]
+            elif "item" in didl:
+                # Track
+                artist = didl["item"]["dc:creator"]
+                album = didl["item"]["upnp:album"]
+                title = didl["item"]["dc:title"]
+            else:
+                logger.error(
+                    f"Could not determine whether media item is an Album or " +
+                    f"a Track: {media_id}"
                 )
+                return {}
         except xml.parsers.expat.ExpatError as e:
             logger.error(
-                f"Could not convert XML to JSON for track: {album_id}: {e}"
+                f"Could not convert XML to JSON for media item: {media_id}: {e}"
             )
-
-        return results
-
-    def track_links(
-            self,
-            track_id: str,
-            include_all: bool = False,
-    ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
-        if len(self._external_services) == 0:
+            return {}
+        except KeyError as e:
+            logger.error(
+                f"Could not find expected media key in {media_id}: {e}"
+            )
             return {}
 
-        results = {}
-
         try:
-            track_info = xmltodict.parse(self.media.get_metadata(track_id))
+            link_type = \
+                "All" if include_all else ("Album" if not title else "Track")
 
-            artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
-            album = track_info["DIDL-Lite"]["item"]["upnp:album"]
-            title = track_info["DIDL-Lite"]["item"]["dc:title"]
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future_to_link_getters = {
+                    executor.submit(
+                        service.links,
+                        **{
+                            "artist": artist,
+                            "album": album,
+                            "track": title,
+                            "link_type": link_type,
+                        }
+                    ): service for service in self._external_services.values()
+                }
 
-            for service in self._external_services.values():
-                results[service.name] = service.links(
-                    artist=artist,
-                    album=album,
-                    track=title,
-                    link_type="Track" if not include_all else "All",
-                )
+                for future in concurrent.futures.as_completed(
+                        future_to_link_getters
+                ):
+                    link_getter = future_to_link_getters[future]
+
+                    try:
+                        results[link_getter.name] = future.result()
+                    except Exception as exc:
+                        logger.error(
+                            f"Could not retrieve links from " +
+                            f"{link_getter.name}: {exc}"
+                        )
         except xml.parsers.expat.ExpatError as e:
             logger.error(
-                f"Could not convert XML to JSON for track: {track_id}: {e}"
+                f"Could not convert XML to JSON for media item: {media_id}: {e}"
             )
 
         return results

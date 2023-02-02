@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import discogs_client
 
 from vibin import VibinError
@@ -23,6 +25,7 @@ class Discogs(ExternalService):
     def name(self) -> str:
         return self.service_name
 
+    @lru_cache
     def links(
             self,
             artist: str | None = None,
@@ -51,7 +54,6 @@ class Discogs(ExternalService):
 
         # Discogs doesn't have track-specific links for album tracks.
         # TODO: Consider including singles releases.
-        # TODO: Add a url cache.
 
         if artist and (link_type == "Artist" or link_type == "All"):
             add_link("Artist")

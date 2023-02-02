@@ -1,3 +1,4 @@
+from functools import lru_cache
 import re
 
 import lyricsgenius
@@ -14,10 +15,6 @@ class Genius(ExternalService):
         self._user_agent = user_agent
         self._token = token
 
-        # TODO: This could be a form of memory-capped cache where the oldest-
-        #   accessed entries are removed first.
-        self._lyrics_cache = {}
-
         try:
             self._client = lyricsgenius.Genius(access_token=token)
         except TypeError:
@@ -27,6 +24,7 @@ class Genius(ExternalService):
     def name(self) -> str:
         return self.service_name
 
+    @lru_cache
     def links(
             self,
             artist: str | None = None,
@@ -40,7 +38,6 @@ class Genius(ExternalService):
         links = []
 
         # TODO: Consider parallelizing these (they can take seconds each).
-        # TODO: Add a url cache.
 
         if artist and (link_type == "Artist" or link_type == "All"):
             result = self._client.search_artist(artist_name=artist, max_songs=0)
@@ -74,14 +71,10 @@ class Genius(ExternalService):
 
         return links
 
+    @lru_cache
     def lyrics(self, artist: str, track: str):
         if not self._client:
             return None
-
-        track_id = f"{artist}::{track}"
-
-        if track_id in self._lyrics_cache:
-            return self._lyrics_cache[track_id]
 
         if not self._client:
             return
@@ -168,13 +161,11 @@ class Genius(ExternalService):
                         "body": chunk,
                     })
 
-            self._lyrics_cache[track_id] = results
-
             return results
         except (KeyError, IndexError) as e:
             raise VibinError(
-                f"Could not extract track details for lyrics lookup for " +
-                f"track {track_id}: {e}"
+                f"Could not extract track details for lyrics lookup for: " +
+                f"{artist} - {track}: {e}"
             )
 
         return None

@@ -187,7 +187,7 @@ def server_start(
 
     @vibin_app.get("/albums/{album_id}/links")
     async def album_links(album_id: str, all_types: bool = False):
-        return vibin.album_links(album_id, all_types)
+        return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
     async def album_tracks(track_id: str):
@@ -200,7 +200,7 @@ def server_start(
 
     @vibin_app.get("/tracks/{track_id}/links")
     async def track_links(track_id: str, all_types: bool = False):
-        return vibin.track_links(track_id, all_types)
+        return vibin.media_links(track_id, all_types)
 
     @vibin_app.get("/playlist")
     async def playlist():
