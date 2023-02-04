@@ -65,13 +65,14 @@ class Vibin:
 
         self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
         self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
+        self._add_external_service(external_services.Wikipedia)
 
-    def _add_external_service(self, service_class, token_env_var):
+    def _add_external_service(self, service_class, token_env_var=None):
         try:
             service_instance = service_class(
                 # TODO: Change user agent to Vibin
                 user_agent=f"ExampleApplication/{__version__}",
-                token=os.environ[token_env_var],
+                token=os.environ[token_env_var] if token_env_var else None,
             )
 
             self._external_services[service_instance.name] = service_instance
@@ -83,6 +84,37 @@ class Vibin:
     # TODO: Do we want this
     def artist_links(self, artist: str):
         pass
+
+    # TODO: Centralize all the DIDL-parsing logic. It might be helpful to have
+    #   one centralized way to provide some XML media info and extract all the
+    #   useful information from it, in a Vibin-contract-friendly way (well-
+    #   defined concepts for title, artist, album, track artist vs. album
+    #   artist, composer, etc).
+    def _artist_from_track_media_info(self, track):
+        artist = None
+
+        try:
+            didl_item = track["DIDL-Lite"]["item"]
+
+            # Default to dc:creator
+            artist = didl_item["dc:creator"]
+
+            # Attempt to find AlbumArtist in upnp:artist
+            upnp_artist_info = didl_item["upnp:artist"]
+
+            if type(upnp_artist_info) == str:
+                artist = upnp_artist_info
+            else:
+                # We have an array of artists, so look for AlbumArtist (others
+                # might be Composer, etc).
+                for upnp_artist in upnp_artist_info:
+                    if upnp_artist["@role"] == "AlbumArtist":
+                        artist = upnp_artist["#text"]
+                        break
+        except KeyError:
+            pass
+
+        return artist
 
     def media_links(
             self,
@@ -108,7 +140,7 @@ class Vibin:
                 album = didl["container"]["dc:title"]
             elif "item" in didl:
                 # Track
-                artist = didl["item"]["dc:creator"]
+                artist = self._artist_from_track_media_info(media_info)
                 album = didl["item"]["upnp:album"]
                 title = didl["item"]["dc:title"]
             else:

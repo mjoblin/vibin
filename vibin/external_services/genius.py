@@ -65,7 +65,7 @@ class Genius(ExternalService):
             if result is not None:
                 links.append(ExternalServiceLink(
                     type="Track",
-                    name="Track",
+                    name="Lyrics",
                     url=f"{result.url}",
                 ))
 

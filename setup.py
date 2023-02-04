@@ -34,6 +34,7 @@ setup(
         "starlette",
         "upnpclient",
         "uvicorn[standard]",
+        "wikipedia",
         "xmltodict",
     ],
     extras_require={
