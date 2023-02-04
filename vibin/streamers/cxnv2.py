@@ -4,6 +4,8 @@ import atexit
 import base64
 import json
 import math
+import pathlib
+import re
 import sys
 import threading
 import time
@@ -195,6 +197,12 @@ class CXNv2(Streamer):
             )
             self._websocket_thread.start()
 
+        # Keep track of last seen ("currently playing") track and album IDs.
+        # This is done to facilitate injecting this information into payload
+        # which want it, but it isn't already there when sent from the streamer.
+        self._last_seen_track_id = None
+        self._last_seen_album_id = None
+
     def disconnect(self):
         if self._disconnected:
             return
@@ -334,6 +342,8 @@ class CXNv2(Streamer):
     def playlist_length(self):
         return self._uu_vol_control.GetPlaylistLength()["PlaylistLength"]
 
+    # TODO: Clear up confusion between this track id (a playlist id) and the
+    #   unique media id for the track.
     def current_track_id(self):
         # Appears to be the same as GetMediaQueueIndex()
         result = self._uu_vol_control.GetCurrentPlaylistTrack()
@@ -519,6 +529,8 @@ class CXNv2(Streamer):
                 "id": id,
                 "index": index,
                 "uri": uri,
+                "trackMediaId": None,
+                "albumMediaId": None,
             }
 
             for (key, tag) in key_tag_map.items():
@@ -527,6 +539,21 @@ class CXNv2(Streamer):
             entry_data["duration"] = (
                 item_elem.find("res", namespaces=ns).attrib["duration"]
             )
+
+            # The Track and Album Media ID's are extracted from the Uri.
+            # e.g. if the Uri's filename component is:
+            #   d4751635140053632760-co894839058BF2FA4B.flac
+            # ... then the trackMediaId is d4751635140053632760 and the
+            # albumMediaId is co894839058BF2FA4B.
+
+            # TODO: Remove?
+            media_ids = pathlib.Path(uri).stem.split("-")
+
+            try:
+                entry_data["trackMediaId"] = media_ids[0]
+                entry_data["albumMediaId"] = media_ids[1]
+            except IndexError:
+                pass
 
             id_to_playlist_item[id] = entry_data
 
@@ -583,7 +610,7 @@ class CXNv2(Streamer):
 
                         if update_dict["path"] == "/zone/play_state":
                             self._play_state = update_dict
-                            self._updates_handler("PlayState", update)
+                            self._send_play_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
                             self._updates_handler("Position", update)
                         elif update_dict["path"] == "/system/power":
@@ -600,6 +627,24 @@ class CXNv2(Streamer):
                         pass
 
         asyncio.run(async_websocket_manager())
+
+    def _send_play_state_update(self):
+        # NOTE: This manually injects the track and album media IDs into the
+        # PlayState payload. The idea is that these IDs are part of the
+        # "currently-playing" information, but the CXNv2 doesn't appear to
+        # include this information itself, so it's injected here to meet what
+        # might become the future payload contract for the PlayState type
+        # coming from anything implementing Streamer.
+
+        try:
+            self._play_state["params"]["data"]["metadata"]["current_track_media_id"] = \
+                self._last_seen_track_id
+            self._play_state["params"]["data"]["metadata"]["current_album_media_id"] = \
+                self._last_seen_album_id
+        except KeyError:
+            pass
+
+        self._updates_handler("PlayState", json.dumps(self._play_state))
 
     def _renew_subscriptions(self):
         renewal_buffer = 10
@@ -840,7 +885,45 @@ class CXNv2(Streamer):
             pass
 
     def _set_current_playback_details(self, details):
-         self._vibin_vars["current_playback_details"] = details
+        self._vibin_vars["current_playback_details"] = details
+
+        # If the current playback details includes the streamed filename, then
+        # extract the Track ID and Album ID.
+        try:
+            stream_url = details["stream"]["url"]
+            stream_filename = pathlib.Path(stream_url).stem
+
+            send_update = True
+
+            # The streamed filename matches "<track>-<album>.ext". It seems
+            # that the track id can itself include a hyphen whereas the album
+            # id won't (TODO: can that be validated?).
+            match = re.match(r"^(.*)-([^-]+)$", stream_filename)
+
+            if len(match.groups(0)) == 2:
+                this_track_id = match.groups(0)[0]
+                this_album_id = match.groups(0)[1]
+
+                if this_track_id != self._last_seen_track_id:
+                    self._last_seen_track_id = this_track_id
+                    self._last_seen_album_id = this_album_id
+                else:
+                    send_update = False
+            else:
+                # A streamed file was found, but the track and album ids could
+                # not be determined. Play it safe and set the IDs to None to
+                # ensure clients aren't provided incorrect/misleading ids.
+                self._last_seen_track_id = None
+                self._last_seen_album_id = None
+
+            # Force a send of a PlayState message to ensure any listening
+            # clients get the new track/album id information without having
+            # to wait for a normal PlayState update.
+            if send_update:
+                self._send_play_state_update()
+        except KeyError:
+            # No streamed filename found in the playback details
+            pass
 
     def on_event(self, service_name: ServiceName, event: str):
         logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")

@@ -1,5 +1,7 @@
+import concurrent.futures
 import inspect
 import json
+import os
 import re
 from typing import Callable, List, Optional
 
@@ -9,10 +11,12 @@ from upnpclient.soap import SOAPError
 import xml
 import xmltodict
 
-from vibin import VibinError
+from vibin import VibinError, __version__
+import vibin.external_services as external_services
+from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
 from vibin.mediasources import MediaSource
-from vibin.models import Album, Track
+from vibin.models import Album, ExternalServiceLink, Track
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
 from .logger import logger
@@ -56,14 +60,141 @@ class Vibin:
 
         self._last_played_id = None
 
-        try:
-            self._genius = lyricsgenius.Genius()
-        except TypeError:
-            self._genius = None
+        # Configure external services
+        self._external_services: dict[str, ExternalService] = {}
 
-        # TODO: This could be a form of memory-capped cache where the oldest-
-        #   accessed entries are removed first.
-        self._lyrics_cache = {}
+        self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
+        self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
+        self._add_external_service(external_services.Wikipedia)
+
+    def _add_external_service(self, service_class, token_env_var=None):
+        try:
+            service_instance = service_class(
+                # TODO: Change user agent to Vibin
+                user_agent=f"ExampleApplication/{__version__}",
+                token=os.environ[token_env_var] if token_env_var else None,
+            )
+
+            self._external_services[service_instance.name] = service_instance
+
+            logger.info(f"Registered external service: {service_instance.name}")
+        except KeyError:
+            pass
+
+    # TODO: Do we want this
+    def artist_links(self, artist: str):
+        pass
+
+    # TODO: Centralize all the DIDL-parsing logic. It might be helpful to have
+    #   one centralized way to provide some XML media info and extract all the
+    #   useful information from it, in a Vibin-contract-friendly way (well-
+    #   defined concepts for title, artist, album, track artist vs. album
+    #   artist, composer, etc).
+    def _artist_from_track_media_info(self, track):
+        artist = None
+
+        try:
+            didl_item = track["DIDL-Lite"]["item"]
+
+            # Default to dc:creator
+            artist = didl_item["dc:creator"]
+
+            # Attempt to find AlbumArtist in upnp:artist
+            upnp_artist_info = didl_item["upnp:artist"]
+
+            if type(upnp_artist_info) == str:
+                artist = upnp_artist_info
+            else:
+                # We have an array of artists, so look for AlbumArtist (others
+                # might be Composer, etc).
+                for upnp_artist in upnp_artist_info:
+                    if upnp_artist["@role"] == "AlbumArtist":
+                        artist = upnp_artist["#text"]
+                        break
+        except KeyError:
+            pass
+
+        return artist
+
+    def media_links(
+            self,
+            media_id: str,
+            include_all: bool = False,
+    ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
+        if len(self._external_services) == 0:
+            return {}
+
+        artist = album = title = media_class = None
+        results = {}
+
+        # TODO: Have errors raise an exception which can be passed back to the
+        #   caller, rather than empty {} results.
+
+        try:
+            media_info = xmltodict.parse(self.media.get_metadata(media_id))
+            didl = media_info["DIDL-Lite"]
+
+            if "container" in didl:
+                # Album
+                artist = didl["container"]["dc:creator"]
+                album = didl["container"]["dc:title"]
+            elif "item" in didl:
+                # Track
+                artist = self._artist_from_track_media_info(media_info)
+                album = didl["item"]["upnp:album"]
+                title = didl["item"]["dc:title"]
+            else:
+                logger.error(
+                    f"Could not determine whether media item is an Album or " +
+                    f"a Track: {media_id}"
+                )
+                return {}
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(
+                f"Could not convert XML to JSON for media item: {media_id}: {e}"
+            )
+            return {}
+        except KeyError as e:
+            logger.error(
+                f"Could not find expected media key in {media_id}: {e}"
+            )
+            return {}
+
+        try:
+            link_type = \
+                "All" if include_all else ("Album" if not title else "Track")
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future_to_link_getters = {
+                    executor.submit(
+                        service.links,
+                        **{
+                            "artist": artist,
+                            "album": album,
+                            "track": title,
+                            "link_type": link_type,
+                        }
+                    ): service for service in self._external_services.values()
+                }
+
+                for future in concurrent.futures.as_completed(
+                        future_to_link_getters
+                ):
+                    link_getter = future_to_link_getters[future]
+
+                    try:
+                        results[link_getter.name] = future.result()
+                    except Exception as exc:
+                        logger.error(
+                            f"Could not retrieve links from " +
+                            f"{link_getter.name}: {exc}"
+                        )
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(
+                f"Could not convert XML to JSON for media item: {media_id}: {e}"
+            )
+
+        return results
 
     def _determine_streamer(
             self, devices, streamer_name, subscribe_callback_base
@@ -306,10 +437,7 @@ class Vibin:
     #   connection, perhaps with different message type identifiers.
 
     def lyrics_for_track(self, track_id):
-        if track_id in self._lyrics_cache:
-            return self._lyrics_cache[track_id]
-
-        if not self._genius:
+        if "Genius" not in self._external_services.keys():
             return
 
         try:
@@ -318,99 +446,13 @@ class Vibin:
             artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
             title = track_info["DIDL-Lite"]["item"]["dc:title"]
 
-            song = self._genius.search_song(title=title, artist=artist)
-
-            if song is None:
-                return None
-
-            # Munge the lyrics into a new shape. Currently they're one long
-            # string, where chunks (choruses, verses, etc) are separated by two
-            # newlines (usually; sometimes it's just one newline). Each chunk
-            # may or may not have a header of sorts, which looks like
-            # "[Header]". The goal is to create something like:
-            #
-            # [
-            #     {
-            #         "header": "Verse 1",
-            #         "body": [
-            #             "Line 1",
-            #             "Line 2",
-            #             "Line 3",
-            #         ],
-            #     },
-            #     {
-            #         "header": "Verse 2",
-            #         "body": [
-            #             "Line 1",
-            #             "Line 2",
-            #             "Line 3",
-            #         ],
-            #     },
-            # ]
-
-            # TODO: If a line matches "^\[[^\[\]]+\]$" then start a new chunk
-
-            # The lyrics scraper allows some strings through which are not part
-            # of the lyrics for a song. This includes "You might also like"
-            # which could be anywhere, as well as "<digits>Embed" at the end of
-            # a line. We remove those. Doing this is prone to issues; it would
-            # be far better not to use a lyrics scraper.
-            3
-            # The lyrics also sometimes include a string like "[Chorus]" on its
-            # own line. These denote a "chunk". Usually a line like "[Chorus]"
-            # is preceded by two newlines, but sometimes it's not -- so we also
-            # enforce at least new newlines so we can later split on multiple
-            # newlines to isolate each chuck.
-
-            lyrics = song.lyrics
-
-            lyrics = lyrics.replace("You might also like", "")
-
-            # Enforce at least two newlines before any line looking like
-            # "[Chorus]".
-            chunks_as_strings = \
-                re.split(r"\n{2,}", re.sub(r'(\n\[[^\[\]]+\])', r"\n\1", lyrics))
-
-            # The lyrics scraper prepends the first line of lyrics with
-            # "<song title>Lyrics", so we remove that if we see it.
-            chunks_as_strings[0] = \
-                re.sub(r"^.*Lyrics", "", chunks_as_strings[0])
-
-            # The scraper also might append "<digits>Embed" to the last line.
-            chunks_as_strings[-1] = re.sub(
-                r"\d*Embed$", "", chunks_as_strings[-1]
-            )
-
-            chunks_as_arrays = \
-                [chunk.split("\n") for chunk in chunks_as_strings]
-
-            results = []
-
-            for chunk in chunks_as_arrays:
-                chunk_header = re.match(r"^\[([^\[\]]+)\]$", chunk[0])
-                if chunk_header:
-                    results.append({
-                        "header": chunk_header.group(1),
-                        "body": chunk[1:],
-                    })
-                else:
-                    results.append({
-                        "header": None,
-                        "body": chunk,
-                    })
-
-            self._lyrics_cache[track_id] = results
-
-            return results
+            return self._external_services["Genius"].lyrics(artist, title)
         except xml.parsers.expat.ExpatError as e:
             logger.error(
                 f"Could not convert XML to JSON for track: {track_id}: {e}"
             )
-        except (KeyError, IndexError) as e:
-            logger.error(
-                f"Could not extract track details for lyrics lookup for " +
-                f"track {track_id}: {e}"
-            )
+        except VibinError as e:
+            logger.error(e)
 
         return None
 

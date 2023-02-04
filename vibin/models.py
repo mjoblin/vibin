@@ -26,3 +26,10 @@ class Track:
     genre: str
     album_art_uri: str
     original_track_number: str
+
+
+@dataclass
+class ExternalServiceLink:
+    type: str
+    name: str
+    url: str
