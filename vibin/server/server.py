@@ -198,6 +198,26 @@ def server_start(
 
         return lyrics
 
+    @vibin_app.get("/tracks/{track_id}/waveform.png")
+    async def track_waveform_png(
+            track_id: str,
+            width: int = 800,
+            height: int = 250,
+    ):
+        try:
+            waveform = vibin.waveform_for_track(
+                track_id, data_format="png", width=width, height=height
+            )
+
+            return Response(content=waveform, media_type="image/png")
+        except VibinMissingDependencyError as e:
+            # TODO: Where possible, have errors reference docs for possible
+            #   actions the caller can take to resolve the issue.
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cannot generate waveform due to missing dependency: {e}",
+            )
+
     @vibin_app.get("/tracks/{track_id}/waveform")
     async def track_waveform(
             track_id: str,

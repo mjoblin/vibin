@@ -506,6 +506,10 @@ class Vibin:
                         str(width),
                         "--height",
                         str(height),
+                        "--colors",
+                        "audition",
+                        "--split-channels",
+                        "--no-axis-labels",
                     ] if data_format == "png" else [],
                     capture_output=True,
                 )
