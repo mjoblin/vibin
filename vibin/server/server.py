@@ -3,9 +3,9 @@ import json
 import socket
 import time
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket
+from fastapi import FastAPI, Header, HTTPException, Response, WebSocket
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import httpx  # TODO: Not in requirements; using to proxy to react on 3000
@@ -14,7 +14,7 @@ from starlette.endpoints import WebSocketEndpoint
 import uvicorn
 import xmltodict
 
-from vibin import Vibin, VibinError
+from vibin import Vibin, VibinError, VibinMissingDependencyError
 from vibin.constants import VIBIN_PORT
 from vibin.models import Album
 from vibin.streamers import SeekTarget
@@ -190,13 +190,52 @@ def server_start(
         return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
-    async def album_tracks(track_id: str):
+    async def track_lyrics(track_id: str):
         lyrics = vibin.lyrics_for_track(track_id)
 
         if lyrics is None:
             raise HTTPException(status_code=404, detail="Lyrics not found")
 
         return lyrics
+
+    @vibin_app.get("/tracks/{track_id}/waveform")
+    async def track_waveform(
+            track_id: str,
+            width: int = 800,
+            height: int = 250,
+            accept: Union[str, None] = Header(default="application/json"),
+    ):
+        # TODO: This waveform_format / media_type / "accept" header stuff
+        #   feels too convoluted.
+        waveform_format = "json"
+        media_type = "application/json"
+
+        if accept == "application/octet-stream":
+            waveform_format = "dat"
+            media_type = "application/octet-stream"
+        elif accept == "image/png":
+            waveform_format = "png"
+            media_type = "image/png"
+
+        try:
+            if waveform_format == "png":
+                waveform = vibin.waveform_for_track(
+                    track_id, data_format=waveform_format, width=width, height=height
+                )
+            else:
+                waveform = vibin.waveform_for_track(track_id, data_format=waveform_format)
+
+            return Response(
+                content=json.dumps(waveform) if waveform_format == "json" else waveform,
+                media_type=media_type,
+            )
+        except VibinMissingDependencyError as e:
+            # TODO: Where possible, have errors reference docs for possible
+            #   actions the caller can take to resolve the issue.
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cannot generate waveform due to missing dependency: {e}",
+            )
 
     @vibin_app.get("/tracks/{track_id}/links")
     async def track_links(track_id: str, all_types: bool = False):
