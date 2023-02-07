@@ -1,17 +1,23 @@
 import concurrent.futures
+from functools import lru_cache
 import inspect
 import json
 import os
+from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
 from typing import Callable, List, Optional
 
 import lyricsgenius
+import requests
 import upnpclient
 from upnpclient.soap import SOAPError
 import xml
 import xmltodict
 
-from vibin import VibinError, __version__
+from vibin import VibinError, VibinMissingDependencyError, __version__
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
@@ -447,6 +453,83 @@ class Vibin:
             title = track_info["DIDL-Lite"]["item"]["dc:title"]
 
             return self._external_services["Genius"].lyrics(artist, title)
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(
+                f"Could not convert XML to JSON for track: {track_id}: {e}"
+            )
+        except VibinError as e:
+            logger.error(e)
+
+        return None
+
+    # Expect data_format to be "json", "dat", or "png"
+    # TODO: Investigate storing waveforms in a persistent cache/DB rather than
+    #   relying on @lru_cache.
+    @lru_cache
+    def waveform_for_track(
+            self, track_id, data_format="json", width=800, height=250
+    ):
+        try:
+            track_info = xmltodict.parse(self.media.get_metadata(track_id))
+
+            audio_files = [
+                file for file in track_info["DIDL-Lite"]["item"]["res"]
+                if file["#text"].endswith(".flac")
+                or file["#text"].endswith(".wav")
+            ]
+
+            audio_file = audio_files[0]["#text"]
+
+            with tempfile.NamedTemporaryFile(
+                    prefix="vibin_", suffix=track_id
+            ) as flac_file:
+                with requests.get(audio_file, stream=True) as response:
+                    shutil.copyfileobj(response.raw, flac_file)
+
+                # Explanation for 8-bit data (--bits 8):
+                # https://github.com/bbc/peaks.js#pre-computed-waveform-data
+
+                waveform_data = subprocess.run(
+                    [
+                        "audiowaveform",
+                        "--bits",
+                        "8",
+                        "--input-filename",
+                        str(Path(tempfile.gettempdir(), str(flac_file.name))),
+                        "--input-format",
+                        Path(audio_file).suffix[1:],
+                        "--output-format",
+                        data_format,
+                    ] +
+                    [
+                        "--zoom",
+                        "auto",
+                        "--width",
+                        str(width),
+                        "--height",
+                        str(height),
+                        "--colors",
+                        "audition",
+                        "--split-channels",
+                        "--no-axis-labels",
+                    ] if data_format == "png" else [],
+                    capture_output=True,
+                )
+
+                if data_format == "json":
+                    return json.loads(waveform_data.stdout.decode("utf-8"))
+                else:
+                    return waveform_data.stdout
+        except FileNotFoundError:
+            raise VibinMissingDependencyError("audiowaveform")
+        except KeyError as e:
+            raise VibinError(
+                f"Could not find any file information for track: {track_id}"
+            )
+        except IndexError as e:
+            raise VibinError(
+                f"Could not find .flac or .wav file URL for track: {track_id}"
+            )
         except xml.parsers.expat.ExpatError as e:
             logger.error(
                 f"Could not convert XML to JSON for track: {track_id}: {e}"
