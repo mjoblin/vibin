@@ -463,6 +463,8 @@ class Vibin:
         return None
 
     # Expect data_format to be "json", "dat", or "png"
+    # TODO: Investigate storing waveforms in a persistent cache/DB rather than
+    #   relying on @lru_cache.
     @lru_cache
     def waveform_for_track(
             self, track_id, data_format="json", width=800, height=250

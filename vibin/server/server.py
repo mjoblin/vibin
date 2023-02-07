@@ -186,11 +186,11 @@ def server_start(
         return vibin.media.tracks(album_id)
 
     @vibin_app.get("/albums/{album_id}/links")
-    async def album_links(album_id: str, all_types: bool = False):
+    def album_links(album_id: str, all_types: bool = False):
         return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
-    async def track_lyrics(track_id: str):
+    def track_lyrics(track_id: str):
         lyrics = vibin.lyrics_for_track(track_id)
 
         if lyrics is None:
@@ -199,7 +199,7 @@ def server_start(
         return lyrics
 
     @vibin_app.get("/tracks/{track_id}/waveform.png")
-    async def track_waveform_png(
+    def track_waveform_png(
             track_id: str,
             width: int = 800,
             height: int = 250,
@@ -219,7 +219,7 @@ def server_start(
             )
 
     @vibin_app.get("/tracks/{track_id}/waveform")
-    async def track_waveform(
+    def track_waveform(
             track_id: str,
             width: int = 800,
             height: int = 250,
@@ -258,7 +258,7 @@ def server_start(
             )
 
     @vibin_app.get("/tracks/{track_id}/links")
-    async def track_links(track_id: str, all_types: bool = False):
+    def track_links(track_id: str, all_types: bool = False):
         return vibin.media_links(track_id, all_types)
 
     @vibin_app.get("/playlist")
