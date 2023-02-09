@@ -3,7 +3,7 @@ import re
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
-HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}$")
+HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
 
 
 def is_hmmss(input: str) -> bool:
@@ -24,6 +24,6 @@ def hmmss_to_secs(input_hmmss: str) -> int:
     if not is_hmmss(input_hmmss):
         raise TypeError("Time must be in h:mm:ss format")
 
-    [h, mm, ss] = [int(component) for component in input_hmmss.split(":")]
+    [h, mm, ss] = [float(component) for component in input_hmmss.split(":")]
 
-    return h * ONE_HOUR_IN_SECS + mm * ONE_MIN_IN_SECS + ss
+    return round(h * ONE_HOUR_IN_SECS + mm * ONE_MIN_IN_SECS + ss)

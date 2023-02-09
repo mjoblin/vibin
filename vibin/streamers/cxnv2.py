@@ -103,6 +103,7 @@ class CXNv2(Streamer):
         }
 
         self._play_state = {}
+        self._cached_playlist = []
 
         # TODO: Add support for service name not just var name.
         self._state_var_handlers: StateVarHandlers = {
@@ -540,20 +541,11 @@ class CXNv2(Streamer):
                 item_elem.find("res", namespaces=ns).attrib["duration"]
             )
 
-            # The Track and Album Media ID's are extracted from the Uri.
-            # e.g. if the Uri's filename component is:
-            #   d4751635140053632760-co894839058BF2FA4B.flac
-            # ... then the trackMediaId is d4751635140053632760 and the
-            # albumMediaId is co894839058BF2FA4B.
+            this_album_id, this_track_id = \
+                self._album_and_track_ids_from_file(uri)
 
-            # TODO: Remove?
-            media_ids = pathlib.Path(uri).stem.split("-")
-
-            try:
-                entry_data["trackMediaId"] = media_ids[0]
-                entry_data["albumMediaId"] = media_ids[1]
-            except IndexError:
-                pass
+            entry_data["albumMediaId"] = this_album_id
+            entry_data["trackMediaId"] = this_track_id
 
             id_to_playlist_item[id] = entry_data
 
@@ -564,6 +556,8 @@ class CXNv2(Streamer):
                 results.append(id_to_playlist_item[playlist_id])
             except KeyError:
                 pass
+
+        self._cached_playlist = results
 
         return results
 
@@ -610,6 +604,43 @@ class CXNv2(Streamer):
 
                         if update_dict["path"] == "/zone/play_state":
                             self._play_state = update_dict
+
+                            # When the CXNv2 comes out of standby mode, its
+                            # play_state update message does not include the
+                            # following fields:
+                            #
+                            # If this play_state update comes in while the
+                            # player is paused and the title matches playlist
+                            # title for the queue_index, then we fill in some
+                            # of the missing fields by taking their values from
+                            # the matching playlist entry. This isn't ideal.
+                            #
+                            # TODO: Is there some way to ensure the play_state
+                            #   message always includes all of the same fields
+                            #   so we don't have to look elsewhere for any
+                            #   missing values?
+
+                            try:
+                                play_state_data = self._play_state["params"]["data"]
+                                play_state_metadata = play_state_data["metadata"]
+                                play_state_queue_index = play_state_data["queue_index"]
+                                play_state_title = play_state_metadata["title"]
+                                queue_entry = self._cached_playlist[play_state_queue_index]
+
+                                if (
+                                    play_state_data["state"] == "pause" and
+                                    queue_entry["title"] == play_state_title
+                                ):
+                                    if "album" not in play_state_metadata:
+                                        play_state_metadata["album"] = queue_entry["album"]
+                                    if "artist" not in play_state_metadata:
+                                        play_state_metadata["artist"] = queue_entry["artist"]
+                                    if "duration" not in play_state_metadata:
+                                        play_state_metadata["duration"] = \
+                                            utils.hmmss_to_secs(queue_entry["duration"])
+                            except (IndexError, KeyError) as e:
+                                pass
+
                             self._send_play_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
                             self._updates_handler("Position", update)
@@ -884,6 +915,22 @@ class CXNv2(Streamer):
         except KeyError:
             pass
 
+    def _album_and_track_ids_from_file(self, file) -> (str | None, str | None):
+        filename_only = pathlib.Path(file).stem
+
+        # The streamed filename matches "<track>-<album>.ext". It seems
+        # that the track id can itself include a hyphen whereas the album
+        # id won't (TODO: can that be validated?).
+        match = re.match(r"^(.*)-([^-]+)$", filename_only)
+
+        if len(match.groups(0)) == 2:
+            this_track_id = match.groups(0)[0]
+            this_album_id = match.groups(0)[1]
+
+            return this_album_id, this_track_id
+
+        return None, None
+
     def _set_current_playback_details(self, details):
         self._vibin_vars["current_playback_details"] = details
 
@@ -891,19 +938,12 @@ class CXNv2(Streamer):
         # extract the Track ID and Album ID.
         try:
             stream_url = details["stream"]["url"]
-            stream_filename = pathlib.Path(stream_url).stem
+            this_album_id, this_track_id = \
+                self._album_and_track_ids_from_file(stream_url)
 
             send_update = True
 
-            # The streamed filename matches "<track>-<album>.ext". It seems
-            # that the track id can itself include a hyphen whereas the album
-            # id won't (TODO: can that be validated?).
-            match = re.match(r"^(.*)-([^-]+)$", stream_filename)
-
-            if len(match.groups(0)) == 2:
-                this_track_id = match.groups(0)[0]
-                this_album_id = match.groups(0)[1]
-
+            if this_album_id and this_track_id:
                 if this_track_id != self._last_seen_track_id:
                     self._last_seen_track_id = this_track_id
                     self._last_seen_album_id = this_album_id
