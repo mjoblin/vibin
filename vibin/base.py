@@ -71,6 +71,7 @@ class Vibin:
 
         self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
         self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
+        self._add_external_service(external_services.RateYourMusic)
         self._add_external_service(external_services.Wikipedia)
 
     def _add_external_service(self, service_class, token_env_var=None):
