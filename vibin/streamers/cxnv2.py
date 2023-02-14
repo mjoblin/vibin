@@ -22,6 +22,7 @@ import websockets
 import xmltodict
 
 from ..logger import logger
+from vibin import VibinDeviceError
 from vibin.types_foo import ServiceSubscriptions, Subscription
 from vibin.mediasources import MediaSource
 from vibin.streamers import SeekTarget, Streamer, TransportState
@@ -250,21 +251,26 @@ class CXNv2(Streamer):
             action: str = "REPLACE",
             insert_index: Optional[int] = None,  # Only used by INSERT action
     ):
-        if action == "INSERT":
-            # INSERT. This works for Tracks only (not Albums).
-            # TODO: Add check to ensure metadata is for a Track.
-            self._uu_vol_control.InsertPlaylistTrack(
-                InsertPosition=insert_index, TrackData=metadata
-            )
-        else:
-            # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-            self._uu_vol_control.QueueFolder(
-                ServerUDN=self._media_device.udn,
-                Action=action,
-                NavigatorId=self._navigator_id,
-                ExtraInfo="",
-                DIDL=metadata,
-            )
+        try:
+            if action == "INSERT":
+                # INSERT. This works for Tracks only (not Albums).
+                # TODO: Add check to ensure metadata is for a Track.
+                self._uu_vol_control.InsertPlaylistTrack(
+                    InsertPosition=insert_index, TrackData=metadata
+                )
+            else:
+                # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
+                self._uu_vol_control.QueueFolder(
+                    ServerUDN=self._media_device.udn,
+                    Action=action,
+                    NavigatorId=self._navigator_id,
+                    ExtraInfo="",
+                    DIDL=metadata,
+                )
+        except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+            # TODO: Look at using VibinDeviceError wherever things like
+            #  _uu_vol_control are being used.
+            raise VibinDeviceError(e)
 
     def play_playlist_index(self, index: int):
         self._uu_vol_control.SetCurrentPlaylistTrack(
@@ -284,13 +290,13 @@ class CXNv2(Streamer):
             json={"start": 0, "delete_all": True},
         )
 
-    def playlist_delete_item(self, playlist_id: int):
+    def playlist_delete_entry(self, playlist_id: int):
         requests.post(
             f"http://{self._device_hostname}/smoip/queue/delete",
             json={"ids": [playlist_id]},
         )
 
-    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
+    def playlist_move_entry(self, playlist_id: int, from_index: int, to_index: int):
         requests.post(
             f"http://{self._device_hostname}/smoip/queue/move",
             json={"id": playlist_id, "from": from_index, "to": to_index},
@@ -497,10 +503,10 @@ class CXNv2(Streamer):
 
     # TODO: Define PlaylistEntry and Playlist types
     def playlist(self):
-        playlist_ids = self._playlist_array()
+        playlist_entry_ids = self._playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
-            aIdList=",".join([str(id) for id in playlist_ids])
+            aIdList=",".join([str(id) for id in playlist_entry_ids])
         )
 
         key_tag_map = {
@@ -514,7 +520,7 @@ class CXNv2(Streamer):
 
         playlist_entries = etree.fromstring(response["aMetaDataList"])
 
-        id_to_playlist_item = {}
+        entry_id_to_playlist_entry = {}
 
         for index, playlist_entry in enumerate(playlist_entries):
             id = int(playlist_entry.findtext("Id").replace("l", ""))
@@ -547,13 +553,13 @@ class CXNv2(Streamer):
             entry_data["albumMediaId"] = this_album_id
             entry_data["trackMediaId"] = this_track_id
 
-            id_to_playlist_item[id] = entry_data
+            entry_id_to_playlist_entry[id] = entry_data
 
         results = []
 
-        for playlist_id in playlist_ids:
+        for playlist_entry_id in playlist_entry_ids:
             try:
-                results.append(id_to_playlist_item[playlist_id])
+                results.append(entry_id_to_playlist_entry[playlist_entry_id])
             except KeyError:
                 pass
 

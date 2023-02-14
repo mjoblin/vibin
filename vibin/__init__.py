@@ -1,4 +1,9 @@
-from .exceptions import VibinError, VibinMissingDependencyError
+from .exceptions import (
+    VibinDeviceError,
+    VibinError,
+    VibinNotFoundError,
+    VibinMissingDependencyError,
+)
 from .base import Vibin
 from .__version__ import __version__
 
@@ -7,5 +12,6 @@ from .__version__ import __version__
 (
     Vibin,
     VibinError,
+    VibinNotFoundError,
     VibinMissingDependencyError,
 )

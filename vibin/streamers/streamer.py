@@ -114,11 +114,11 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist_delete_item(self, playlist_id: int):
+    def playlist_delete_entry(self, playlist_id: int):
         pass
 
     @abstractmethod
-    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
+    def playlist_move_entry(self, playlist_id: int, from_index: int, to_index: int):
         pass
 
     @abstractmethod

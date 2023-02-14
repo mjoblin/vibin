@@ -33,3 +33,15 @@ class ExternalServiceLink:
     type: str
     name: str
     url: str
+
+
+StoredPlaylistEntryId = str
+
+
+@dataclass
+class StoredPlaylist:
+    id: str
+    name: str
+    created: float
+    updated: float
+    entry_ids: list[StoredPlaylistEntryId]
