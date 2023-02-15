@@ -2,6 +2,8 @@ from abc import ABCMeta, abstractmethod
 from enum import Enum
 import typing
 
+import upnpclient
+
 from vibin.mediasources import MediaSource
 from vibin.types_foo import ServiceSubscriptions
 
@@ -28,6 +30,16 @@ class Streamer(metaclass=ABCMeta):
     model_name = "VibinStreamer"
 
     @abstractmethod
+    def __init__(
+            self,
+            device: upnpclient.Device,
+            subscribe_callback_base: typing.Optional[str],
+            updates_handler=None,
+            on_playlist_modified=None,
+    ):
+        pass
+
+    @abstractmethod
     def register_media_source(self, media_source: MediaSource):
         pass
 
@@ -39,7 +51,6 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def name(self):
         pass
-
 
     @property
     @abstractmethod

@@ -81,10 +81,12 @@ class CXNv2(Streamer):
             device: upnpclient.Device,
             subscribe_callback_base: Optional[str],
             updates_handler=None,
+            on_playlist_modified=None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
         self._updates_handler = updates_handler
+        self._on_playlist_modified = on_playlist_modified
 
         self._device_hostname = urlparse(device.location).hostname
 
@@ -563,6 +565,17 @@ class CXNv2(Streamer):
             except KeyError:
                 pass
 
+        cached_playlist_media_ids = \
+            [entry["trackMediaId"] for entry in self._cached_playlist]
+        active_playlist_media_ids = \
+            [entry["trackMediaId"] for entry in results]
+
+        if cached_playlist_media_ids != active_playlist_media_ids:
+            # NOTE: All changes to the active playlist should be detected here,
+            #   regardless of where they originated (a Vibin client, another
+            #   app like the StreamMagic iOS app, etc).
+            self._on_playlist_modified()
+
         self._cached_playlist = results
 
         return results
@@ -682,6 +695,9 @@ class CXNv2(Streamer):
             pass
 
         self._updates_handler("PlayState", json.dumps(self._play_state))
+
+    def _send_stored_playlists_update(self):
+        self._updates_handler("StoredPlaylists", json.dumps(self._stored_playlists))
 
     def _renew_subscriptions(self):
         renewal_buffer = 10

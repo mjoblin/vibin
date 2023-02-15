@@ -425,6 +425,10 @@ def server_start(
                 self.build_message(json.dumps(vibin.play_state), "PlayState")
             )
 
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.stored_playlists), "StoredPlaylists")
+            )
+
         async def on_disconnect(
                 self, websocket: WebSocket, close_code: int
         ) -> None:
@@ -481,6 +485,8 @@ def server_start(
                 except KeyError:
                     # TODO: Add proper error handling support.
                     message["payload"] = {}
+            elif messageType == "StoredPlaylists":
+                message["payload"] = data_as_dict
 
             return json.dumps(message)
 

@@ -26,6 +26,7 @@ from vibin import (
     VibinMissingDependencyError,
     __version__,
 )
+from vibin.constants import APP_ROOT
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
@@ -57,6 +58,32 @@ class Vibin:
         # TODO: Improve this hacked-in support for websocket updates.
         self._on_websocket_update_handlers: List[Callable[[str, str], None]] = []
 
+        self._last_played_id = None
+
+        # Configure external services
+        self._external_services: dict[str, ExternalService] = {}
+
+        self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
+        self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
+        self._add_external_service(external_services.RateYourMusic)
+        self._add_external_service(external_services.Wikipedia)
+
+        # Configure app-level persistent data directory.
+        self._data_dir = Path(APP_ROOT, "_data")
+
+        try:
+            os.makedirs(self._data_dir, exist_ok=True)
+        except OSError:
+            raise VibinError(f"Cannot create data directory: {self._data_dir}")
+
+        # Configure data store.
+        database_file = Path(self._data_dir, "db.json")
+        self._db = TinyDB(database_file)
+        self._playlists = self._db.table("playlists")
+        self._active_stored_playlist_id = None
+        self._active_playlist_synced_with_store = False
+
+        # Discover devices
         logger.info("Discovering devices...")
         devices = upnpclient.discover(timeout=discovery_timeout)
 
@@ -72,22 +99,6 @@ class Vibin:
             self._current_media_source
         )
 
-        self._last_played_id = None
-
-        # Configure external services
-        self._external_services: dict[str, ExternalService] = {}
-
-        self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
-        self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
-        self._add_external_service(external_services.RateYourMusic)
-        self._add_external_service(external_services.Wikipedia)
-
-        # Configure data store.
-        # TODO: Create _data/ directory if necessary, and put db.json in there
-        self._db = TinyDB('db.json')
-        self._playlists = self._db.table("playlists")
-        self._current_playlist_id = None
-
         # See if the current streamer playlist matches a stored playlist
         streamer_playlist = self.streamer.playlist()
 
@@ -98,7 +109,8 @@ class Vibin:
 
             for stored_playlist in self._playlists.all():
                 if streamer_playlist_media_ids == stored_playlist["entry_ids"]:
-                    self._current_playlist_id = stored_playlist["id"]
+                    self._active_stored_playlist_id = stored_playlist["id"]
+                    self._active_playlist_synced_with_store = True
                     break
 
     def _add_external_service(self, service_class, token_env_var=None):
@@ -149,6 +161,11 @@ class Vibin:
             pass
 
         return artist
+
+    def _send_stored_playlists_update(self):
+        self._websocket_message_handler(
+            "StoredPlaylists", json.dumps(self.stored_playlists)
+        )
 
     def media_links(
             self,
@@ -278,6 +295,7 @@ class Vibin:
             device=streamer_device,
             subscribe_callback_base=subscribe_callback_base,
             updates_handler=self._websocket_message_handler,
+            on_playlist_modified=self._on_playlist_modified,
         )
 
         logger.info(f'Using streamer: "{self._current_streamer.name}"')
@@ -464,6 +482,14 @@ class Vibin:
     def play_state(self):
         return self.streamer.play_state
 
+    @property
+    def stored_playlists(self):
+        return {
+            "active_stored_playlist_id": self._active_stored_playlist_id,
+            "active_synced_with_store": self._active_playlist_synced_with_store,
+            "stored_playlists": self._playlists.all(),
+        }
+
     # TODO: Fix handling of state_vars (UPNP) and updates (Websocket) to be
     #   more consistent. One option: more clearly configure handling of UPNP
     #   subscriptions and Websocket events from the streamer; both can be
@@ -595,6 +621,12 @@ class Vibin:
         for handler in self._on_websocket_update_handlers:
             handler(message_type, data)
 
+    # TODO: Should _on_playlist_modified receive some information about the
+    #   modification.
+    def _on_playlist_modified(self):
+        self._active_playlist_synced_with_store = False
+        self._send_stored_playlists_update()
+
     def shutdown(self):
         logger.info("Vibin is shutting down")
 
@@ -618,15 +650,18 @@ class Vibin:
         if playlist is None:
             raise VibinNotFoundError()
 
-        playlist_data = StoredPlaylist(**playlist)
-        self._current_playlist_id = playlist_id
+        self._active_stored_playlist_id = playlist_id
+        self._active_playlist_synced_with_store = True
 
+        playlist_data = StoredPlaylist(**playlist)
         self.streamer.playlist_clear()
 
         for entry_id in playlist_data.entry_ids:
             self.streamer.play_metadata(
                 self.media.get_metadata(entry_id), action="APPEND"
             )
+
+        self._send_stored_playlists_update()
 
         return StoredPlaylist(**playlist)
 
@@ -639,7 +674,7 @@ class Vibin:
         now = time.time()
         new_playlist_id = str(uuid.uuid4())
 
-        if self._current_playlist_id is None or replace is False:
+        if self._active_stored_playlist_id is None or replace is False:
             playlist_data = StoredPlaylist(
                 id=new_playlist_id,
                 name=metadata["name"] if metadata and "name" in metadata else "Unnamed",
@@ -649,7 +684,7 @@ class Vibin:
             )
 
             self._playlists.insert(asdict(playlist_data))
-            self._current_playlist_id = new_playlist_id
+            self._active_stored_playlist_id = new_playlist_id
         else:
             updates = {
                 "updated": now,
@@ -665,14 +700,17 @@ class Vibin:
 
             try:
                 doc_id = self._playlists.update(
-                    updates, PlaylistQuery.id == self._current_playlist_id
+                    updates, PlaylistQuery.id == self._active_stored_playlist_id
                 )[0]
 
                 playlist_data = StoredPlaylist(**self._playlists.get(doc_id=doc_id))
             except IndexError:
                 raise VibinError(
-                    f"Could not update Playlist Id: {self._current_playlist_id}"
+                    f"Could not update Playlist Id: {self._active_stored_playlist_id}"
                 )
+
+        self._active_playlist_synced_with_store = True
+        self._send_stored_playlists_update()
 
         return playlist_data
 
@@ -684,6 +722,7 @@ class Vibin:
             raise VibinNotFoundError()
 
         self._playlists.remove(doc_ids=[playlist_to_delete.doc_id])
+        self._send_stored_playlists_update()
 
     def update_playlist_metadata(
             self, playlist_id: str, metadata: dict[str, any]
@@ -702,6 +741,8 @@ class Vibin:
 
             if updated_ids is None or len(updated_ids) <= 0:
                 raise VibinNotFoundError()
+
+            self._send_stored_playlists_update()
 
             return StoredPlaylist(**self._playlists.get(doc_id=updated_ids[0]))
         except IndexError:
