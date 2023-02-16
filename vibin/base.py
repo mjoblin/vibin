@@ -4,6 +4,7 @@ import uuid
 from functools import lru_cache
 import inspect
 import json
+import operator
 import os
 from pathlib import Path
 import re
@@ -107,11 +108,18 @@ class Vibin:
                 entry["trackMediaId"] for entry in streamer_playlist
             ]
 
-            for stored_playlist in self._playlists.all():
-                if streamer_playlist_media_ids == stored_playlist["entry_ids"]:
-                    self._active_stored_playlist_id = stored_playlist["id"]
-                    self._active_playlist_synced_with_store = True
-                    break
+            # See if there's a stored playlist which matches the currently-
+            # active streamer playlist (same media ids in the same order). If
+            # there's more than one, then pick the one most recently updated.
+            stored_playlist_matching_active = sorted([
+                playlist for playlist in self._playlists.all()
+                if playlist["entry_ids"] == streamer_playlist_media_ids
+            ], key=operator.attrgetter("updated"), reverse=True)
+
+            if stored_playlist_matching_active:
+                self._active_stored_playlist_id = \
+                    stored_playlist_matching_active["id"]
+                self._active_playlist_synced_with_store = True
 
     def _add_external_service(self, service_class, token_env_var=None):
         try:
