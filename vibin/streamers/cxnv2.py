@@ -87,6 +87,7 @@ class CXNv2(Streamer):
         self._subscribe_callback_base = subscribe_callback_base
         self._updates_handler = updates_handler
         self._on_playlist_modified = on_playlist_modified
+        self._ignore_playlist_updates = None
 
         self._device_hostname = urlparse(device.location).hostname
 
@@ -245,6 +246,9 @@ class CXNv2(Streamer):
         requests.get(
             f"http://{self._device_hostname}/smoip/system/power?power=toggle"
         )
+
+    def ignore_playlist_updates(self, ignore=False):
+        self._ignore_playlist_updates = ignore
 
     # TODO: Consider renaming to modify_playlist() or similar
     def play_metadata(
@@ -504,7 +508,7 @@ class CXNv2(Streamer):
             return []
 
     # TODO: Define PlaylistEntry and Playlist types
-    def playlist(self):
+    def playlist(self, call_handler_on_sync_loss=True):
         playlist_entry_ids = self._playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
@@ -570,7 +574,8 @@ class CXNv2(Streamer):
         active_playlist_media_ids = \
             [entry["trackMediaId"] for entry in results]
 
-        if cached_playlist_media_ids != active_playlist_media_ids:
+        if call_handler_on_sync_loss and \
+                cached_playlist_media_ids != active_playlist_media_ids:
             # NOTE: All changes to the active playlist should be detected here,
             #   regardless of where they originated (a Vibin client, another
             #   app like the StreamMagic iOS app, etc).
@@ -926,6 +931,9 @@ class CXNv2(Streamer):
             pass
 
     def _set_current_playlist(self):
+        if self._ignore_playlist_updates:
+            return
+
         try:
             self._vibin_vars["current_playlist"] = self.playlist()
         except KeyError:

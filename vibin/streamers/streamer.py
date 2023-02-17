@@ -66,7 +66,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist(self):
+    def playlist(self, call_handler_on_sync_loss=True):
         pass
 
     @abstractmethod
@@ -99,6 +99,11 @@ class Streamer(metaclass=ABCMeta):
 
     @abstractmethod
     def shuffle(self, enabled: typing.Optional[str]):
+        pass
+
+    # TODO: Make this a settable property
+    @abstractmethod
+    def ignore_playlist_updates(self, ignore = False):
         pass
 
     # TODO: Fix the name as it's not always going to result in playing

@@ -426,7 +426,7 @@ def server_start(
             )
 
             await websocket.send_text(self.build_message(
-                json.dumps(vibin.stored_playlists), "StoredPlaylists")
+                json.dumps(vibin.stored_playlist_details), "StoredPlaylists")
             )
 
         async def on_disconnect(
