@@ -203,7 +203,7 @@ class CXNv2(Streamer):
             self._websocket_thread.start()
 
         # Keep track of last seen ("currently playing") track and album IDs.
-        # This is done to facilitate injecting this information into payload
+        # This is done to facilitate injecting this information into payloads
         # which want it, but it isn't already there when sent from the streamer.
         self._last_seen_track_id = None
         self._last_seen_album_id = None
