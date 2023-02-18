@@ -2,5 +2,6 @@
 /dist
 /venv*
 /vibin.egg-info
+/vibin/_data
 
 __pycache__

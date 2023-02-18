@@ -14,9 +14,15 @@ from starlette.endpoints import WebSocketEndpoint
 import uvicorn
 import xmltodict
 
-from vibin import Vibin, VibinError, VibinMissingDependencyError
+from vibin import (
+    Vibin,
+    VibinDeviceError,
+    VibinError,
+    VibinNotFoundError,
+    VibinMissingDependencyError,
+)
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album
+from vibin.models import Album, StoredPlaylist
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -273,9 +279,9 @@ def server_start(
     ):
         return vibin.modify_playlist(media_id, action, insert_index)
 
-    @vibin_app.post("/playlist/play/id/{playlist_id}")
-    async def playlist_play_id(playlist_id: int):
-        return vibin.streamer.play_playlist_id(playlist_id)
+    @vibin_app.post("/playlist/play/id/{playlist_entry_id}")
+    async def playlist_play_id(playlist_entry_id: int):
+        return vibin.streamer.play_playlist_id(playlist_entry_id)
 
     @vibin_app.post("/playlist/play/index/{index}")
     async def playlist_play_index(index: int):
@@ -285,13 +291,73 @@ def server_start(
     async def playlist_clear():
         return vibin.streamer.playlist_clear()
 
-    @vibin_app.post("/playlist/delete/{playlist_id}")
-    async def playlist_delete_item(playlist_id: int):
-        return vibin.streamer.playlist_delete_item(playlist_id)
+    @vibin_app.post("/playlist/delete/{playlist_entry_id}")
+    async def playlist_delete_entry(playlist_entry_id: int):
+        return vibin.streamer.playlist_delete_entry(playlist_entry_id)
 
-    @vibin_app.post("/playlist/move/{playlist_id}")
-    async def playlist_move_item(playlist_id: int, from_index: int, to_index: int):
-        return vibin.streamer.playlist_move_item(playlist_id, from_index, to_index)
+    @vibin_app.post("/playlist/move/{playlist_entry_id}")
+    async def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
+        return vibin.streamer.playlist_move_entry(playlist_entry_id, from_index, to_index)
+
+    @vibin_app.get("/playlists")
+    def playlists() -> list[StoredPlaylist]:
+        return vibin.playlists()
+
+    @vibin_app.get("/playlists/{playlist_id}")
+    def playlists_id(playlist_id: str) -> StoredPlaylist:
+        playlist = vibin.get_playlist(playlist_id)
+
+        if playlist is None:
+            raise HTTPException(
+                status_code=404, detail=f"Playlist not found: {playlist_id}"
+            )
+
+        return playlist
+
+    @vibin_app.put("/playlists/{playlist_id}")
+    def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredPlaylist:
+        metadata = {"name": name} if name else None
+
+        try:
+            return vibin.update_playlist_metadata(
+                playlist_id=playlist_id, metadata=metadata
+            )
+        except VibinNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"Playlist not found: {playlist_id}"
+            )
+
+    @vibin_app.delete("/playlists/{playlist_id}", status_code=204)
+    def playlists_id_delete(playlist_id: str):
+        try:
+            vibin.delete_playlist(playlist_id=playlist_id)
+        except VibinNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"Playlist not found: {playlist_id}"
+            )
+
+    @vibin_app.post("/playlists/{playlist_id}/make_current")
+    def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
+        # TODO: Is it possible to configure FastAPI to always treat
+        #   VibinNotFoundError as a 404 and VibinDeviceError as a 503?
+        try:
+            return vibin.set_current_playlist(playlist_id)
+        except VibinNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"Playlist not found: {playlist_id}"
+            )
+        except VibinDeviceError as e:
+            raise HTTPException(
+                status_code=503, detail=f"Downstream device error: {e}"
+            )
+
+    @vibin_app.post("/playlists/current/store")
+    def playlists_current_store(
+            name: Optional[str] = None, replace: Optional[bool] = True
+    ):
+        metadata = {"name": name} if name else None
+
+        return vibin.store_current_playlist(metadata=metadata, replace=replace)
 
     @vibin_app.get("/browse/{parent_id}")
     async def browse(parent_id: str):
@@ -359,6 +425,10 @@ def server_start(
                 self.build_message(json.dumps(vibin.play_state), "PlayState")
             )
 
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.stored_playlist_details), "StoredPlaylists")
+            )
+
         async def on_disconnect(
                 self, websocket: WebSocket, close_code: int
         ) -> None:
@@ -415,6 +485,8 @@ def server_start(
                 except KeyError:
                     # TODO: Add proper error handling support.
                     message["payload"] = {}
+            elif messageType == "StoredPlaylists":
+                message["payload"] = data_as_dict
 
             return json.dumps(message)
 

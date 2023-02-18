@@ -22,6 +22,7 @@ import websockets
 import xmltodict
 
 from ..logger import logger
+from vibin import VibinDeviceError
 from vibin.types_foo import ServiceSubscriptions, Subscription
 from vibin.mediasources import MediaSource
 from vibin.streamers import SeekTarget, Streamer, TransportState
@@ -80,10 +81,13 @@ class CXNv2(Streamer):
             device: upnpclient.Device,
             subscribe_callback_base: Optional[str],
             updates_handler=None,
+            on_playlist_modified=None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
         self._updates_handler = updates_handler
+        self._on_playlist_modified = on_playlist_modified
+        self._ignore_playlist_updates = None
 
         self._device_hostname = urlparse(device.location).hostname
 
@@ -199,7 +203,7 @@ class CXNv2(Streamer):
             self._websocket_thread.start()
 
         # Keep track of last seen ("currently playing") track and album IDs.
-        # This is done to facilitate injecting this information into payload
+        # This is done to facilitate injecting this information into payloads
         # which want it, but it isn't already there when sent from the streamer.
         self._last_seen_track_id = None
         self._last_seen_album_id = None
@@ -243,6 +247,9 @@ class CXNv2(Streamer):
             f"http://{self._device_hostname}/smoip/system/power?power=toggle"
         )
 
+    def ignore_playlist_updates(self, ignore=False):
+        self._ignore_playlist_updates = ignore
+
     # TODO: Consider renaming to modify_playlist() or similar
     def play_metadata(
             self,
@@ -250,21 +257,26 @@ class CXNv2(Streamer):
             action: str = "REPLACE",
             insert_index: Optional[int] = None,  # Only used by INSERT action
     ):
-        if action == "INSERT":
-            # INSERT. This works for Tracks only (not Albums).
-            # TODO: Add check to ensure metadata is for a Track.
-            self._uu_vol_control.InsertPlaylistTrack(
-                InsertPosition=insert_index, TrackData=metadata
-            )
-        else:
-            # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-            self._uu_vol_control.QueueFolder(
-                ServerUDN=self._media_device.udn,
-                Action=action,
-                NavigatorId=self._navigator_id,
-                ExtraInfo="",
-                DIDL=metadata,
-            )
+        try:
+            if action == "INSERT":
+                # INSERT. This works for Tracks only (not Albums).
+                # TODO: Add check to ensure metadata is for a Track.
+                self._uu_vol_control.InsertPlaylistTrack(
+                    InsertPosition=insert_index, TrackData=metadata
+                )
+            else:
+                # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
+                self._uu_vol_control.QueueFolder(
+                    ServerUDN=self._media_device.udn,
+                    Action=action,
+                    NavigatorId=self._navigator_id,
+                    ExtraInfo="",
+                    DIDL=metadata,
+                )
+        except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+            # TODO: Look at using VibinDeviceError wherever things like
+            #  _uu_vol_control are being used.
+            raise VibinDeviceError(e)
 
     def play_playlist_index(self, index: int):
         self._uu_vol_control.SetCurrentPlaylistTrack(
@@ -284,13 +296,13 @@ class CXNv2(Streamer):
             json={"start": 0, "delete_all": True},
         )
 
-    def playlist_delete_item(self, playlist_id: int):
+    def playlist_delete_entry(self, playlist_id: int):
         requests.post(
             f"http://{self._device_hostname}/smoip/queue/delete",
             json={"ids": [playlist_id]},
         )
 
-    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
+    def playlist_move_entry(self, playlist_id: int, from_index: int, to_index: int):
         requests.post(
             f"http://{self._device_hostname}/smoip/queue/move",
             json={"id": playlist_id, "from": from_index, "to": to_index},
@@ -496,11 +508,11 @@ class CXNv2(Streamer):
             return []
 
     # TODO: Define PlaylistEntry and Playlist types
-    def playlist(self):
-        playlist_ids = self._playlist_array()
+    def playlist(self, call_handler_on_sync_loss=True):
+        playlist_entry_ids = self._playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
-            aIdList=",".join([str(id) for id in playlist_ids])
+            aIdList=",".join([str(id) for id in playlist_entry_ids])
         )
 
         key_tag_map = {
@@ -514,7 +526,7 @@ class CXNv2(Streamer):
 
         playlist_entries = etree.fromstring(response["aMetaDataList"])
 
-        id_to_playlist_item = {}
+        entry_id_to_playlist_entry = {}
 
         for index, playlist_entry in enumerate(playlist_entries):
             id = int(playlist_entry.findtext("Id").replace("l", ""))
@@ -547,15 +559,27 @@ class CXNv2(Streamer):
             entry_data["albumMediaId"] = this_album_id
             entry_data["trackMediaId"] = this_track_id
 
-            id_to_playlist_item[id] = entry_data
+            entry_id_to_playlist_entry[id] = entry_data
 
         results = []
 
-        for playlist_id in playlist_ids:
+        for playlist_entry_id in playlist_entry_ids:
             try:
-                results.append(id_to_playlist_item[playlist_id])
+                results.append(entry_id_to_playlist_entry[playlist_entry_id])
             except KeyError:
                 pass
+
+        cached_playlist_media_ids = \
+            [entry["trackMediaId"] for entry in self._cached_playlist]
+        active_playlist_media_ids = \
+            [entry["trackMediaId"] for entry in results]
+
+        if call_handler_on_sync_loss and \
+                cached_playlist_media_ids != active_playlist_media_ids:
+            # NOTE: All changes to the active playlist should be detected here,
+            #   regardless of where they originated (a Vibin client, another
+            #   app like the StreamMagic iOS app, etc).
+            self._on_playlist_modified()
 
         self._cached_playlist = results
 
@@ -676,6 +700,9 @@ class CXNv2(Streamer):
             pass
 
         self._updates_handler("PlayState", json.dumps(self._play_state))
+
+    def _send_stored_playlists_update(self):
+        self._updates_handler("StoredPlaylists", json.dumps(self._stored_playlists))
 
     def _renew_subscriptions(self):
         renewal_buffer = 10
@@ -904,6 +931,9 @@ class CXNv2(Streamer):
             pass
 
     def _set_current_playlist(self):
+        if self._ignore_playlist_updates:
+            return
+
         try:
             self._vibin_vars["current_playlist"] = self.playlist()
         except KeyError:

@@ -2,6 +2,8 @@ from abc import ABCMeta, abstractmethod
 from enum import Enum
 import typing
 
+import upnpclient
+
 from vibin.mediasources import MediaSource
 from vibin.types_foo import ServiceSubscriptions
 
@@ -28,6 +30,16 @@ class Streamer(metaclass=ABCMeta):
     model_name = "VibinStreamer"
 
     @abstractmethod
+    def __init__(
+            self,
+            device: upnpclient.Device,
+            subscribe_callback_base: typing.Optional[str],
+            updates_handler=None,
+            on_playlist_modified=None,
+    ):
+        pass
+
+    @abstractmethod
     def register_media_source(self, media_source: MediaSource):
         pass
 
@@ -39,7 +51,6 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def name(self):
         pass
-
 
     @property
     @abstractmethod
@@ -55,7 +66,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist(self):
+    def playlist(self, call_handler_on_sync_loss=True):
         pass
 
     @abstractmethod
@@ -90,6 +101,11 @@ class Streamer(metaclass=ABCMeta):
     def shuffle(self, enabled: typing.Optional[str]):
         pass
 
+    # TODO: Make this a settable property
+    @abstractmethod
+    def ignore_playlist_updates(self, ignore = False):
+        pass
+
     # TODO: Fix the name as it's not always going to result in playing
     #   something. e.g. "APPEND" won't change what's playing.
     @abstractmethod
@@ -114,11 +130,11 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist_delete_item(self, playlist_id: int):
+    def playlist_delete_entry(self, playlist_id: int):
         pass
 
     @abstractmethod
-    def playlist_move_item(self, playlist_id: int, from_index: int, to_index: int):
+    def playlist_move_entry(self, playlist_id: int, from_index: int, to_index: int):
         pass
 
     @abstractmethod
