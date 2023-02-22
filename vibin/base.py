@@ -31,7 +31,13 @@ import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
 from vibin.mediasources import MediaSource
-from vibin.models import Album, ExternalServiceLink, StoredPlaylist, Track
+from vibin.models import (
+    Album,
+    ExternalServiceLink,
+    Preset,
+    StoredPlaylist,
+    Track,
+)
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
 from .logger import logger
@@ -651,6 +657,8 @@ class Vibin:
                 handler(json.dumps(self.state_vars))
 
     def _websocket_message_handler(self, message_type: str, data: str):
+        # TODO: This is passing raw CXNv2 payloads. The shape should be defined
+        #   by the streamer contract and adhered to by cxnv2.py.
         for handler in self._on_websocket_update_handlers:
             handler(message_type, data)
 
@@ -792,3 +800,7 @@ class Vibin:
             raise VibinError(
                 f"Could not update Playlist Id: {playlist_id}"
             )
+
+    @property
+    def presets(self):
+        return self.streamer.presets

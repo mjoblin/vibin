@@ -25,6 +25,7 @@ from ..logger import logger
 from vibin import VibinDeviceError
 from vibin.types_foo import ServiceSubscriptions, Subscription
 from vibin.mediasources import MediaSource
+from vibin.models import Preset
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
 
@@ -99,7 +100,7 @@ class CXNv2(Streamer):
         self._state_vars: StateVars = {}
 
         self._vibin_vars = {
-            "audio_sources": {},
+            "audio_sources": [],
             "current_audio_source": None,
             "current_playlist": None,
             "current_playlist_track_index": None,
@@ -155,19 +156,25 @@ class CXNv2(Streamer):
 
         # Determine audio sources
         try:
-            sources = device.UuVolControl.GetAudioSourcesByNumber()
-            for source_number in sources["RetAudioSourceListValue"].split(","):
-                source_int = int(source_number)
+            response = requests.get(
+                f"http://{self._device_hostname}/smoip/system/sources"
+            )
 
-                source_name = (
-                    device.UuVolControl.GetAudioSourceName(
-                        InAudioSource=source_int
-                    )
-                )
+            self._vibin_vars["audio_sources"] = response.json()["data"]["sources"]
 
-                self._vibin_vars["audio_sources"][source_int] = (
-                    source_name["RetAudioSourceName"]
-                )
+            # sources = device.UuVolControl.GetAudioSourcesByNumber()
+            # for source_number in sources["RetAudioSourceListValue"].split(","):
+            #     source_int = int(source_number)
+            #
+            #     source_name = (
+            #         device.UuVolControl.GetAudioSourceName(
+            #             InAudioSource=source_int
+            #         )
+            #     )
+            #
+            #     self._vibin_vars["audio_sources"][source_int] = (
+            #         source_name["RetAudioSourceName"]
+            #     )
         except Exception:
             # TODO
             pass
@@ -175,7 +182,7 @@ class CXNv2(Streamer):
         # Current audio source.
         try:
             current_source = device.UuVolControl.GetAudioSourceByNumber()
-            self._set_current_audio_source_name(
+            self._set_current_audio_source(
                 int(current_source["RetAudioSourceValue"])
             )
         except Exception:
@@ -613,10 +620,74 @@ class CXNv2(Streamer):
                     '{"path": "/zone/play_state", "params": {"update": 1}}'
                 )
 
+                # Request preset updates.
+                await websocket.send(
+                    '{"path": "/presets/list", "params": {"update": 1}}'
+                )
+
                 # Request power updates (on/off).
                 await websocket.send(
                     '{"path": "/system/power", "params": {"update": 100}}'
                 )
+
+                # TODO: Add /smoip/zone/now_playing
+                #   Extract data.controls
+                #   Use to set vibin-level "enabled controls"
+                #
+                # {
+                #   "zone": "ZONE1",
+                #   "data": {
+                #     "state": "PLAYING",
+                #     "source": {
+                #       "id": "MEDIA_PLAYER",
+                #       "name": "Media Library"
+                #     },
+                #     "display": {
+                #       "line1": "Priority Boredom",
+                #       "mqa": "none",
+                #       "playback_source": "Asset UPnP: thicc",
+                #       "class": "stream.media.upnp",
+                #       "art_url": "http://192.168.1.14:26125/aa/538396257135550/cover.jpg?size=0",
+                #       "context": "1/12"
+                #     },
+                #     "queue": {
+                #       "length": 12,
+                #       "position": 0,
+                #       "shuffle": "off",
+                #       "repeat": "off"
+                #     },
+                #     "controls": [
+                #       "toggle_shuffle",
+                #       "toggle_repeat",
+                #       "track_next",
+                #       "track_previous"
+                #     ]
+                #   }
+                # }
+                #
+                # ALBUM PLAY:
+                # "controls": [
+                #   "pause",
+                #   "play_pause",
+                #   "toggle_shuffle",
+                #   "toggle_repeat",
+                #   "track_next",
+                #   "track_previous",
+                #   "seek"
+                # ]
+                #
+                # PLAYLIST JUST SELECTED:
+                # "controls": [
+                #   "toggle_shuffle",
+                #   "toggle_repeat",
+                #   "track_next",
+                #   "track_previous"
+                # ]
+                #
+                # RADIO:
+                # "controls": [
+                #   "play_pause"
+                # ]
 
                 # TODO: The stop check will never be performed if messages
                 #   aren't coming in from the websocket (due to the recv await).
@@ -668,6 +739,11 @@ class CXNv2(Streamer):
                             self._send_play_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
                             self._updates_handler("Position", update)
+                        elif update_dict["path"] == "/presets/list":
+                            self._updates_handler(
+                                "Presets",
+                                json.dumps(update_dict["params"]["data"])
+                            )
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
                             self._system_state["power"] = "on" if power == "ON" else "off"
@@ -827,6 +903,20 @@ class CXNv2(Streamer):
         #   caller.
         return self._play_state
 
+    @property
+    def presets(self):
+        # TODO: Change to local cache data, as received from websocket.
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/presets/list"
+        )
+
+        return response.json()["data"]
+
+    def play_preset_id(self, preset_id: int):
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/zone/recall_preset?preset={preset_id}"
+        )
+
     def _last_change_event_handler(
             self, service_name: ServiceName, element: etree.Element,
     ):
@@ -909,7 +999,7 @@ class CXNv2(Streamer):
 
     def set_vibin_state_vars(self):
         try:
-            self._set_current_audio_source_name(
+            self._set_current_audio_source(
                 int(self._state_vars["UuVolControl"]["AudioSourceNumber"])
             )
         except KeyError:
@@ -922,11 +1012,21 @@ class CXNv2(Streamer):
         except KeyError:
             pass
 
-    def _set_current_audio_source_name(self, source_number: int):
+    def _set_current_audio_source(self, source_number: int):
+        # TODO: Validate this logic. The CXNv2 appears to use the
+        #  preferred_order value for a source, but sometimes that doesn't work
+        #  in which case it appears to use the audio_sources array index.
         try:
-            self._vibin_vars["current_audio_source"] = (
-                self._vibin_vars["audio_sources"][source_number]
-            )
+            self._vibin_vars["current_audio_source"] = [
+                source for source in self._vibin_vars["audio_sources"]
+                if source["preferred_order"] == source_number
+            ][0]
+        except IndexError:
+            try:
+                self._vibin_vars["current_audio_source"] = \
+                    self._vibin_vars["audio_sources"][source_number]
+            except (IndexError, KeyError):
+                pass
         except KeyError:
             pass
 
@@ -953,7 +1053,7 @@ class CXNv2(Streamer):
         # id won't (TODO: can that be validated?).
         match = re.match(r"^(.*)-([^-]+)$", filename_only)
 
-        if len(match.groups(0)) == 2:
+        if match and len(match.groups(0)) == 2:
             this_track_id = match.groups(0)[0]
             this_album_id = match.groups(0)[1]
 

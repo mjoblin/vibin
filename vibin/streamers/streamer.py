@@ -172,3 +172,12 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def play_state(self):
         pass
+
+    @property
+    @abstractmethod
+    def presets(self):
+        pass
+
+    @abstractmethod
+    def play_preset_id(self, preset_id: int):
+        pass
