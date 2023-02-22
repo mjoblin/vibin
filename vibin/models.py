@@ -45,3 +45,14 @@ class StoredPlaylist:
     created: float
     updated: float
     entry_ids: list[StoredPlaylistEntryId]
+
+
+@dataclass
+class Preset:
+    id: int
+    name: str
+    type: str
+    className: str
+    state: str
+    is_playing: bool
+    art_url: str

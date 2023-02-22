@@ -22,7 +22,7 @@ from vibin import (
     VibinMissingDependencyError,
 )
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album, StoredPlaylist
+from vibin.models import Album, Preset, StoredPlaylist
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -359,6 +359,14 @@ def server_start(
 
         return vibin.store_current_playlist(metadata=metadata, replace=replace)
 
+    @vibin_app.get("/presets")
+    def presets() -> list[Preset]:
+        return vibin.presets
+
+    @vibin_app.post("/presets/{preset_id}/play")
+    def preset_play(preset_id: int):
+        return vibin.streamer.play_preset_id(preset_id)
+
     @vibin_app.get("/browse/{parent_id}")
     async def browse(parent_id: str):
         return vibin.browse_media(parent_id)
@@ -426,6 +434,10 @@ def server_start(
             )
 
             await websocket.send_text(self.build_message(
+                json.dumps(vibin.presets), "Presets")
+            )
+
+            await websocket.send_text(self.build_message(
                 json.dumps(vibin.stored_playlist_details), "StoredPlaylists")
             )
 
@@ -485,6 +497,8 @@ def server_start(
                 except KeyError:
                     # TODO: Add proper error handling support.
                     message["payload"] = {}
+            elif messageType == "Presets":
+                message["payload"] = data_as_dict
             elif messageType == "StoredPlaylists":
                 message["payload"] = data_as_dict
 
