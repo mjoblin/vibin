@@ -165,10 +165,20 @@ def server_start(
     async def transport_play_media_id(media_id: str):
         vibin.play_id(media_id)
 
+    # TODO: Deprecate this? It uses (on CXNv2)
+    #   _av_transport.GetCurrentTransportActions(), which reports actions that
+    #   don't always seem correct (such as track skipping on internet radio).
+    #   Use allowed_actions instead.
     @vibin_app.get("/transport/actions")
     async def transport_actions():
         return {
             "actions": vibin.transport_actions()
+        }
+
+    @vibin_app.get("/transport/active_controls")
+    async def transport_active_controls():
+        return {
+            "actions": vibin.transport_active_controls()
         }
 
     @vibin_app.get("/transport/state")
@@ -434,6 +444,11 @@ def server_start(
             )
 
             await websocket.send_text(self.build_message(
+                json.dumps(vibin.streamer.transport_active_controls()),
+                "ActiveTransportControls",
+            ))
+
+            await websocket.send_text(self.build_message(
                 json.dumps(vibin.presets), "Presets")
             )
 
@@ -497,6 +512,8 @@ def server_start(
                 except KeyError:
                     # TODO: Add proper error handling support.
                     message["payload"] = {}
+            elif messageType == "ActiveTransportControls":
+                message["payload"] = data_as_dict
             elif messageType == "Presets":
                 message["payload"] = data_as_dict
             elif messageType == "StoredPlaylists":
