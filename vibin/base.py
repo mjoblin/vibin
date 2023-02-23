@@ -471,8 +471,12 @@ class Vibin:
     def transport_position(self):
         return self.streamer.transport_position()
 
+    # TODO: Deprecate
     def transport_actions(self):
         return self.streamer.transport_actions()
+
+    def transport_active_controls(self):
+        return self.streamer.transport_active_controls()
 
     def transport_state(self) -> streamers.TransportState:
         return self.streamer.transport_state()

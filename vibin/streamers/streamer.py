@@ -146,6 +146,10 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def transport_active_controls(self):
+        pass
+
+    @abstractmethod
     def transport_state(self) -> TransportState:
         pass
 

@@ -478,6 +478,43 @@ class CXNv2(Streamer):
 
         return [action.lower() for action in actions["Actions"].split(", ")]
 
+    def _transform_active_controls(self, controls):
+        transform_map = {
+            "pause": "pause",
+            "play_pause": "stop",
+            "toggle_shuffle": "shuffle",
+            "toggle_repeat": "repeat",
+            "track_next": "next",
+            "track_previous": "previous",
+            "seek": "seek",
+        }
+
+        transformed = []
+
+        for control in controls:
+            try:
+                transformed.append(transform_map[control])
+            except KeyError:
+                transformed.append(control)
+
+        return transformed
+
+    def transport_active_controls(self):
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/zone/now_playing"
+        )
+
+        # TODO: Improve error handling
+        if response.status_code != 200:
+            return []
+
+        try:
+            return self._transform_active_controls(
+                response.json()["data"]["controls"]
+            )
+        except (KeyError, json.decoder.JSONDecodeError) as e:
+            return []
+
     def transport_state(self) -> TransportState:
         info = self._av_transport.GetTransportInfo(InstanceID=self._instance_id)
         state = info["CurrentTransportState"]
@@ -615,6 +652,12 @@ class CXNv2(Streamer):
                     '{"path": "/zone/play_state/position", "params": {"update": 1}}'
                 )
 
+                # Request now-playing updates, so the "controls" information can
+                # be used to construct ActiveTransportControls messages.
+                await websocket.send(
+                    '{"path": "/zone/now_playing", "params": {"update": 1}}'
+                )
+
                 # Request play state updates (these arrive one per track change).
                 await websocket.send(
                     '{"path": "/zone/play_state", "params": {"update": 1}}'
@@ -739,6 +782,13 @@ class CXNv2(Streamer):
                             self._send_play_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
                             self._updates_handler("Position", update)
+                        elif update_dict["path"] == "/zone/now_playing":
+                            self._updates_handler(
+                                "ActiveTransportControls",
+                                json.dumps(self._transform_active_controls(
+                                    update_dict["params"]["data"]["controls"]
+                                ))
+                            )
                         elif update_dict["path"] == "/presets/list":
                             self._updates_handler(
                                 "Presets",
