@@ -20,9 +20,18 @@ class MediaSource(metaclass=ABCMeta):
     def udn(self):
         pass
 
+    @abstractmethod
+    def get_path_contents(self, path):
+        pass
+
     @property
     @abstractmethod
     def albums(self) -> typing.List[Album]:
+        pass
+
+    @property
+    @abstractmethod
+    def new_albums(self) -> typing.List[Album]:
         pass
 
     @abstractmethod
