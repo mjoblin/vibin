@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 import socket
 import time
 import uuid
@@ -193,9 +194,21 @@ def server_start(
             "status": vibin.transport_status(),
         }
 
+    # TODO: Decide what to call this endpoint
+    @vibin_app.get("/contents/{media_path:path}")
+    async def path_contents(media_path) -> List:
+        try:
+            return vibin.media.get_path_contents(Path(media_path))
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
     @vibin_app.get("/albums")
     async def albums() -> List[Album]:
         return vibin.media.albums
+
+    @vibin_app.get("/albums/new")
+    async def albums() -> List[Album]:
+        return vibin.media.new_albums
 
     @vibin_app.get("/albums/{album_id}/tracks")
     async def album_tracks(album_id: str) -> List[Album]:

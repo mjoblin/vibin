@@ -1,7 +1,10 @@
+from pathlib import Path
 import typing
 import xml.etree.ElementTree as ET
 
-from vibin import VibinError
+import untangle
+
+from vibin import VibinNotFoundError
 from vibin.mediasources import MediaSource
 from vibin.models import Album, Track
 
@@ -29,38 +32,85 @@ class Asset(MediaSource):
     def udn(self):
         return self._device.udn.removeprefix("uuid:")
 
+    def get_path_contents(self, path):
+        parent_id = "0"
+
+        for path_part in path.parts:
+            parent_id = self._child_id_by_title(parent_id, path_part)
+
+        leaf_id = parent_id
+        children = untangle.parse(self._get_children_xml(leaf_id))
+
+        contents = []
+
+        if "container" in children.DIDL_Lite:
+            for item in children.DIDL_Lite.container:
+                item_class = item.upnp_class.cdata
+
+                if item_class == "object.container.album.musicAlbum":
+                    contents.append(
+                        Album(
+                            item["id"],
+                            item.dc_title.cdata,
+                            item.dc_creator.cdata,
+                            item.dc_date.cdata,
+                            item.upnp_artist.cdata,
+                            item.upnp_genre.cdata,
+                            item.upnp_albumArtURI.cdata,
+                        )
+                    )
+        elif "item" in children.DIDL_Lite:
+            for item in children.DIDL_Lite.item:
+                item_class = item.upnp_class.cdata
+
+                # Determine artist name. A single item can have multiple
+                # artists, each with a different role ("AlbumArtist",
+                # "Composer", etc. The default artist seems to have no role
+                # defined. The Track class currently only supports a single
+                # artist, so attempt to pick one.
+                #
+                # Heuristic: Look for the artist with no role, otherwise pick
+                #   the first artist. And if the artist info isn't an array
+                #   then treat it as a normal field (and pull its cdata).
+
+                artist = "<Unknown>"
+
+                try:
+                    artist = next(
+                        (artist for artist in item.upnp_artist if artist["role"] is None),
+                        item.upnp_artist[0]
+                    ).cdata
+                except IndexError:
+                    try:
+                        artist = item.upnp_artist.cdata
+                    except KeyError:
+                        pass
+
+                if item_class == "object.item.audioItem.musicTrack":
+                    contents.append(
+                        Track(
+                            item["id"],
+                            item.dc_title.cdata,
+                            item.dc_creator.cdata,
+                            item.dc_date.cdata,
+                            artist,
+                            item.upnp_album.cdata,
+                            item.res[0]["duration"],
+                            item.upnp_genre.cdata,
+                            item.upnp_albumArtURI.cdata,
+                            item.upnp_originalTrackNumber.cdata,
+                        )
+                    )
+
+        return contents
+
     @property
     def albums(self) -> typing.List[Album]:
-        if self._albums is not None:
-            return list(self._albums.values())
+        return self.get_path_contents(Path("Album", "[All Albums]"))
 
-        # Retrieve full album list from media source.
-        # TODO: This assumes "Album / [All Albums]"; consider adding a way to
-        #   override this path.
-        self._albums = {}
-
-        by_album_id = self._child_id_by_title("0", "Album")
-        all_albums_id = self._child_id_by_title(by_album_id, "[All Albums]")
-
-        all_albums_xml = self._get_children_xml(all_albums_id)
-        all_albums_elems = ET.fromstring(all_albums_xml)
-
-        for album_elem in all_albums_elems:
-            album_id = album_elem.attrib["id"]
-
-            album = Album(
-                album_id,
-                album_elem.find("dc:title", namespaces=self._media_namespaces ).text,
-                album_elem.find("dc:creator", namespaces=self._media_namespaces ).text,
-                album_elem.find("dc:date", namespaces=self._media_namespaces ).text,
-                album_elem.find("upnp:artist", namespaces=self._media_namespaces ).text,
-                album_elem.find("upnp:genre", namespaces=self._media_namespaces ).text,
-                album_elem.find("upnp:albumArtURI", namespaces=self._media_namespaces ).text,
-            )
-
-            self._albums[album_id] = album
-
-        return list(self._albums.values())
+    @property
+    def new_albums(self) -> typing.List[Album]:
+        return self.get_path_contents(Path("New Albums"))
 
     def tracks(self, album_id) -> typing.List[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
@@ -190,7 +240,7 @@ class Asset(MediaSource):
         )
 
         if not found:
-            raise VibinError(
+            raise VibinNotFoundError(
                 f"Could not find path '{title}' under container id {parent_id}"
             )
 
