@@ -39,6 +39,14 @@ class MediaSource(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def album(self, album_id: str) -> Album:
+        pass
+
+    @abstractmethod
+    def track(self, track_id: str) -> Track:
+        pass
+
+    @abstractmethod
     def children(self, parent_id: str = "0"):
         pass
 

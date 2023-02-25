@@ -148,6 +148,79 @@ class Asset(MediaSource):
 
         return all_tracks
 
+    def _album_from_metadata(self, metadata) -> Album:
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "container" not in parsed_metadata.DIDL_Lite or
+            parsed_metadata.DIDL_Lite.container.upnp_class.cdata != "object.container.album.musicAlbum"
+        ):
+            raise VibinNotFoundError(f"Could not find Album")
+
+        container = parsed_metadata.DIDL_Lite.container
+
+        return Album(
+            container["id"],
+            container.dc_title.cdata,
+            container.dc_creator.cdata,
+            container.dc_date.cdata,
+            container.upnp_artist.cdata,
+            container.upnp_genre.cdata,
+            container.upnp_albumArtURI.cdata,
+        )
+
+    def _track_from_metadata(self, metadata) -> Track:
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "item" not in parsed_metadata.DIDL_Lite or
+            parsed_metadata.DIDL_Lite.item.upnp_class.cdata != "object.item.audioItem.musicTrack"
+        ):
+            raise VibinNotFoundError(f"Could not find Track")
+
+        item = parsed_metadata.DIDL_Lite.item
+
+        # Determine artist name. A single item can have multiple artists, each
+        # with a different role ("AlbumArtist", "Composer", etc. The default
+        # artist seems to have no role defined. The Track class currently only
+        # supports a single artist, so attempt to pick one.
+        #
+        # Heuristic: Look for the artist with no role, otherwise pick the first
+        #   artist. And if the artist info isn't an array then treat it as a
+        #   normal field (and pull its cdata).
+
+        artist = "<Unknown>"
+
+        try:
+            artist = next(
+                (artist for artist in item.upnp_artist if artist["role"] is None),
+                item.upnp_artist[0]
+            ).cdata
+        except IndexError:
+            try:
+                artist = item.upnp_artist.cdata
+            except KeyError:
+                pass
+
+        return Track(
+            item["id"],
+            item.dc_title.cdata,
+            item.dc_creator.cdata,
+            item.dc_date.cdata,
+            artist,
+            item.upnp_album.cdata,
+            item.res[0]["duration"],
+            item.upnp_genre.cdata,
+            item.upnp_albumArtURI.cdata,
+            item.upnp_originalTrackNumber.cdata,
+        )
+
+    def album(self, album_id: str) -> Album:
+        return self._album_from_metadata(self.get_metadata(album_id))
+
+    def track(self, track_id: str) -> Track:
+        return self._track_from_metadata(self.get_metadata(track_id))
+
     def children(self, parent_id: str = "0"):
         # TODO: Should this return Container, Album, and Track types?
         return {
