@@ -210,6 +210,13 @@ def server_start(
     async def albums() -> List[Album]:
         return vibin.media.new_albums
 
+    @vibin_app.get("/album/{album_id}")
+    def album_by_id(album_id: str):
+        try:
+            return vibin.media.album(album_id)
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
     @vibin_app.get("/albums/{album_id}/tracks")
     async def album_tracks(album_id: str) -> List[Album]:
         return vibin.media.tracks(album_id)
@@ -217,6 +224,13 @@ def server_start(
     @vibin_app.get("/albums/{album_id}/links")
     def album_links(album_id: str, all_types: bool = False):
         return vibin.media_links(album_id, all_types)
+
+    @vibin_app.get("/tracks/{track_id}")
+    def track_by_id(track_id: str):
+        try:
+            return vibin.media.track(track_id)
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
     def track_lyrics(track_id: str):

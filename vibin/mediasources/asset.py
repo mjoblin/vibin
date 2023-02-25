@@ -1,5 +1,6 @@
 from pathlib import Path
 import typing
+import upnpclient
 import xml.etree.ElementTree as ET
 
 import untangle
@@ -44,63 +45,17 @@ class Asset(MediaSource):
         contents = []
 
         if "container" in children.DIDL_Lite:
-            for item in children.DIDL_Lite.container:
-                item_class = item.upnp_class.cdata
+            for container in children.DIDL_Lite.container:
+                this_class = container.upnp_class.cdata
 
-                if item_class == "object.container.album.musicAlbum":
-                    contents.append(
-                        Album(
-                            item["id"],
-                            item.dc_title.cdata,
-                            item.dc_creator.cdata,
-                            item.dc_date.cdata,
-                            item.upnp_artist.cdata,
-                            item.upnp_genre.cdata,
-                            item.upnp_albumArtURI.cdata,
-                        )
-                    )
+                if this_class == "object.container.album.musicAlbum":
+                    contents.append(self._album_from_container(container))
         elif "item" in children.DIDL_Lite:
             for item in children.DIDL_Lite.item:
-                item_class = item.upnp_class.cdata
+                this_class = item.upnp_class.cdata
 
-                # Determine artist name. A single item can have multiple
-                # artists, each with a different role ("AlbumArtist",
-                # "Composer", etc. The default artist seems to have no role
-                # defined. The Track class currently only supports a single
-                # artist, so attempt to pick one.
-                #
-                # Heuristic: Look for the artist with no role, otherwise pick
-                #   the first artist. And if the artist info isn't an array
-                #   then treat it as a normal field (and pull its cdata).
-
-                artist = "<Unknown>"
-
-                try:
-                    artist = next(
-                        (artist for artist in item.upnp_artist if artist["role"] is None),
-                        item.upnp_artist[0]
-                    ).cdata
-                except IndexError:
-                    try:
-                        artist = item.upnp_artist.cdata
-                    except KeyError:
-                        pass
-
-                if item_class == "object.item.audioItem.musicTrack":
-                    contents.append(
-                        Track(
-                            item["id"],
-                            item.dc_title.cdata,
-                            item.dc_creator.cdata,
-                            item.dc_date.cdata,
-                            artist,
-                            item.upnp_album.cdata,
-                            item.res[0]["duration"],
-                            item.upnp_genre.cdata,
-                            item.upnp_albumArtURI.cdata,
-                            item.upnp_originalTrackNumber.cdata,
-                        )
-                    )
+                if this_class == "object.item.audioItem.musicTrack":
+                    contents.append(self._track_from_item(item))
 
         return contents
 
@@ -148,6 +103,87 @@ class Asset(MediaSource):
 
         return all_tracks
 
+    def _album_from_container(self, container) -> Album:
+        return Album(
+            container["id"],
+            container.dc_title.cdata,
+            container.dc_creator.cdata,
+            container.dc_date.cdata,
+            container.upnp_artist.cdata,
+            container.upnp_genre.cdata,
+            container.upnp_albumArtURI.cdata,
+        )
+
+    def _album_from_metadata(self, metadata) -> Album:
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "container" not in parsed_metadata.DIDL_Lite or
+            parsed_metadata.DIDL_Lite.container.upnp_class.cdata != "object.container.album.musicAlbum"
+        ):
+            raise VibinNotFoundError(f"Could not find Album")
+
+        return self._album_from_container(parsed_metadata.DIDL_Lite.container)
+
+    def _track_from_item(self, item) -> Track:
+        # Determine artist name. A single item can have multiple artists, each
+        # with a different role ("AlbumArtist", "Composer", etc. The default
+        # artist seems to have no role defined. The Track class currently only
+        # supports a single artist, so attempt to pick one.
+        #
+        # Heuristic: Look for the artist with no role, otherwise pick the first
+        #   artist. And if the artist info isn't an array then treat it as a
+        #   normal field (and pull its cdata).
+
+        artist = "<Unknown>"
+
+        try:
+            artist = next(
+                (artist for artist in item.upnp_artist if artist["role"] is None),
+                item.upnp_artist[0]
+            ).cdata
+        except IndexError:
+            try:
+                artist = item.upnp_artist.cdata
+            except KeyError:
+                pass
+
+        return Track(
+            item["id"],
+            item.dc_title.cdata,
+            item.dc_creator.cdata,
+            item.dc_date.cdata,
+            artist,
+            item.upnp_album.cdata,
+            item.res[0]["duration"],
+            item.upnp_genre.cdata,
+            item.upnp_albumArtURI.cdata,
+            item.upnp_originalTrackNumber.cdata,
+        )
+
+    def _track_from_metadata(self, metadata) -> Track:
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "item" not in parsed_metadata.DIDL_Lite or
+            parsed_metadata.DIDL_Lite.item.upnp_class.cdata != "object.item.audioItem.musicTrack"
+        ):
+            raise VibinNotFoundError(f"Could not find Track")
+
+        return self._track_from_item(parsed_metadata.DIDL_Lite.item)
+
+    def album(self, album_id: str) -> Album:
+        try:
+            return self._album_from_metadata(self.get_metadata(album_id))
+        except VibinNotFoundError as e:
+            raise VibinNotFoundError(f"Could not find Album with id '{album_id}'")
+
+    def track(self, track_id: str) -> Track:
+        try:
+            return self._track_from_metadata(self.get_metadata(track_id))
+        except VibinNotFoundError as e:
+            raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
+
     def children(self, parent_id: str = "0"):
         # TODO: Should this return Container, Album, and Track types?
         return {
@@ -156,16 +192,19 @@ class Asset(MediaSource):
         }
 
     def get_metadata(self, id: str):
-        browse_result = self._device.ContentDirectory.Browse(
-            ObjectID=id,
-            BrowseFlag="BrowseMetadata",
-            Filter="*",
-            StartingIndex=0,
-            RequestedCount=0,
-            SortCriteria="",
-        )
+        try:
+            browse_result = self._device.ContentDirectory.Browse(
+                ObjectID=id,
+                BrowseFlag="BrowseMetadata",
+                Filter="*",
+                StartingIndex=0,
+                RequestedCount=0,
+                SortCriteria="",
+            )
 
-        return browse_result["Result"]
+            return browse_result["Result"]
+        except upnpclient.soap.SOAPProtocolError as e:
+            raise VibinNotFoundError(f"Could not find media id {id}")
 
     @staticmethod
     def _playable_vibin_type(vibin_type: str):
