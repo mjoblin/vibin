@@ -50,6 +50,8 @@ class Asset(MediaSource):
 
                 if this_class == "object.container.album.musicAlbum":
                     contents.append(self._album_from_container(container))
+                elif this_class == "object.container":
+                    contents.append(self._folder_from_container(container))
         elif "item" in children.DIDL_Lite:
             for item in children.DIDL_Lite.item:
                 this_class = item.upnp_class.cdata
@@ -69,43 +71,27 @@ class Asset(MediaSource):
 
     def tracks(self, album_id) -> typing.List[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
-        album_tracks_elems = ET.fromstring(album_tracks_xml)
-        all_tracks = []
+        parsed_metadata = untangle.parse(album_tracks_xml)
 
-        for track_elem in album_tracks_elems:
-            track = Track(
-                track_elem.attrib["id"],
-                track_elem.find("dc:title", namespaces=self._media_namespaces).text,
-                track_elem.find("dc:creator", namespaces=self._media_namespaces).text,
-                track_elem.find("dc:date", namespaces=self._media_namespaces).text,
-                track_elem.find("upnp:artist", namespaces=self._media_namespaces).text,
-                track_elem.find("upnp:album", namespaces=self._media_namespaces).text,
-                track_elem.find("didl:res", namespaces=self._media_namespaces).attrib["duration"],
-                track_elem.find("upnp:genre", namespaces=self._media_namespaces).text,
-                track_elem.find("upnp:albumArtURI", namespaces=self._media_namespaces).text,
-                track_elem.find("upnp:originalTrackNumber", namespaces=self._media_namespaces).text,
-            )
+        return [
+            self._track_from_item(item)
+            for item in parsed_metadata.DIDL_Lite.item
+        ]
 
-            # track_elem.find("didl:res", namespaces=self._media_namespaces).attrib["duration"]
-            # available: size, bitrate, bitsPerSample, sampleFrequency, nrAudioChannels, protocolInfo
-            #
-            # {
-            #   'duration': '0:03:36.000',
-            #   'size': '15892752',
-            #   'bitrate': '176400',
-            #   'bitsPerSample': '16',
-            #   'sampleFrequency': '44100',
-            #   'nrAudioChannels': '2',
-            #   'protocolInfo': 'http-get:*:audio/x-flac:DLNA.ORG_PN=FLAC;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=03700000000000000000000000000000'
-            # }
-
-            all_tracks.append(track)
-
-        return all_tracks
+    def _folder_from_container(self, container):
+        return {
+            "creator": container.dc_creator.cdata,
+            "title": container.dc_title.cdata,
+            "album_art_uri": container.upnp_albumArtURI.cdata,
+            "artist": container.upnp_artist.cdata,
+            "class": container.upnp_class.cdata,
+            "genre": container.upnp_genre.cdata,
+        }
 
     def _album_from_container(self, container) -> Album:
         return Album(
             container["id"],
+            container["parentID"],
             container.dc_title.cdata,
             container.dc_creator.cdata,
             container.dc_date.cdata,
@@ -150,6 +136,7 @@ class Asset(MediaSource):
 
         return Track(
             item["id"],
+            item["parentID"],
             item.dc_title.cdata,
             item.dc_creator.cdata,
             item.dc_date.cdata,

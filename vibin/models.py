@@ -6,6 +6,7 @@ from dataclasses import dataclass
 @dataclass
 class Album:
     id: str
+    parentId: str
     title: str
     creator: str
     date: str
@@ -17,6 +18,7 @@ class Album:
 @dataclass
 class Track:
     id: str
+    parentId: str
     title: str
     creator: str
     date: str
