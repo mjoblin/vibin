@@ -1101,7 +1101,7 @@ class CXNv2(Streamer):
         # The streamed filename matches "<track>-<album>.ext". It seems
         # that the track id can itself include a hyphen whereas the album
         # id won't (TODO: can that be validated?).
-        match = re.match(r"^(.*)-([^-]+)$", filename_only)
+        match = re.match(r"^(.*-([^-]+))$", filename_only)
 
         if match and len(match.groups(0)) == 2:
             this_track_id = match.groups(0)[0]

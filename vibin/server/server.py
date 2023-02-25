@@ -210,7 +210,7 @@ def server_start(
     async def albums() -> List[Album]:
         return vibin.media.new_albums
 
-    @vibin_app.get("/album/{album_id}")
+    @vibin_app.get("/albums/{album_id}")
     def album_by_id(album_id: str):
         try:
             return vibin.media.album(album_id)
