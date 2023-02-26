@@ -23,7 +23,7 @@ from vibin import (
     VibinMissingDependencyError,
 )
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album, Preset, StoredPlaylist
+from vibin.models import Album, Preset, StoredPlaylist, Track
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -219,11 +219,15 @@ def server_start(
 
     @vibin_app.get("/albums/{album_id}/tracks")
     async def album_tracks(album_id: str) -> List[Album]:
-        return vibin.media.tracks(album_id)
+        return vibin.media.album_tracks(album_id)
 
     @vibin_app.get("/albums/{album_id}/links")
     def album_links(album_id: str, all_types: bool = False):
         return vibin.media_links(album_id, all_types)
+
+    @vibin_app.get("/tracks")
+    async def tracks() -> List[Track]:
+        return vibin.media.tracks
 
     @vibin_app.get("/tracks/{track_id}")
     def track_by_id(track_id: str):
