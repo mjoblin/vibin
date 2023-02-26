@@ -35,7 +35,12 @@ class MediaSource(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def tracks(self, album_id) -> typing.List[Track]:
+    def album_tracks(self, album_id) -> typing.List[Track]:
+        pass
+
+    @property
+    @abstractmethod
+    def tracks(self) -> typing.List[Track]:
         pass
 
     @abstractmethod

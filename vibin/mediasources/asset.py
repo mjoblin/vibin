@@ -69,7 +69,7 @@ class Asset(MediaSource):
     def new_albums(self) -> typing.List[Album]:
         return self.get_path_contents(Path("New Albums"))
 
-    def tracks(self, album_id) -> typing.List[Track]:
+    def album_tracks(self, album_id) -> typing.List[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
         parsed_metadata = untangle.parse(album_tracks_xml)
 
@@ -77,6 +77,10 @@ class Asset(MediaSource):
             self._track_from_item(item)
             for item in parsed_metadata.DIDL_Lite.item
         ]
+
+    @property
+    def tracks(self) -> typing.List[Track]:
+        return self.get_path_contents(Path("Title", "[All Titles]"))
 
     def _folder_from_container(self, container):
         return {
