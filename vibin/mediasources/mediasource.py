@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import typing
 
-from vibin.models import Album, Track
+from vibin.models import Album, Artist, Track
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
 # http://upnp.org/specs/av/UPnP-av-ContentDirectory-v4-Service.pdf
@@ -36,6 +36,15 @@ class MediaSource(metaclass=ABCMeta):
 
     @abstractmethod
     def album_tracks(self, album_id) -> typing.List[Track]:
+        pass
+
+    @property
+    @abstractmethod
+    def artists(self) -> typing.List[Album]:
+        pass
+
+    @abstractmethod
+    def artist(self, artist_id: str) -> Artist:
         pass
 
     @property

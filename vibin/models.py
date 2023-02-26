@@ -16,6 +16,15 @@ class Album:
 
 
 @dataclass
+class Artist:
+    id: str
+    parentId: str
+    title: str
+    genre: str
+    album_art_uri: str
+
+
+@dataclass
 class Track:
     id: str
     parentId: str
