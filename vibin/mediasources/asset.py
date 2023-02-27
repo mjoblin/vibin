@@ -7,7 +7,7 @@ import untangle
 
 from vibin import VibinNotFoundError
 from vibin.mediasources import MediaSource
-from vibin.models import Album, Track
+from vibin.models import Album, Artist, Track
 
 
 class Asset(MediaSource):
@@ -50,6 +50,8 @@ class Asset(MediaSource):
 
                 if this_class == "object.container.album.musicAlbum":
                     contents.append(self._album_from_container(container))
+                elif this_class == "object.container.person.musicArtist":
+                    contents.append(self._artist_from_container(container))
                 elif this_class == "object.container":
                     contents.append(self._folder_from_container(container))
         elif "item" in children.DIDL_Lite:
@@ -79,6 +81,16 @@ class Asset(MediaSource):
         ]
 
     @property
+    def artists(self) -> typing.List[Album]:
+        return self.get_path_contents(Path("Artist", "[All Artists]"))
+
+    def artist(self, artist_id: str) -> Artist:
+        try:
+            return self._artist_from_metadata(self.get_metadata(artist_id))
+        except VibinNotFoundError as e:
+            raise VibinNotFoundError(f"Could not find Artist with id '{artist_id}'")
+
+    @property
     def tracks(self) -> typing.List[Track]:
         return self.get_path_contents(Path("Title", "[All Titles]"))
 
@@ -104,6 +116,15 @@ class Asset(MediaSource):
             container.upnp_albumArtURI.cdata,
         )
 
+    def _artist_from_container(self, container) -> Artist:
+        return Artist(
+            container["id"],
+            container["parentID"],
+            container.dc_title.cdata,
+            container.upnp_genre.cdata,
+            container.upnp_albumArtURI.cdata,
+        )
+
     def _album_from_metadata(self, metadata) -> Album:
         parsed_metadata = untangle.parse(metadata)
 
@@ -114,6 +135,17 @@ class Asset(MediaSource):
             raise VibinNotFoundError(f"Could not find Album")
 
         return self._album_from_container(parsed_metadata.DIDL_Lite.container)
+
+    def _artist_from_metadata(self, metadata) -> Artist:
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "container" not in parsed_metadata.DIDL_Lite or
+            parsed_metadata.DIDL_Lite.container.upnp_class.cdata != "object.container.person.musicArtist"
+        ):
+            raise VibinNotFoundError(f"Could not find Artist")
+
+        return self._artist_from_container(parsed_metadata.DIDL_Lite.container)
 
     def _track_from_item(self, item) -> Track:
         # Determine artist name. A single item can have multiple artists, each

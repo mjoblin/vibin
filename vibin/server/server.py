@@ -23,7 +23,7 @@ from vibin import (
     VibinMissingDependencyError,
 )
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album, Preset, StoredPlaylist, Track
+from vibin.models import Album, Artist, Preset, StoredPlaylist, Track
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -224,6 +224,17 @@ def server_start(
     @vibin_app.get("/albums/{album_id}/links")
     def album_links(album_id: str, all_types: bool = False):
         return vibin.media_links(album_id, all_types)
+
+    @vibin_app.get("/artists")
+    async def albums() -> List[Artist]:
+        return vibin.media.artists
+
+    @vibin_app.get("/artists/{artist_id}")
+    def artist_by_id(artist_id: str):
+        try:
+            return vibin.media.artist(artist_id)
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks")
     async def tracks() -> List[Track]:
