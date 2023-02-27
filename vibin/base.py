@@ -598,18 +598,20 @@ class Vibin:
                         "--output-format",
                         data_format,
                     ] +
-                    [
-                        "--zoom",
-                        "auto",
-                        "--width",
-                        str(width),
-                        "--height",
-                        str(height),
-                        "--colors",
-                        "audition",
-                        "--split-channels",
-                        "--no-axis-labels",
-                    ] if data_format == "png" else [],
+                    (
+                        [
+                            "--zoom",
+                            "auto",
+                            "--width",
+                            str(width),
+                            "--height",
+                            str(height),
+                            "--colors",
+                            "audition",
+                            "--split-channels",
+                            "--no-axis-labels",
+                        ] if data_format == "png" else []
+                    ),
                     capture_output=True,
                 )
 
