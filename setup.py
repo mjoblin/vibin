@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import pathlib
 
-from vibin import __version__
+# from vibin import __version__
 
 here = pathlib.Path(__file__).parent.resolve()
 
@@ -9,7 +9,8 @@ long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="vibin",
-    version=__version__,
+    # version=__version__,
+    version="1.0.0",
     description="The Vibin music server",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -25,6 +26,7 @@ setup(
     install_requires=[
         "aiofiles",
         "click",
+        "discogs_client",
         "fastapi",
         "httpx",
         "lxml",
@@ -32,8 +34,11 @@ setup(
         "requests",
         "rich",
         "starlette",
+        "tinydb",
+        "untangle",
         "upnpclient",
         "uvicorn[standard]",
+        "websockets",
         "wikipedia",
         "xmltodict",
     ],

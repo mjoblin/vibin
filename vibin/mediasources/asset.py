@@ -92,7 +92,12 @@ class Asset(MediaSource):
 
     @property
     def tracks(self) -> typing.List[Track]:
-        return self.get_path_contents(Path("Title", "[All Titles]"))
+        tracks: list[Track] = []
+
+        for album in self.albums:
+            tracks.extend(self.album_tracks(album.id))
+
+        return tracks
 
     def _folder_from_container(self, container):
         return {

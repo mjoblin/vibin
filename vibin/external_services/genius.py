@@ -1,5 +1,6 @@
 from functools import lru_cache
 import re
+from typing import Optional
 
 import lyricsgenius
 
@@ -27,9 +28,9 @@ class Genius(ExternalService):
     @lru_cache
     def links(
             self,
-            artist: str | None = None,
-            album: str | None = None,
-            track: str | None = None,
+            artist: Optional[str] = None,
+            album: Optional[str] = None,
+            track: Optional[str] = None,
             link_type: str = "All",
     ) -> list[ExternalServiceLink]:
         if not self._client:

@@ -688,7 +688,7 @@ class Vibin:
     def playlists(self) -> list[StoredPlaylist]:
         return self._playlists.all()
 
-    def get_playlist(self, playlist_id) -> StoredPlaylist | None:
+    def get_playlist(self, playlist_id) -> Optional[StoredPlaylist]:
         PlaylistQuery = Query()
         return self._playlists.get(PlaylistQuery.id == playlist_id)
 

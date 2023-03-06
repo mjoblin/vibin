@@ -1095,7 +1095,7 @@ class CXNv2(Streamer):
         except KeyError:
             pass
 
-    def _album_and_track_ids_from_file(self, file) -> (str | None, str | None):
+    def _album_and_track_ids_from_file(self, file) -> (Optional[str], Optional[str]):
         filename_only = pathlib.Path(file).stem
 
         # The streamed filename matches "<track>-<album>.ext". It seems
