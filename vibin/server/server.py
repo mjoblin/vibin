@@ -8,6 +8,7 @@ from typing import List, Optional, Union
 
 from fastapi import FastAPI, Header, HTTPException, Response, WebSocket
 from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx  # TODO: Not in requirements; using to proxy to react on 3000
 import starlette.requests
@@ -69,42 +70,96 @@ def server_start(
     logger.info("Starting server")
     vibin_app = FastAPI()
 
+    success = {
+        "result": "success"
+    }
+
+    # -------------------------------------------------------------------------
+    # Experiments in proxying the UI for both production and dev.
+    # -------------------------------------------------------------------------
+
+    # The following is a pretty hideous way of serving the UI from FastAPI.
+    # It sets up a separate mount under /ui/static (which should serve
+    # everything under that directory recursively). Then it hardcodes both /ui
+    # and /ui/*; where it checks /ui/* against a list of the *UI's internal
+    # routes* for which it just serves index.html and lets the UI's router take
+    # it from there. This ensures that a UI route can be properly reloaded from
+    # the browser (e.g. Cmd-R on /ui/albums).
+    #
+    # This currently feels very hacky and is likely prone to issues.
+    #
+    # See "Correct default route usage":
+    #   https://github.com/tiangolo/fastapi/discussions/9146
+
     if vibinui:
         try:
             vibin_app.mount(
-                "/ui",
-                StaticFiles(directory=vibinui, html=True),
+                "/ui/static",
+                StaticFiles(directory=Path(vibinui, "static"), html=True),
                 name="vibinui",
             )
         except RuntimeError as e:
             logger.error(f"Cannot serve UI: {e}")
 
-    success = {
-        "result": "success"
-    }
+    @vibin_app.router.get("/ui", include_in_schema=False)
+    def serve_ui_root_index_html():
+        return FileResponse(path=Path(vibinui, "index.html"))
+
+    @vibin_app.router.get("/ui/{resource}", include_in_schema=False)
+    def serve_ui_index_html(resource: str):
+        if resource in [
+            "current",
+            "playlists",
+            "artists",
+            "albums",
+            "tracks",
+            "presets"
+        ]:
+            return FileResponse(path=Path(vibinui, "index.html"))
+
+        return FileResponse(path=Path(vibinui, resource))
 
     # @vibin_app.get("/")
-    # async def redirect():
-    #     return RedirectResponse(url="http://10.0.0.3:3000")
-    #     # return RedirectResponse(url="/ui")
+    # async def ui(response: Response):
+    #     async with httpx.AsyncClient() as client:
+    #         proxy = await client.get(f"http://{HOSTNAME}:3000")
+    #         response.body = proxy.content
+    #         response.status_code = proxy.status_code
+    #
+    #         return response
 
-    @vibin_app.get("/")
-    async def ui(response: Response):
-        async with httpx.AsyncClient() as client:
-            proxy = await client.get(f"http://{HOSTNAME}:3000")
-            response.body = proxy.content
-            response.status_code = proxy.status_code
+    # @vibin_app.get("/ui/{path:path}")
+    # async def ui(path, response: Response):
+    #     async with httpx.AsyncClient() as client:
+    #         proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
+    #         response.body = proxy.content
+    #         response.status_code = proxy.status_code
+    #
+    #         return response
 
-            return response
+    # async def dev_ui(path, response: Response):
+    #     async with httpx.AsyncClient() as client:
+    #         proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
+    #         response.body = proxy.content
+    #         response.status_code = proxy.status_code
+    #
+    #         return response
+    #
+    # if vibinui == "dev":
+    #     vibin_app.router.add_route(
+    #         "/ui/{path:path}", dev_ui, methods=["GET"], include_in_schema=False
+    #     )
 
-    @vibin_app.get("/ui/{path:path}")
-    async def ui(path, response: Response):
-        async with httpx.AsyncClient() as client:
-            proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
-            response.body = proxy.content
-            response.status_code = proxy.status_code
+    # @vibin_app.router.get("/ui/{resource}")
+    # def serve_index_html(resource: str):
+    #     # Intercept all UI calls and just return the index.html, allowing the
+    #     # UI's router to handle any routes like /ui/albums.
+    #     #
+    #     # See "Correct default route usage":
+    #     #   https://github.com/tiangolo/fastapi/discussions/9146
+    #     return FileResponse(path=Path(vibinui, "index.html"))
 
-            return response
+    # -------------------------------------------------------------------------
 
     # TODO: Do we want /system endpoints for both streamer and media?
     @vibin_app.post("/system/power/toggle")
@@ -271,6 +326,10 @@ def server_start(
         except VibinMissingDependencyError as e:
             # TODO: Where possible, have errors reference docs for possible
             #   actions the caller can take to resolve the issue.
+            logger.warning(
+                f"Cannot generate waveform due to missing dependency: {e}"
+            )
+
             raise HTTPException(
                 status_code=404,
                 detail=f"Cannot generate waveform due to missing dependency: {e}",

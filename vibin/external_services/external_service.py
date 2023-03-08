@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Optional
 
 from vibin.models import ExternalServiceLink
 
@@ -16,9 +17,9 @@ class ExternalService(metaclass=ABCMeta):
     @abstractmethod
     def links(
             self,
-            artist: str | None = None,
-            album: str | None = None,
-            track: str | None = None,
-            link_type: str = "All",
+            artist: Optional[str] = None,
+            album: Optional[str] = None,
+            track: Optional[str] = None,
+            link_type: Optional[str] = "All",
     ) -> list[ExternalServiceLink]:
         pass
