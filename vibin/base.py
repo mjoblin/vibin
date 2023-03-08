@@ -205,47 +205,51 @@ class Vibin:
 
     def media_links(
             self,
-            media_id: str,
+            *,
+            media_id: Optional[str] = None,
+            artist: Optional[str] = None,
+            album: Optional[str] = None,
+            title: Optional[str] = None,
             include_all: bool = False,
     ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
         if len(self._external_services) == 0:
             return {}
 
-        artist = album = title = media_class = None
         results = {}
 
         # TODO: Have errors raise an exception which can be passed back to the
         #   caller, rather than empty {} results.
 
-        try:
-            media_info = xmltodict.parse(self.media.get_metadata(media_id))
-            didl = media_info["DIDL-Lite"]
+        if media_id:
+            try:
+                media_info = xmltodict.parse(self.media.get_metadata(media_id))
+                didl = media_info["DIDL-Lite"]
 
-            if "container" in didl:
-                # Album
-                artist = didl["container"]["dc:creator"]
-                album = didl["container"]["dc:title"]
-            elif "item" in didl:
-                # Track
-                artist = self._artist_from_track_media_info(media_info)
-                album = didl["item"]["upnp:album"]
-                title = didl["item"]["dc:title"]
-            else:
+                if "container" in didl:
+                    # Album
+                    artist = didl["container"]["dc:creator"]
+                    album = didl["container"]["dc:title"]
+                elif "item" in didl:
+                    # Track
+                    artist = self._artist_from_track_media_info(media_info)
+                    album = didl["item"]["upnp:album"]
+                    title = didl["item"]["dc:title"]
+                else:
+                    logger.error(
+                        f"Could not determine whether media item is an Album or " +
+                        f"a Track: {media_id}"
+                    )
+                    return {}
+            except xml.parsers.expat.ExpatError as e:
                 logger.error(
-                    f"Could not determine whether media item is an Album or " +
-                    f"a Track: {media_id}"
+                    f"Could not convert XML to JSON for media item: {media_id}: {e}"
                 )
                 return {}
-        except xml.parsers.expat.ExpatError as e:
-            logger.error(
-                f"Could not convert XML to JSON for media item: {media_id}: {e}"
-            )
-            return {}
-        except KeyError as e:
-            logger.error(
-                f"Could not find expected media key in {media_id}: {e}"
-            )
-            return {}
+            except KeyError as e:
+                logger.error(
+                    f"Could not find expected media key in {media_id}: {e}"
+                )
+                return {}
 
         try:
             link_type = \
@@ -525,6 +529,10 @@ class Vibin:
         return self.streamer.play_state
 
     @property
+    def device_display(self):
+        return self.streamer.device_display
+
+    @property
     def stored_playlist_details(self):
         return {
             "active_stored_playlist_id": self._active_stored_playlist_id,
@@ -539,21 +547,25 @@ class Vibin:
     #   passed back to the client on the same Vibin->Client websocket
     #   connection, perhaps with different message type identifiers.
 
-    def lyrics_for_track(self, track_id):
-        if "Genius" not in self._external_services.keys():
+    def lyrics_for_track(self, *, track_id=None, artist=None, title=None):
+        if ("Genius" not in self._external_services.keys()) \
+                or (track_id is None and (artist is None or title is None)):
             return
 
+        if track_id:
+            try:
+                track_info = xmltodict.parse(self.media.get_metadata(track_id))
+
+                artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
+                title = track_info["DIDL-Lite"]["item"]["dc:title"]
+            except xml.parsers.expat.ExpatError as e:
+                logger.error(
+                    f"Could not convert XML to JSON for track: {track_id}: {e}"
+                )
+                return None
+
         try:
-            track_info = xmltodict.parse(self.media.get_metadata(track_id))
-
-            artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
-            title = track_info["DIDL-Lite"]["item"]["dc:title"]
-
             return self._external_services["Genius"].lyrics(artist, title)
-        except xml.parsers.expat.ExpatError as e:
-            logger.error(
-                f"Could not convert XML to JSON for track: {track_id}: {e}"
-            )
         except VibinError as e:
             logger.error(e)
 

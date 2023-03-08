@@ -13,6 +13,7 @@ from typing import Any, Callable, List, NewType, Optional
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET  # TODO: Replace with lxml
 
+from deepdiff import DeepDiff
 from lxml import etree
 import requests
 from requests.exceptions import HTTPError
@@ -25,9 +26,14 @@ from ..logger import logger
 from vibin import VibinDeviceError
 from vibin.types_foo import ServiceSubscriptions, Subscription
 from vibin.mediasources import MediaSource
-from vibin.models import Preset
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
+
+
+# -----------------------------------------------------------------------------
+# NOTE: Media IDs only make sense when streaming from a local source. This
+#   should impact when non-None Media IDs are sent to any clients.
+# -----------------------------------------------------------------------------
 
 
 # TODO: upnpclient.SOAPError
@@ -108,6 +114,7 @@ class CXNv2(Streamer):
         }
 
         self._play_state = {}
+        self._device_display = {}
         self._cached_playlist = []
 
         # TODO: Add support for service name not just var name.
@@ -179,15 +186,16 @@ class CXNv2(Streamer):
             # TODO
             pass
 
-        # Current audio source.
-        try:
-            current_source = device.UuVolControl.GetAudioSourceByNumber()
-            self._set_current_audio_source(
-                int(current_source["RetAudioSourceValue"])
-            )
-        except Exception:
-            # TODO
-            pass
+        # THIS HAS BEEN REPLACED BY NOW_PLAYING INFO FROM SMOIP
+        # # Current audio source.
+        # try:
+        #     current_source = device.UuVolControl.GetAudioSourceByNumber()
+        #     self._set_current_audio_source(
+        #         int(current_source["RetAudioSourceValue"])
+        #     )
+        # except Exception:
+        #     # TODO
+        #     pass
 
         # Current playlist.
         self._playlist_id_array = None
@@ -783,12 +791,46 @@ class CXNv2(Streamer):
                         elif update_dict["path"] == "/zone/play_state/position":
                             self._updates_handler("Position", update)
                         elif update_dict["path"] == "/zone/now_playing":
+                            # TODO: now_playing is driving 3 chunks of data.
+                            #   Figure out how to generalize this to not be
+                            #   so specific to CXNv2/StreamMagic.
+
                             self._updates_handler(
                                 "ActiveTransportControls",
                                 json.dumps(self._transform_active_controls(
                                     update_dict["params"]["data"]["controls"]
                                 ))
                             )
+
+                            # TODO: Figure out what to do with current audio
+                            #   source. This call to _set_current_audio_source
+                            #   will ensure the source is set for the next
+                            #   StateVars message publish.
+                            audio_source = update_dict["params"]["data"]["source"]["id"]
+
+                            self._set_current_audio_source(
+                                update_dict["params"]["data"]["source"]["id"]
+                            )
+
+                            # Media IDs should only be sent to any clients when
+                            # the current source is a MEDIA_PLAYER.
+                            if audio_source != "MEDIA_PLAYER":
+                                self._last_seen_track_id = None
+                                self._last_seen_album_id = None
+
+                            # TODO: Figure out what "display" means for other
+                            #   streamer types.
+                            try:
+                                display_info = update_dict["params"]["data"]["display"]
+
+                                if DeepDiff(display_info, self._device_display) != {}:
+                                    self._device_display = display_info
+                                    self._updates_handler(
+                                        "DeviceDisplay",
+                                        json.dumps(self._device_display)
+                                    )
+                            except KeyError:
+                                pass
                         elif update_dict["path"] == "/presets/list":
                             self._updates_handler(
                                 "Presets",
@@ -826,6 +868,9 @@ class CXNv2(Streamer):
             pass
 
         self._updates_handler("PlayState", json.dumps(self._play_state))
+
+    def _send_device_display_update(self):
+        self._updates_handler("DeviceDisplay", json.dumps(self._device_display))
 
     def _send_stored_playlists_update(self):
         self._updates_handler("StoredPlaylists", json.dumps(self._stored_playlists))
@@ -954,6 +999,13 @@ class CXNv2(Streamer):
         return self._play_state
 
     @property
+    def device_display(self):
+        # TODO: This is a raw CXNv2 Websocket payload shape. This should
+        #   probably be cleaned up before passing back to the streamer-agnostic
+        #   caller.
+        return self._device_display
+
+    @property
     def presets(self):
         # TODO: Change to local cache data, as received from websocket.
         response = requests.get(
@@ -1048,12 +1100,13 @@ class CXNv2(Streamer):
                     )
 
     def set_vibin_state_vars(self):
-        try:
-            self._set_current_audio_source(
-                int(self._state_vars["UuVolControl"]["AudioSourceNumber"])
-            )
-        except KeyError:
-            pass
+        # THIS HAS BEEN REPLACED BY NOW_PLAYING INFO FROM SMOIP
+        # try:
+        #     self._set_current_audio_source(
+        #         int(self._state_vars["UuVolControl"]["AudioSourceNumber"])
+        #     )
+        # except KeyError:
+        #     pass
 
         try:
             self._set_current_playback_details(
@@ -1062,23 +1115,16 @@ class CXNv2(Streamer):
         except KeyError:
             pass
 
-    def _set_current_audio_source(self, source_number: int):
-        # TODO: Validate this logic. The CXNv2 appears to use the
-        #  preferred_order value for a source, but sometimes that doesn't work
-        #  in which case it appears to use the audio_sources array index.
+    def _set_current_audio_source(self, source_id: str):
         try:
             self._vibin_vars["current_audio_source"] = [
                 source for source in self._vibin_vars["audio_sources"]
-                if source["preferred_order"] == source_number
+                if source["id"] == source_id
             ][0]
-        except IndexError:
-            try:
-                self._vibin_vars["current_audio_source"] = \
-                    self._vibin_vars["audio_sources"][source_number]
-            except (IndexError, KeyError):
-                pass
-        except KeyError:
-            pass
+        except (IndexError, KeyError):
+            logger.error(
+                f"Could not determine current audio source from id '{source_id}'"
+            )
 
     def _set_current_playlist(self):
         if self._ignore_playlist_updates:
