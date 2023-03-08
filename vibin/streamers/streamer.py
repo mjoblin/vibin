@@ -177,6 +177,10 @@ class Streamer(metaclass=ABCMeta):
     def play_state(self):
         pass
 
+    @abstractmethod
+    def device_display(self):
+        pass
+
     @property
     @abstractmethod
     def presets(self):

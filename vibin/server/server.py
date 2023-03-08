@@ -103,10 +103,22 @@ def server_start(
 
     @vibin_app.router.get("/ui", include_in_schema=False)
     def serve_ui_root_index_html():
+        if not vibinui:
+            raise HTTPException(
+                status_code=404,
+                detail="UI unavailable; see 'vibin serve --vibinui'",
+            )
+
         return FileResponse(path=Path(vibinui, "index.html"))
 
     @vibin_app.router.get("/ui/{resource}", include_in_schema=False)
     def serve_ui_index_html(resource: str):
+        if not vibinui:
+            raise HTTPException(
+                status_code=404,
+                detail="UI unavailable; see 'vibin serve --vibinui'",
+            )
+
         if resource in [
             "current",
             "playlists",
@@ -295,6 +307,26 @@ def server_start(
     async def tracks() -> List[Track]:
         return vibin.media.tracks
 
+    @vibin_app.get("/tracks/lyrics")
+    def track_lyrics(artist: str, title: str):
+        lyrics = vibin.lyrics_for_track(artist=artist, title=title)
+
+        if lyrics is None:
+            raise HTTPException(status_code=404, detail="Lyrics not found")
+
+        return lyrics
+
+    @vibin_app.get("/tracks/links")
+    def track_links(
+            artist: Optional[str],
+            album: Optional[str],
+            title: Optional[str],
+            all_types: bool = False
+    ):
+        return vibin.media_links(
+            artist=artist, album=album, title=title, include_all=all_types
+        )
+
     @vibin_app.get("/tracks/{track_id}")
     def track_by_id(track_id: str):
         try:
@@ -303,8 +335,8 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
-    def track_lyrics(track_id: str):
-        lyrics = vibin.lyrics_for_track(track_id)
+    def track_lyrics_by_track_id(track_id: str):
+        lyrics = vibin.lyrics_for_track(track_id=track_id)
 
         if lyrics is None:
             raise HTTPException(status_code=404, detail="Lyrics not found")
@@ -375,8 +407,8 @@ def server_start(
             )
 
     @vibin_app.get("/tracks/{track_id}/links")
-    def track_links(track_id: str, all_types: bool = False):
-        return vibin.media_links(track_id, all_types)
+    def track_links_by_track_id(track_id: str, all_types: bool = False):
+        return vibin.media_links(media_id=track_id, include_all=all_types)
 
     @vibin_app.get("/playlist")
     async def playlist():
@@ -498,6 +530,10 @@ def server_start(
     async def play_state() -> dict:
         return vibin.play_state
 
+    @vibin_app.get("/devicedisplay")
+    async def device_display() -> dict:
+        return vibin.device_display
+
     @vibin_app.api_route(
         UPNP_EVENTS_BASE_ROUTE + "/{service}",
         methods=["NOTIFY"],
@@ -547,6 +583,11 @@ def server_start(
             await websocket.send_text(self.build_message(
                 json.dumps(vibin.streamer.transport_active_controls()),
                 "ActiveTransportControls",
+            ))
+
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.streamer.device_display),
+                "DeviceDisplay",
             ))
 
             await websocket.send_text(self.build_message(
@@ -614,6 +655,8 @@ def server_start(
                     # TODO: Add proper error handling support.
                     message["payload"] = {}
             elif messageType == "ActiveTransportControls":
+                message["payload"] = data_as_dict
+            elif messageType == "DeviceDisplay":
                 message["payload"] = data_as_dict
             elif messageType == "Presets":
                 message["payload"] = data_as_dict
