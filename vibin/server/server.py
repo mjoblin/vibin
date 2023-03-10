@@ -182,6 +182,14 @@ def server_start(
         except VibinError as e:
             raise HTTPException(status_code=500, detail=f"{e}")
 
+    @vibin_app.post("/system/source")
+    async def system_source(source: str):
+        try:
+            vibin.streamer.set_source(source)
+            return success
+        except VibinError as e:
+            raise HTTPException(status_code=500, detail=f"{e}")
+
     @vibin_app.post("/transport/pause")
     async def transport_pause():
         try:
