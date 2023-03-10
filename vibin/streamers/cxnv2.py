@@ -262,6 +262,11 @@ class CXNv2(Streamer):
             f"http://{self._device_hostname}/smoip/system/power?power=toggle"
         )
 
+    def set_source(self, source: str):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/state?source={source}"
+        )
+
     def ignore_playlist_updates(self, ignore=False):
         self._ignore_playlist_updates = ignore
 
@@ -806,15 +811,13 @@ class CXNv2(Streamer):
                             #   source. This call to _set_current_audio_source
                             #   will ensure the source is set for the next
                             #   StateVars message publish.
-                            audio_source = update_dict["params"]["data"]["source"]["id"]
+                            audio_source_id = update_dict["params"]["data"]["source"]["id"]
 
-                            self._set_current_audio_source(
-                                update_dict["params"]["data"]["source"]["id"]
-                            )
+                            self._set_current_audio_source(audio_source_id)
 
                             # Media IDs should only be sent to any clients when
                             # the current source is a MEDIA_PLAYER.
-                            if audio_source != "MEDIA_PLAYER":
+                            if audio_source_id != "MEDIA_PLAYER":
                                 self._last_seen_track_id = None
                                 self._last_seen_album_id = None
 

@@ -62,6 +62,10 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def set_source(self, source: str):
+        pass
+
+    @abstractmethod
     def on_event(self, service_name: str, event: str):
         pass
 
