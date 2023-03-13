@@ -1,4 +1,7 @@
 from dataclasses import dataclass
+from typing import Optional
+
+from pydantic import BaseModel
 
 # TODO: Add a Container class?
 
@@ -56,6 +59,12 @@ class StoredPlaylist:
     created: float
     updated: float
     entry_ids: list[StoredPlaylistEntryId]
+
+
+class Favorite(BaseModel):
+    type: str
+    media_id: str
+    when_favorited: Optional[float]
 
 
 @dataclass
