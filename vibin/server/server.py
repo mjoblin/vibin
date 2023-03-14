@@ -70,6 +70,9 @@ def server_start(
     logger.info("Starting server")
     vibin_app = FastAPI()
 
+    start_time = time.time()
+    connected_websockets = {}
+
     success = {
         "result": "success"
     }
@@ -172,6 +175,27 @@ def server_start(
     #     return FileResponse(path=Path(vibinui, "index.html"))
 
     # -------------------------------------------------------------------------
+
+    def server_status():
+        clients = []
+
+        for websocket_info in connected_websockets.values():
+            client_ip, client_port = websocket_info["websocket"].client
+
+            clients.append({
+                "when_connected": websocket_info["when_connected"],
+                "ip": client_ip,
+                "port": client_port,
+            })
+
+        return {
+            "start_time": start_time,
+            "clients": clients,
+        }
+
+    @vibin_app.get("/vibin/status")
+    def vibin_status():
+        return server_status()
 
     # TODO: Do we want /system endpoints for both streamer and media?
     @vibin_app.post("/system/power/toggle")
@@ -595,6 +619,12 @@ def server_start(
         async def on_connect(self, websocket: WebSocket) -> None:
             await websocket.accept()
             client_ip, client_port = websocket.client
+
+            connected_websockets[f"{client_ip}:{client_port}"] = {
+                "when_connected": time.time(),
+                "websocket": websocket,
+            }
+
             logger.info(
                 f"Websocket connection accepted from {client_ip}:{client_port}"
             )
@@ -639,11 +669,32 @@ def server_start(
                 json.dumps(vibin.stored_playlist_details), "StoredPlaylists")
             )
 
+            await websocket.send_text(self.build_message(
+                json.dumps(server_status()), "VibinStatus")
+            )
+
+            # TODO: Allow the server to send a message to all connected
+            #   websockets. Perhaps just make _websocket_message_handler more
+            #   publicly accessible.
+            vibin._websocket_message_handler(
+                "VibinStatus", json.dumps(server_status())
+            )
+
         async def on_disconnect(
                 self, websocket: WebSocket, close_code: int
         ) -> None:
             self.sender_task.cancel()
             client_ip, client_port = websocket.client
+
+            try:
+                del connected_websockets[f"{client_ip}:{client_port}"]
+            except KeyError:
+                pass
+
+            vibin._websocket_message_handler(
+                "VibinStatus", json.dumps(server_status())
+            )
+
             logger.info(
                 f"Websocket connection closed [{close_code}] for client " +
                 f"{client_ip}:{client_port}"
@@ -707,6 +758,8 @@ def server_start(
                 message["payload"] = {
                     "favorites": data_as_dict,
                 }
+            elif messageType == "VibinStatus":
+                message["payload"] = data_as_dict
 
             return json.dumps(message)
 
