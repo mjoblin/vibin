@@ -883,6 +883,8 @@ class Vibin:
         self._favorites.insert(favorite_data.dict())
         self._send_favorites_update()
 
+        return favorite_data
+
     def delete_favorite(self, media_id: str):
         FavoritesQuery = Query()
         favorite_to_delete = self._favorites.get(FavoritesQuery.media_id == media_id)

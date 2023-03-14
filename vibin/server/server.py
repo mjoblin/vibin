@@ -512,15 +512,21 @@ def server_start(
 
     @vibin_app.get("/favorites")
     async def favorites():
-        return vibin.favorites()
+        return {
+            "favorites": vibin.favorites(),
+        }
 
     @vibin_app.get("/favorites/albums")
     async def favorites_albums():
-        return vibin.favorites(requested_types=["album"])
+        return {
+            "favorites": vibin.favorites(requested_types=["album"]),
+        }
 
     @vibin_app.get("/favorites/tracks")
     async def favorites_tracks():
-        return vibin.favorites(requested_types=["track"])
+        return {
+            "favorites": vibin.favorites(requested_types=["track"])
+        }
 
     @vibin_app.post("/favorites")
     async def favorites_create(favorite: Favorite):
@@ -622,6 +628,10 @@ def server_start(
             ))
 
             await websocket.send_text(self.build_message(
+                json.dumps(vibin.favorites()), "Favorites")
+            )
+
+            await websocket.send_text(self.build_message(
                 json.dumps(vibin.presets), "Presets")
             )
 
@@ -694,7 +704,9 @@ def server_start(
             elif messageType == "StoredPlaylists":
                 message["payload"] = data_as_dict
             elif messageType == "Favorites":
-                message["payload"] = data_as_dict
+                message["payload"] = {
+                    "favorites": data_as_dict,
+                }
 
             return json.dumps(message)
 
