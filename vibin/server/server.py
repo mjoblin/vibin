@@ -24,7 +24,7 @@ from vibin import (
     VibinMissingDependencyError,
 )
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album, Artist, Preset, StoredPlaylist, Track
+from vibin.models import Album, Artist, Favorite, Preset, StoredPlaylist, Track
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -510,6 +510,35 @@ def server_start(
 
         return vibin.store_current_playlist(metadata=metadata, replace=replace)
 
+    @vibin_app.get("/favorites")
+    async def favorites():
+        return {
+            "favorites": vibin.favorites(),
+        }
+
+    @vibin_app.get("/favorites/albums")
+    async def favorites_albums():
+        return {
+            "favorites": vibin.favorites(requested_types=["album"]),
+        }
+
+    @vibin_app.get("/favorites/tracks")
+    async def favorites_tracks():
+        return {
+            "favorites": vibin.favorites(requested_types=["track"])
+        }
+
+    @vibin_app.post("/favorites")
+    async def favorites_create(favorite: Favorite):
+        try:
+            return vibin.store_favorite(favorite.type, favorite.media_id)
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    @vibin_app.delete("/favorites/{media_id}")
+    async def favorites_delete(media_id):
+        vibin.delete_favorite(media_id)
+
     @vibin_app.get("/presets")
     def presets() -> list[Preset]:
         return vibin.presets
@@ -599,6 +628,10 @@ def server_start(
             ))
 
             await websocket.send_text(self.build_message(
+                json.dumps(vibin.favorites()), "Favorites")
+            )
+
+            await websocket.send_text(self.build_message(
                 json.dumps(vibin.presets), "Presets")
             )
 
@@ -670,6 +703,10 @@ def server_start(
                 message["payload"] = data_as_dict
             elif messageType == "StoredPlaylists":
                 message["payload"] = data_as_dict
+            elif messageType == "Favorites":
+                message["payload"] = {
+                    "favorites": data_as_dict,
+                }
 
             return json.dumps(message)
 

@@ -1,4 +1,5 @@
 import concurrent.futures
+import dataclasses
 from dataclasses import asdict
 import uuid
 from functools import lru_cache
@@ -34,6 +35,7 @@ from vibin.mediasources import MediaSource
 from vibin.models import (
     Album,
     ExternalServiceLink,
+    Favorite,
     Preset,
     StoredPlaylist,
     Track,
@@ -90,6 +92,8 @@ class Vibin:
         self._active_stored_playlist_id = None
         self._active_playlist_synced_with_store = False
         self._activating_stored_playlist = False
+
+        self._favorites = self._db.table("favorites")
 
         # Discover devices
         logger.info("Discovering devices...")
@@ -201,6 +205,11 @@ class Vibin:
     def _send_stored_playlists_update(self):
         self._websocket_message_handler(
             "StoredPlaylists", json.dumps(self.stored_playlist_details)
+        )
+
+    def _send_favorites_update(self):
+        self._websocket_message_handler(
+            "Favorites", json.dumps(self.favorites())
         )
 
     def media_links(
@@ -818,6 +827,73 @@ class Vibin:
             raise VibinError(
                 f"Could not update Playlist Id: {playlist_id}"
             )
+
+    def favorites(
+            self,
+            requested_types: Optional[list[str]] = None
+    ) -> list[dict[str, Album | Track]]:
+        media_hydrators = {
+            "album": self.media.album,
+            # "artist": self.media.artist,
+            "track": self.media.track,
+        }
+
+        return [
+            {
+                "type": favorite["type"],
+                "media_id": favorite["media_id"],
+                "when_favorited": favorite["when_favorited"],
+                "media": dataclasses.asdict(
+                    media_hydrators[favorite["type"]](favorite["media_id"])
+                ),
+            }
+            for favorite in self._favorites.all()
+            if requested_types is None or favorite["type"] in requested_types
+        ]
+
+    def store_favorite(self, favorite_type: str, media_id: str):
+        # Check for existing favorite with this media_id
+        FavoritesQuery = Query()
+        existing_favorite = self._favorites.get(FavoritesQuery.media_id == media_id)
+
+        if existing_favorite:
+            return
+
+        # Check that favorite media_id exists
+        media_hydrators = {
+            "album": self.media.album,
+            # "artist": self.media.artist,
+            "track": self.media.track,
+        }
+
+        try:
+            media_hydrators[favorite_type](media_id)
+        except VibinNotFoundError:
+            raise VibinNotFoundError(
+                f"Could not find media id '{media_id}' for type '{favorite_type}'"
+            )
+
+        # Store favorite
+        favorite_data = Favorite(
+            type=favorite_type,
+            media_id=media_id,
+            when_favorited=time.time(),
+        )
+
+        self._favorites.insert(favorite_data.dict())
+        self._send_favorites_update()
+
+        return favorite_data
+
+    def delete_favorite(self, media_id: str):
+        FavoritesQuery = Query()
+        favorite_to_delete = self._favorites.get(FavoritesQuery.media_id == media_id)
+
+        if favorite_to_delete is None:
+            raise VibinNotFoundError()
+
+        self._favorites.remove(doc_ids=[favorite_to_delete.doc_id])
+        self._send_favorites_update()
 
     @property
     def presets(self):
