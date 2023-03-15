@@ -515,6 +515,8 @@ class Vibin:
         #     well-defined keys in some sort of device interface definition.
         #   * All streamer- and media-specific data (audience: any client which
         #     is OK with understanding device-specific data).
+        #
+        # TODO: Confusion: streamer_name/media_source_name vs. system_state()
         all_vars = {
             "streamer_name": self.streamer.name,
             "media_source_name": self.media.name,
@@ -529,8 +531,10 @@ class Vibin:
 
     @property
     def system_state(self):
+        # TODO: Confusion: streamer_name/media_source_name vs. system_state()
         return {
             "streamer": self.streamer.system_state,
+            "media": self.media.system_state,
         }
 
     @property
