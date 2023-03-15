@@ -165,6 +165,7 @@ class Streamer(metaclass=ABCMeta):
     def subscribe(self):
         pass
 
+    @property
     @abstractmethod
     def system_state(self):
         pass

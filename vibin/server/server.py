@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+import platform
 import socket
 import time
 import uuid
@@ -190,6 +191,9 @@ def server_start(
 
         return {
             "start_time": start_time,
+            "system_node": platform.node(),
+            "system_platform": platform.platform(),
+            "system_version": platform.version(),
             "clients": clients,
         }
 
@@ -633,9 +637,7 @@ def server_start(
             await websocket.send_text(
                 # TODO: Fix this hack which encforces streamer-system-status
                 #    (ignoring system_state["media_device"]).
-                self.build_message(
-                    json.dumps(vibin.system_state["streamer"]), "System"
-                )
+                self.build_message(json.dumps(vibin.system_state), "System")
             )
 
             # Send initial state to new client connection.
@@ -735,9 +737,13 @@ def server_start(
             if messageType == "System":
                 # TODO: Fix this hack. We're assuming we're getting a streamer
                 #   system update, but it might be a media_source update.
-                message["payload"] = {
-                    "streamer": data_as_dict,
-                }
+                # message["payload"] = {
+                #     "streamer": data_as_dict,
+                # }
+                #
+                # TODO UPDATE: We now ignore the incoming data and just emit a
+                #   full system_state payload.
+                message["payload"] = vibin.system_state
             elif messageType == "StateVars":
                 message["payload"] = data_as_dict
             elif messageType == "PlayState" or messageType == "Position":

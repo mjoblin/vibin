@@ -30,6 +30,12 @@ class Asset(MediaSource):
         return self._device.friendly_name
 
     @property
+    def system_state(self):
+        return {
+            "name": self._device.friendly_name,
+        }
+
+    @property
     def udn(self):
         return self._device.udn.removeprefix("uuid:")
 

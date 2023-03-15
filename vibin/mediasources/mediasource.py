@@ -17,6 +17,11 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
+    def system_state(self):
+        pass
+
+    @property
+    @abstractmethod
     def udn(self):
         pass
 
