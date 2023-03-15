@@ -26,6 +26,7 @@ setup(
     install_requires=[
         "aiofiles",
         "click",
+        "deepdiff",
         "discogs_client",
         "fastapi",
         "httpx",
