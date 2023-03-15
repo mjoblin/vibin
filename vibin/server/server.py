@@ -124,12 +124,14 @@ def server_start(
             )
 
         if resource in [
-            "current",
-            "playlists",
-            "artists",
             "albums",
-            "tracks",
+            "artists",
+            "current",
+            "favorites",
+            "playlists",
             "presets"
+            "status",
+            "tracks",
         ]:
             return FileResponse(path=Path(vibinui, "index.html"))
 
