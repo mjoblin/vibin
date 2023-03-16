@@ -8,6 +8,7 @@ import json
 import operator
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -36,6 +37,7 @@ from vibin.models import (
     Album,
     ExternalServiceLink,
     Favorite,
+    Lyrics,
     Preset,
     StoredPlaylist,
     Track,
@@ -94,6 +96,7 @@ class Vibin:
         self._activating_stored_playlist = False
 
         self._favorites = self._db.table("favorites")
+        self._lyrics = self._db.table("lyrics")
 
         # Discover devices
         logger.info("Discovering devices...")
@@ -565,6 +568,15 @@ class Vibin:
                 or (track_id is None and (artist is None or title is None)):
             return
 
+        # Check if lyrics are already stored
+        if track_id:
+            StoredLyricsQuery = Query()
+            stored_lyrics = self._lyrics.get(StoredLyricsQuery.media_id == track_id)
+
+            if stored_lyrics is not None:
+                lyrics_data = Lyrics(**stored_lyrics)
+                return lyrics_data.chunks
+
         if track_id:
             try:
                 track_info = xmltodict.parse(self.media.get_metadata(track_id))
@@ -578,11 +590,37 @@ class Vibin:
                 return None
 
         try:
-            return self._external_services["Genius"].lyrics(artist, title)
+            lyric_chunks = self._external_services["Genius"].lyrics(artist, title)
+
+            lyric_data = Lyrics(
+                media_id=track_id,
+                chunks=lyric_chunks,
+            )
+
+            self._lyrics.insert(lyric_data.dict())
+
+            return lyric_chunks
         except VibinError as e:
             logger.error(e)
 
         return None
+
+    def lyrics_search(self, search_query: str):
+        def matches_regex(values, pattern):
+            return any(
+                re.search(pattern, value, flags=re.IGNORECASE)
+                for value in values
+            )
+
+        Lyrics = Query()
+        Chunk = Query()
+
+        results = self._lyrics.search(Lyrics.chunks.any(
+            Chunk.header.search(search_query, flags=re.IGNORECASE) |
+            Chunk.body.test(matches_regex, search_query))
+        )
+
+        return results
 
     # Expect data_format to be "json", "dat", or "png"
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than
