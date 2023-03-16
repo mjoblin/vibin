@@ -25,7 +25,15 @@ from vibin import (
     VibinMissingDependencyError,
 )
 from vibin.constants import VIBIN_PORT
-from vibin.models import Album, Artist, Favorite, Preset, StoredPlaylist, Track
+from vibin.models import (
+    Album,
+    Artist,
+    Favorite,
+    LyricsQuery,
+    Preset,
+    StoredPlaylist,
+    Track,
+)
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
 
@@ -354,6 +362,15 @@ def server_start(
             raise HTTPException(status_code=404, detail="Lyrics not found")
 
         return lyrics
+
+    @vibin_app.post("/tracks/lyrics/search")
+    def track_lyrics_search(lyrics_query: LyricsQuery):
+        results = vibin.lyrics_search(lyrics_query.query)
+
+        return {
+            "query": lyrics_query.query,
+            "results": results,
+        }
 
     @vibin_app.get("/tracks/links")
     def track_links(

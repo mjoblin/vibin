@@ -6,7 +6,7 @@ import lyricsgenius
 
 from vibin import VibinError
 from vibin.external_services import ExternalService
-from vibin.models import ExternalServiceLink
+from vibin.models import ExternalServiceLink, LyricsChunk
 
 
 class Genius(ExternalService):
@@ -73,7 +73,7 @@ class Genius(ExternalService):
         return links
 
     @lru_cache
-    def lyrics(self, artist: str, track: str):
+    def lyrics(self, artist: str, track: str) -> list[LyricsChunk]:
         if not self._client:
             return None
 
@@ -152,15 +152,15 @@ class Genius(ExternalService):
             for chunk in chunks_as_arrays:
                 chunk_header = re.match(r"^\[([^\[\]]+)\]$", chunk[0])
                 if chunk_header:
-                    results.append({
-                        "header": chunk_header.group(1),
-                        "body": chunk[1:],
-                    })
+                    results.append(LyricsChunk(
+                        header=chunk_header.group(1),
+                        body=chunk[1:],
+                    ))
                 else:
-                    results.append({
-                        "header": None,
-                        "body": chunk,
-                    })
+                    results.append(LyricsChunk(
+                        header=None,
+                        body=chunk,
+                    ))
 
             return results
         except (KeyError, IndexError) as e:

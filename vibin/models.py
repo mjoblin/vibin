@@ -67,6 +67,20 @@ class Favorite(BaseModel):
     when_favorited: Optional[float]
 
 
+class LyricsChunk(BaseModel):
+    header: str
+    body: Optional[list[str]]
+
+
+class Lyrics(BaseModel):
+    media_id: str
+    chunks: list[LyricsChunk]
+
+
+class LyricsQuery(BaseModel):
+    query: str
+
+
 @dataclass
 class Preset:
     id: int
