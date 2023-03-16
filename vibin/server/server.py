@@ -113,6 +113,10 @@ def server_start(
         except RuntimeError as e:
             logger.error(f"Cannot serve UI: {e}")
 
+    @vibin_app.router.get("/", include_in_schema=False)
+    def redirect_root_to_ui():
+        return RedirectResponse("/ui", status_code=303)
+
     @vibin_app.router.get("/ui", include_in_schema=False)
     def serve_ui_root_index_html():
         if not vibinui:
@@ -137,7 +141,7 @@ def server_start(
             "current",
             "favorites",
             "playlists",
-            "presets"
+            "presets",
             "status",
             "tracks",
         ]:
@@ -321,7 +325,7 @@ def server_start(
         return vibin.media.albums
 
     @vibin_app.get("/albums/new")
-    async def albums() -> List[Album]:
+    async def albums_new() -> List[Album]:
         return vibin.media.new_albums
 
     @vibin_app.get("/albums/{album_id}")
@@ -332,7 +336,7 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums/{album_id}/tracks")
-    async def album_tracks(album_id: str) -> List[Album]:
+    async def album_tracks(album_id: str) -> List[Track]:
         return vibin.media.album_tracks(album_id)
 
     @vibin_app.get("/albums/{album_id}/links")
@@ -340,7 +344,7 @@ def server_start(
         return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/artists")
-    async def albums() -> List[Artist]:
+    async def artists() -> List[Artist]:
         return vibin.media.artists
 
     @vibin_app.get("/artists/{artist_id}")
