@@ -186,6 +186,7 @@ def server_start(
             client_ip, client_port = websocket_info["websocket"].client
 
             clients.append({
+                "id": websocket_info["id"],
                 "when_connected": websocket_info["when_connected"],
                 "ip": client_ip,
                 "port": client_port,
@@ -627,6 +628,7 @@ def server_start(
             client_ip, client_port = websocket.client
 
             connected_websockets[f"{client_ip}:{client_port}"] = {
+                "id": str(uuid.uuid4()),
                 "when_connected": time.time(),
                 "websocket": websocket,
             }
@@ -636,45 +638,55 @@ def server_start(
             )
             self.sender_task = asyncio.create_task(self.sender(websocket))
 
-            await websocket.send_text(
-                # TODO: Fix this hack which encforces streamer-system-status
-                #    (ignoring system_state["media_device"]).
-                self.build_message(json.dumps(vibin.system_state), "System")
-            )
+            # TODO: Fix this hack which encforces streamer-system-status
+            #    (ignoring system_state["media_device"]).
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.system_state),
+                "System",
+                websocket,
+            ))
 
             # Send initial state to new client connection.
-            await websocket.send_text(
-                self.build_message(json.dumps(vibin.state_vars), "StateVars")
-            )
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.state_vars),
+                "StateVars",
+                websocket,
+            ))
 
-            await websocket.send_text(
-                self.build_message(json.dumps(vibin.play_state), "PlayState")
-            )
+            await websocket.send_text(self.build_message(
+                json.dumps(vibin.play_state),
+                "PlayState",
+                websocket,
+            ))
 
             await websocket.send_text(self.build_message(
                 json.dumps(vibin.streamer.transport_active_controls()),
                 "ActiveTransportControls",
+                websocket,
             ))
 
             await websocket.send_text(self.build_message(
                 json.dumps(vibin.streamer.device_display),
                 "DeviceDisplay",
+                websocket,
             ))
 
             await websocket.send_text(self.build_message(
-                json.dumps(vibin.favorites()), "Favorites")
+                json.dumps(vibin.favorites()), "Favorites", websocket)
             )
 
             await websocket.send_text(self.build_message(
-                json.dumps(vibin.presets), "Presets")
+                json.dumps(vibin.presets), "Presets", websocket)
             )
 
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.stored_playlist_details), "StoredPlaylists")
-            )
+            await websocket.send_text(self.build_message(json.dumps(
+                vibin.stored_playlist_details),
+                "StoredPlaylists",
+                websocket,
+            ))
 
             await websocket.send_text(self.build_message(
-                json.dumps(server_status()), "VibinStatus")
+                json.dumps(server_status()), "VibinStatus", websocket)
             )
 
             # TODO: Allow the server to send a message to all connected
@@ -723,11 +735,22 @@ def server_start(
 
             return json.dumps(data_dict)
 
-        def build_message(self, data: str, messageType: str) -> str:
+        def build_message(
+                self, data: str, messageType: str, client_ws: WebSocket = None
+        ) -> str:
             data_as_dict = json.loads(data)
+
+            this_client = next(
+                (
+                    client for client in connected_websockets.values()
+                    if client["websocket"] == client_ws
+                ),
+                None
+            )
 
             message = {
                 "id": str(uuid.uuid4()),
+                "client_id": this_client["id"],
                 "time": int(time.time() * 1000),
                 "type": messageType,
             }
@@ -779,9 +802,11 @@ def server_start(
                 # TODO: All the json.loads()/dumps() down the path from the
                 #   source through the queue and into the message builder is
                 #   all a bit much -- most of it can probably be avoided.
-                await websocket.send_text(
-                    self.build_message(json.dumps(to_send_dict["data"]), to_send_dict["type"])
-                )
+                await websocket.send_text(self.build_message(
+                    json.dumps(to_send_dict["data"]),
+                    to_send_dict["type"],
+                    websocket,
+                ))
 
     @vibin_app.on_event("shutdown")
     def shutdown_event():
