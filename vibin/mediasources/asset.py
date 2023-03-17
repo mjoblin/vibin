@@ -75,7 +75,33 @@ class Asset(MediaSource):
 
     @property
     def new_albums(self) -> typing.List[Album]:
-        return self.get_path_contents(Path("New Albums"))
+        # NOTE: This could just:
+        #
+        #   return self.get_path_contents(Path("New Albums"))
+        #
+        # ... but "New Albums" returns albums with different Ids from the
+        # "All Albums" path. So after getting the New Albums, we replace each
+        # one with its equivalent from the "All Albums" list. This isn't ideal
+        # as the comparison might produce a false positive (it's possible that
+        # two distinct albums might share the same title/artist/etc).
+
+        all_albums = self.albums
+        new_albums = self.get_path_contents(Path("New Albums"))
+
+        def album_from_all(new_album):
+            for album in all_albums:
+                if (
+                        album.title == new_album.title and
+                        album.creator == new_album.creator and
+                        album.date == new_album.date and
+                        album.artist == new_album.artist and
+                        album.genre == new_album.genre
+                ):
+                    return album
+
+            return new_album
+
+        return [album_from_all(new_album) for new_album in new_albums]
 
     def album_tracks(self, album_id) -> typing.List[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
