@@ -373,7 +373,7 @@ def server_start(
 
         return {
             "query": lyrics_query.query,
-            "results": results,
+            "matches": results,
         }
 
     @vibin_app.get("/tracks/links")
