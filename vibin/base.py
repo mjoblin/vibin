@@ -620,7 +620,7 @@ class Vibin:
             Chunk.body.test(matches_regex, search_query))
         )
 
-        return results
+        return [result["media_id"] for result in results]
 
     # Expect data_format to be "json", "dat", or "png"
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than
