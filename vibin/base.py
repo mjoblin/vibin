@@ -79,26 +79,7 @@ class Vibin:
         self._add_external_service(external_services.RateYourMusic)
         self._add_external_service(external_services.Wikipedia)
 
-        # Configure app-level persistent data directory.
-        self._data_dir = Path(APP_ROOT, "_data")
-
-        try:
-            os.makedirs(self._data_dir, exist_ok=True)
-        except OSError:
-            raise VibinError(f"Cannot create data directory: {self._data_dir}")
-
-        # Configure data store.
-        # TODO: Move Stored Playlist properties to a contained dict.
-        database_file = Path(self._data_dir, "db.json")
-        self._db = TinyDB(database_file)
-        self._playlists = self._db.table("playlists")
-        self._active_stored_playlist_id = None
-        self._active_playlist_synced_with_store = False
-        self._activating_stored_playlist = False
-
-        self._favorites = self._db.table("favorites")
-        self._lyrics = self._db.table("lyrics")
-        self._links = self._db.table("links")
+        self._init_db()
 
         # Discover devices
         logger.info("Discovering devices...")
@@ -117,6 +98,27 @@ class Vibin:
         )
 
         self._check_for_active_playlist_in_store()
+
+    def _init_db(self):
+        # Configure app-level persistent data directory.
+        self._data_dir = Path(APP_ROOT, "_data")
+
+        try:
+            os.makedirs(self._data_dir, exist_ok=True)
+        except OSError:
+            raise VibinError(f"Cannot create data directory: {self._data_dir}")
+
+        # Configure data store.
+        self._db_file = Path(self._data_dir, "db.json")
+        self._db = TinyDB(self._db_file)
+        self._playlists = self._db.table("playlists")
+        self._active_stored_playlist_id = None
+        self._active_playlist_synced_with_store = False
+        self._activating_stored_playlist = False
+
+        self._favorites = self._db.table("favorites")
+        self._lyrics = self._db.table("lyrics")
+        self._links = self._db.table("links")
 
     def _check_for_active_playlist_in_store(
             self, call_handler_on_sync_loss=True, no_active_if_not_found=False
@@ -996,3 +998,13 @@ class Vibin:
     @property
     def presets(self):
         return self.streamer.presets
+
+    def db_get(self):
+        with open(self._db_file, "r") as fh:
+            return json.loads(fh.read())
+
+    def db_set(self, data):
+        with open(self._db_file, "w") as fh:
+            fh.write(json.dumps(data))
+
+        self._init_db()

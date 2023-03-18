@@ -631,6 +631,26 @@ def server_start(
     async def device_display() -> dict:
         return vibin.device_display
 
+    @vibin_app.get("/db")
+    async def db_get():
+        return vibin.db_get()
+
+    @vibin_app.put("/db")
+    async def db_set(data: dict):
+        # TODO: This takes a user-provided chunk of data and writes it to disk.
+        #   This could be exploited for much harm if used with ill intent.
+        try:
+            json.dumps(data)
+        except (json.decoder.JSONDecodeError, TypeError) as e:
+            # TODO: This could do more validation to ensure the provided data
+            #   is TinyDB-compliant.
+            raise HTTPException(
+                status_code=400,
+                detail=f"Provided payload is not valid JSON: {e}",
+            )
+
+        return vibin.db_set(data)
+
     @vibin_app.api_route(
         UPNP_EVENTS_BASE_ROUTE + "/{service}",
         methods=["NOTIFY"],
