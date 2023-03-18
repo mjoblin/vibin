@@ -434,6 +434,22 @@ class Vibin:
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
+    def play_favorite_albums(self):
+        self.streamer.playlist_clear()
+
+        for album in self.favorites(["album"]):
+            self.modify_playlist(album["media_id"], "APPEND")
+
+        self.streamer.play_playlist_index(0)
+
+    def play_favorite_tracks(self):
+        self.streamer.playlist_clear()
+
+        for track in self.favorites(["track"]):
+            self.modify_playlist(track["media_id"], "APPEND")
+
+        self.streamer.play_playlist_index(0)
+
     def modify_playlist(
             self,
             id: str,
