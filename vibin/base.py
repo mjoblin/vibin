@@ -37,6 +37,7 @@ from vibin.models import (
     Album,
     ExternalServiceLink,
     Favorite,
+    Links,
     Lyrics,
     Preset,
     StoredPlaylist,
@@ -97,6 +98,7 @@ class Vibin:
 
         self._favorites = self._db.table("favorites")
         self._lyrics = self._db.table("lyrics")
+        self._links = self._db.table("links")
 
         # Discover devices
         logger.info("Discovering devices...")
@@ -227,6 +229,15 @@ class Vibin:
         if len(self._external_services) == 0:
             return {}
 
+        # Check if links are already stored
+        if media_id:
+            StoredLinksQuery = Query()
+            stored_links = self._links.get(StoredLinksQuery.media_id == media_id)
+
+            if stored_links is not None:
+                links_data = Links(**stored_links)
+                return links_data.links
+
         results = {}
 
         # TODO: Have errors raise an exception which can be passed back to the
@@ -296,6 +307,15 @@ class Vibin:
             logger.error(
                 f"Could not convert XML to JSON for media item: {media_id}: {e}"
             )
+
+        if media_id:
+            # Persist to local data store.
+            link_data = Links(
+                media_id=media_id,
+                links=results,
+            )
+
+            self._links.insert(link_data.dict())
 
         return results
 
@@ -568,16 +588,24 @@ class Vibin:
                 or (track_id is None and (artist is None or title is None)):
             return
 
+        def storage_id(track_id, artist, title) -> str:
+            if track_id:
+                return track_id
+
+            return f"{artist}::{title}"
+
         # Check if lyrics are already stored
-        if track_id:
-            StoredLyricsQuery = Query()
-            stored_lyrics = self._lyrics.get(StoredLyricsQuery.media_id == track_id)
+        StoredLyricsQuery = Query()
+        stored_lyrics = self._lyrics.get(
+            StoredLyricsQuery.lyrics_id == storage_id(track_id, artist, title)
+        )
 
-            if stored_lyrics is not None:
-                lyrics_data = Lyrics(**stored_lyrics)
-                return lyrics_data.chunks
+        if stored_lyrics is not None:
+            lyrics_data = Lyrics(**stored_lyrics)
+            return lyrics_data.chunks
 
         if track_id:
+            # Extract artist and title from the media metadata
             try:
                 track_info = xmltodict.parse(self.media.get_metadata(track_id))
 
@@ -590,9 +618,12 @@ class Vibin:
                 return None
 
         try:
+            # Get the lyrics for the artist/title from Genius, and persist to
+            # the local store
             lyric_chunks = self._external_services["Genius"].lyrics(artist, title)
 
             lyric_data = Lyrics(
+                lyrics_id=storage_id(track_id, artist, title),
                 media_id=track_id,
                 chunks=lyric_chunks,
             )
@@ -620,7 +651,16 @@ class Vibin:
             Chunk.body.test(matches_regex, search_query))
         )
 
-        return [result["media_id"] for result in results]
+        # Only return stored lyrics which include a media id. This is because
+        # we also store lyrics from sources like Airplay and don't want to
+        # return those when doing a lyrics search (the search context is
+        # intended to be local media only).
+
+        return [
+            result["media_id"]
+            for result in results
+            if result["media_id"] is not None
+        ]
 
     # Expect data_format to be "json", "dat", or "png"
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than

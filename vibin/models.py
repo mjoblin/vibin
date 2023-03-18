@@ -42,8 +42,7 @@ class Track:
     original_track_number: str
 
 
-@dataclass
-class ExternalServiceLink:
+class ExternalServiceLink(BaseModel):
     type: str
     name: str
     url: str
@@ -72,13 +71,21 @@ class LyricsChunk(BaseModel):
     body: Optional[list[str]]
 
 
+# TODO: Consider renaming to PersistedLyrics
 class Lyrics(BaseModel):
+    lyrics_id: str
     media_id: Optional[str]
     chunks: list[LyricsChunk]
 
 
 class LyricsQuery(BaseModel):
     query: str
+
+
+# TODO: Consider renaming to PersistedLinks
+class Links(BaseModel):
+    media_id: Optional[str]
+    links: dict[str, list[ExternalServiceLink]]
 
 
 @dataclass
