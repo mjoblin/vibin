@@ -490,6 +490,14 @@ def server_start(
     async def playlist_play_index(index: int):
         return vibin.streamer.play_playlist_index(index)
 
+    @vibin_app.post("/playlist/play/favorites/albums")
+    async def playlist_play_favorite_albums():
+        return vibin.play_favorite_albums()
+
+    @vibin_app.post("/playlist/play/favorites/tracks")
+    async def playlist_play_favorite_albums():
+        return vibin.play_favorite_tracks()
+
     @vibin_app.post("/playlist/clear")
     async def playlist_clear():
         return vibin.streamer.playlist_clear()
