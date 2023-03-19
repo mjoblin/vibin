@@ -140,7 +140,7 @@ def server_start(
             "artists",
             "current",
             "favorites",
-            "playlists",
+            "playlist",
             "presets",
             "status",
             "tracks",
