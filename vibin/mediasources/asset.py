@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 import typing
 import upnpclient
@@ -15,8 +16,6 @@ class Asset(MediaSource):
 
     def __init__(self, device):
         self._device = device
-
-        self._albums: typing.Optional[dict[str, Album]] = None
 
         self._media_namespaces = {
             "didl": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
@@ -38,6 +37,12 @@ class Asset(MediaSource):
     @property
     def udn(self):
         return self._device.udn.removeprefix("uuid:")
+
+    def clear_caches(self):
+        self._albums.cache_clear()
+        self._new_albums.cache_clear()
+        self._artists.cache_clear()
+        self._tracks.cache_clear()
 
     def get_path_contents(self, path):
         parent_id = "0"
@@ -69,12 +74,16 @@ class Asset(MediaSource):
 
         return contents
 
-    @property
-    def albums(self) -> typing.List[Album]:
+    @lru_cache
+    def _albums(self) -> typing.List[Album]:
         return self.get_path_contents(Path("Album", "[All Albums]"))
 
     @property
-    def new_albums(self) -> typing.List[Album]:
+    def albums(self) -> typing.List[Album]:
+        return self._albums()
+
+    @lru_cache
+    def _new_albums(self) -> typing.List[Album]:
         # NOTE: This could just:
         #
         #   return self.get_path_contents(Path("New Albums"))
@@ -103,6 +112,10 @@ class Asset(MediaSource):
 
         return [album_from_all(new_album) for new_album in new_albums]
 
+    @property
+    def new_albums(self) -> typing.List[Album]:
+        return self._new_albums()
+
     def album_tracks(self, album_id) -> typing.List[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
         parsed_metadata = untangle.parse(album_tracks_xml)
@@ -112,9 +125,13 @@ class Asset(MediaSource):
             for item in parsed_metadata.DIDL_Lite.item
         ]
 
-    @property
-    def artists(self) -> typing.List[Album]:
+    @lru_cache
+    def _artists(self) -> typing.List[Artist]:
         return self.get_path_contents(Path("Artist", "[All Artists]"))
+
+    @property
+    def artists(self) -> typing.List[Artist]:
+        return self._artists()
 
     def artist(self, artist_id: str) -> Artist:
         try:
@@ -122,14 +139,18 @@ class Asset(MediaSource):
         except VibinNotFoundError as e:
             raise VibinNotFoundError(f"Could not find Artist with id '{artist_id}'")
 
-    @property
-    def tracks(self) -> typing.List[Track]:
+    @lru_cache
+    def _tracks(self) -> typing.List[Track]:
         tracks: list[Track] = []
 
         for album in self.albums:
             tracks.extend(self.album_tracks(album.id))
 
         return tracks
+
+    @property
+    def tracks(self) -> typing.List[Track]:
+        return self._tracks()
 
     def _folder_from_container(self, container):
         return {

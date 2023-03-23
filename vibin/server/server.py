@@ -216,6 +216,10 @@ def server_start(
     def vibin_status():
         return server_status()
 
+    @vibin_app.post("/vibin/clear_media_caches")
+    def vibin_clear_media_caches():
+        return vibin.media.clear_caches()
+
     # TODO: Do we want /system endpoints for both streamer and media?
     @vibin_app.post("/system/power/toggle")
     async def system_power_toggle():

@@ -67,7 +67,7 @@ class Favorite(BaseModel):
 
 
 class LyricsChunk(BaseModel):
-    header: str
+    header: Optional[str]
     body: Optional[list[str]]
 
 

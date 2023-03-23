@@ -26,6 +26,10 @@ class MediaSource(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def clear_caches(self):
+        pass
+
+    @abstractmethod
     def get_path_contents(self, path):
         pass
 
