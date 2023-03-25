@@ -642,7 +642,10 @@ class Vibin:
 
         try:
             # Get the lyrics for the artist/title from Genius, and persist to
-            # the local store
+            # the local store. Missing lyrics are still persisted, just as an
+            # empty chunk list -- this is done to prevent always looking for
+            # lyrics every time the track is played (the caller can always
+            # manually request a retry by specifying update_cache=True).
             lyric_chunks = self._external_services["Genius"].lyrics(artist, title)
 
             lyric_data = Lyrics(

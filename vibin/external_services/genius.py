@@ -71,12 +71,9 @@ class Genius(ExternalService):
 
         return links
 
-    def lyrics(self, artist: str, track: str) -> list[LyricsChunk]:
+    def lyrics(self, artist: str, track: str) -> Optional[list[LyricsChunk]]:
         if not self._client:
             return None
-
-        if not self._client:
-            return
 
         try:
             song = self._client.search_song(artist=artist, title=track)
