@@ -25,7 +25,6 @@ class Genius(ExternalService):
     def name(self) -> str:
         return self.service_name
 
-    @lru_cache
     def links(
             self,
             artist: Optional[str] = None,
@@ -72,7 +71,6 @@ class Genius(ExternalService):
 
         return links
 
-    @lru_cache
     def lyrics(self, artist: str, track: str) -> list[LyricsChunk]:
         if not self._client:
             return None

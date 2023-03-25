@@ -75,6 +75,7 @@ class LyricsChunk(BaseModel):
 class Lyrics(BaseModel):
     lyrics_id: str
     media_id: Optional[str]
+    is_valid: bool
     chunks: list[LyricsChunk]
 
 
