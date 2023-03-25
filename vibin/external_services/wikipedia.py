@@ -20,7 +20,6 @@ class Wikipedia(ExternalService):
     def name(self) -> str:
         return self.service_name
 
-    @lru_cache
     def links(
             self,
             artist: Optional[str] = None,

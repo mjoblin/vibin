@@ -363,13 +363,24 @@ def server_start(
         return vibin.media.tracks
 
     @vibin_app.get("/tracks/lyrics")
-    def track_lyrics(artist: str, title: str):
-        lyrics = vibin.lyrics_for_track(artist=artist, title=title)
+    def track_lyrics(
+            artist: str, title: str, update_cache: Optional[bool] = False
+    ):
+        lyrics = vibin.lyrics_for_track(
+            artist=artist, title=title, update_cache=update_cache
+        )
 
         if lyrics is None:
             raise HTTPException(status_code=404, detail="Lyrics not found")
 
         return lyrics
+
+    @vibin_app.post("/tracks/lyrics/validate")
+    def track_lyrics_validate(artist: str, title: str, is_valid: bool):
+        lyrics = track_lyrics(artist=artist, title=title)
+        vibin.lyrics_valid(lyrics_id=lyrics["id"], is_valid=is_valid)
+
+        return track_lyrics(artist=artist, title=title)
 
     @vibin_app.post("/tracks/lyrics/search")
     def track_lyrics_search(lyrics_query: LyricsQuery):
@@ -399,13 +410,24 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
-    def track_lyrics_by_track_id(track_id: str):
-        lyrics = vibin.lyrics_for_track(track_id=track_id)
+    def track_lyrics_by_track_id(
+            track_id: str, update_cache: Optional[bool] = False
+    ):
+        lyrics = vibin.lyrics_for_track(
+            track_id=track_id, update_cache=update_cache
+        )
 
         if lyrics is None:
             raise HTTPException(status_code=404, detail="Lyrics not found")
 
         return lyrics
+
+    @vibin_app.post("/tracks/{track_id}/lyrics/validate")
+    def track_lyrics_by_track_id_validate(track_id: str, is_valid: bool):
+        lyrics = track_lyrics_by_track_id(track_id)
+        vibin.lyrics_valid(lyrics_id=lyrics.lyrics_id, is_valid=is_valid)
+
+        return track_lyrics_by_track_id(track_id)
 
     @vibin_app.get("/tracks/{track_id}/waveform.png")
     def track_waveform_png(

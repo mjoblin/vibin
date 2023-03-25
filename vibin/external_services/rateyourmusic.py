@@ -22,7 +22,6 @@ class RateYourMusic(ExternalService):
     def _rym_friendly_path(self, path: str) -> str:
         return path.lower().replace(" ", "-")
 
-    @lru_cache
     def links(
             self,
             artist: Optional[str] = None,
@@ -61,6 +60,5 @@ class RateYourMusic(ExternalService):
 
         return links
 
-    @lru_cache
     def descriptors(self, artist: str, album: str):
         return []

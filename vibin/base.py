@@ -601,7 +601,9 @@ class Vibin:
     #   passed back to the client on the same Vibin->Client websocket
     #   connection, perhaps with different message type identifiers.
 
-    def lyrics_for_track(self, *, track_id=None, artist=None, title=None):
+    def lyrics_for_track(
+            self, update_cache=False, *, track_id=None, artist=None, title=None
+    ):
         if ("Genius" not in self._external_services.keys()) \
                 or (track_id is None and (artist is None or title is None)):
             return
@@ -619,8 +621,11 @@ class Vibin:
         )
 
         if stored_lyrics is not None:
-            lyrics_data = Lyrics(**stored_lyrics)
-            return lyrics_data.chunks
+            if update_cache:
+                self._lyrics.remove(doc_ids=[stored_lyrics.doc_id])
+            else:
+                lyrics_data = Lyrics(**stored_lyrics)
+                return lyrics_data
 
         if track_id:
             # Extract artist and title from the media metadata
@@ -643,16 +648,28 @@ class Vibin:
             lyric_data = Lyrics(
                 lyrics_id=storage_id(track_id, artist, title),
                 media_id=track_id,
-                chunks=lyric_chunks,
+                is_valid=True,
+                chunks=lyric_chunks if lyric_chunks is not None else [],
             )
 
             self._lyrics.insert(lyric_data.dict())
 
-            return lyric_chunks
+            return lyric_data
         except VibinError as e:
             logger.error(e)
 
         return None
+
+    def lyrics_valid(self, lyrics_id: str, *, is_valid: bool = True):
+        StoredLyricsQuery = Query()
+        stored_lyrics = self._lyrics.get(StoredLyricsQuery.lyrics_id == lyrics_id)
+
+        if stored_lyrics is None:
+            raise VibinNotFoundError(f"Could not find lyrics id: {lyrics_id}")
+
+        self._lyrics.update(
+            {"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id]
+        )
 
     def lyrics_search(self, search_query: str):
         def matches_regex(values, pattern):
