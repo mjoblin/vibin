@@ -30,6 +30,7 @@ from vibin.models import (
     Artist,
     Favorite,
     LyricsQuery,
+    PlaylistModifyPayload,
     Preset,
     StoredPlaylist,
     Track,
@@ -500,8 +501,18 @@ def server_start(
     async def playlist():
         return vibin.streamer.playlist()
 
+    @vibin_app.post("/playlist/modify")
+    async def playlist_modify_multiple_entries(payload: PlaylistModifyPayload):
+        if payload.action != "REPLACE":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported action: {payload.action}. Supported actions: REPLACE.",
+            )
+
+        return vibin.play_ids(payload.media_ids)
+
     @vibin_app.post("/playlist/modify/{media_id}")
-    async def playlist_modify(
+    async def playlist_modify_single_entry(
             media_id: str,
             action: str = "REPLACE",
             insert_index: Optional[int] = None,
