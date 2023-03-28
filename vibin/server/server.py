@@ -509,7 +509,7 @@ def server_start(
                 detail=f"Unsupported action: {payload.action}. Supported actions: REPLACE.",
             )
 
-        return vibin.play_ids(payload.media_ids)
+        return vibin.play_ids(payload.media_ids, max_count=payload.max_count)
 
     @vibin_app.post("/playlist/modify/{media_id}")
     async def playlist_modify_single_entry(
@@ -528,12 +528,12 @@ def server_start(
         return vibin.streamer.play_playlist_index(index)
 
     @vibin_app.post("/playlist/play/favorites/albums")
-    async def playlist_play_favorite_albums():
-        return vibin.play_favorite_albums()
+    async def playlist_play_favorite_albums(max_count: int = 10):
+        return vibin.play_favorite_albums(max_count=max_count)
 
     @vibin_app.post("/playlist/play/favorites/tracks")
-    async def playlist_play_favorite_albums():
-        return vibin.play_favorite_tracks()
+    async def playlist_play_favorite_tracks(max_count: int = 100):
+        return vibin.play_favorite_tracks(max_count=max_count)
 
     @vibin_app.post("/playlist/clear")
     async def playlist_clear():

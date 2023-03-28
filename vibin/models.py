@@ -105,4 +105,5 @@ MediaId = str
 
 class PlaylistModifyPayload(BaseModel):
     action: str
+    max_count: Optional[int]
     media_ids: list[MediaId]
