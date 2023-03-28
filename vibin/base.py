@@ -436,10 +436,11 @@ class Vibin:
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
-    def play_ids(self, media_ids):
+    def play_ids(self, media_ids, max_count: int = 10):
         self.streamer.playlist_clear()
 
-        for media_id in media_ids:
+        # TODO: Consider adding a hard max_count limit
+        for media_id in media_ids[:max_count]:
             self.modify_playlist(media_id, "APPEND")
 
         if len(media_ids) > 0:
@@ -448,18 +449,20 @@ class Vibin:
         else:
             self._last_played_id = None
 
-    def play_favorite_albums(self):
+    def play_favorite_albums(self, max_count: int = 10):
         self.streamer.playlist_clear()
 
-        for album in self.favorites(["album"]):
+        # TODO: Consider adding a hard max_count limit
+        for album in self.favorites(["album"])[:max_count]:
             self.modify_playlist(album["media_id"], "APPEND")
 
         self.streamer.play_playlist_index(0)
 
-    def play_favorite_tracks(self):
+    def play_favorite_tracks(self, max_count: int = 100):
         self.streamer.playlist_clear()
 
-        for track in self.favorites(["track"]):
+        # TODO: Consider adding a hard max_count limit
+        for track in self.favorites(["track"])[:max_count]:
             self.modify_playlist(track["media_id"], "APPEND")
 
         self.streamer.play_playlist_index(0)
