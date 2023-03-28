@@ -436,6 +436,18 @@ class Vibin:
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
+    def play_ids(self, media_ids):
+        self.streamer.playlist_clear()
+
+        for media_id in media_ids:
+            self.modify_playlist(media_id, "APPEND")
+
+        if len(media_ids) > 0:
+            self.streamer.play_playlist_index(0)
+            self._last_played_id = media_ids[0]
+        else:
+            self._last_played_id = None
+
     def play_favorite_albums(self):
         self.streamer.playlist_clear()
 

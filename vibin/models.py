@@ -98,3 +98,11 @@ class Preset:
     state: str
     is_playing: bool
     art_url: str
+
+
+MediaId = str
+
+
+class PlaylistModifyPayload(BaseModel):
+    action: str
+    media_ids: list[MediaId]
