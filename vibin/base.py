@@ -79,6 +79,8 @@ class Vibin:
         self._add_external_service(external_services.RateYourMusic)
         self._add_external_service(external_services.Wikipedia)
 
+        self._set_playlist_not_saved(send_update=False)
+
         self._init_db()
 
         # Discover devices
@@ -99,6 +101,14 @@ class Vibin:
 
         self._check_for_active_playlist_in_store()
 
+    def _set_playlist_not_saved(self, send_update=True):
+        self._active_stored_playlist_id = None
+        self._active_playlist_synced_with_store = False
+        self._activating_stored_playlist = False
+
+        if send_update:
+            self._send_stored_playlists_update()
+
     def _init_db(self):
         # Configure app-level persistent data directory.
         self._data_dir = Path(APP_ROOT, "_data")
@@ -112,10 +122,6 @@ class Vibin:
         self._db_file = Path(self._data_dir, "db.json")
         self._db = TinyDB(self._db_file)
         self._playlists = self._db.table("playlists")
-        self._active_stored_playlist_id = None
-        self._active_playlist_synced_with_store = False
-        self._activating_stored_playlist = False
-
         self._favorites = self._db.table("favorites")
         self._lyrics = self._db.table("lyrics")
         self._links = self._db.table("links")
@@ -127,10 +133,7 @@ class Vibin:
         streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
 
         if len(streamer_playlist) <= 0:
-            self._active_stored_playlist_id = None
-            self._active_playlist_synced_with_store = False
-            self._send_stored_playlists_update()
-
+            self._set_playlist_not_saved()
             return
 
         # See if there's a stored playlist which matches the currently-active
@@ -474,9 +477,7 @@ class Vibin:
             insert_index: Optional[int] = None,
     ):
         self.streamer.play_metadata(self.media.get_metadata(id), action, insert_index)
-
-        if action == "REPLACE":
-            self._check_for_active_playlist_in_store(no_active_if_not_found=True)
+        self._set_playlist_not_saved()
 
     def pause(self):
         try:
@@ -827,10 +828,7 @@ class Vibin:
     # TODO: Should _on_playlist_modified receive some information about the
     #   modification.
     def _on_playlist_modified(self):
-        if self.streamer:
-            self._check_for_active_playlist_in_store(
-                call_handler_on_sync_loss=False
-            )
+        pass
 
     def shutdown(self):
         logger.info("Vibin is shutting down")
