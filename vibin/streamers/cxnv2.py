@@ -1125,8 +1125,9 @@ class CXNv2(Streamer):
                 if source["id"] == source_id
             ][0]
         except (IndexError, KeyError):
+            self._vibin_vars["current_audio_source"] = None
             logger.error(
-                f"Could not determine current audio source from id '{source_id}'"
+                f"Could not determine current audio source from id '{source_id}', setting to None"
             )
 
     def _set_current_playlist(self):
