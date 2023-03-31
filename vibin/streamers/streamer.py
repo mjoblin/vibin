@@ -70,7 +70,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist(self, call_handler_on_sync_loss=True):
+    def playlist(self):
         pass
 
     @abstractmethod

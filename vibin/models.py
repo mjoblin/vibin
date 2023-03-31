@@ -103,6 +103,13 @@ class Preset:
 MediaId = str
 
 
+@dataclass
+class StoredPlaylistStatus:
+    active_id: Optional[str] = None
+    is_active_synced_with_store: bool = False
+    is_activating_new_playlist: bool = False
+
+
 class PlaylistModifyPayload(BaseModel):
     action: str
     max_count: Optional[int]

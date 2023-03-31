@@ -565,7 +565,8 @@ class CXNv2(Streamer):
             return []
 
     # TODO: Define PlaylistEntry and Playlist types
-    def playlist(self, call_handler_on_sync_loss=True):
+    # def playlist(self, call_handler_on_sync_loss=True):
+    def playlist(self):
         playlist_entry_ids = self._playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
@@ -631,12 +632,14 @@ class CXNv2(Streamer):
         active_playlist_media_ids = \
             [entry["trackMediaId"] for entry in results]
 
-        if call_handler_on_sync_loss and \
-                cached_playlist_media_ids != active_playlist_media_ids:
+        # if call_handler_on_sync_loss and \
+        #         cached_playlist_media_ids != active_playlist_media_ids:
             # NOTE: All changes to the active playlist should be detected here,
             #   regardless of where they originated (a Vibin client, another
             #   app like the StreamMagic iOS app, etc).
-            self._on_playlist_modified()
+
+        if cached_playlist_media_ids != active_playlist_media_ids:
+            self._on_playlist_modified(results)
 
         self._cached_playlist = results
 
@@ -1052,11 +1055,12 @@ class CXNv2(Streamer):
     def _id_array_event_handler(
             self, service_name: ServiceName, element: etree.Element
     ):
-        id_array = element.text
+        if service_name == "PlaylistExtension":
+            id_array = element.text
 
-        if id_array != self._playlist_id_array:
-            self._playlist_id_array = id_array
-            self._set_current_playlist()
+            if id_array != self._playlist_id_array:
+                self._playlist_id_array = id_array
+                self._set_current_playlist()
 
     def _current_playlist_track_id_event_handler(
             self, service_name: ServiceName, element: etree.Element
@@ -1131,8 +1135,8 @@ class CXNv2(Streamer):
             )
 
     def _set_current_playlist(self):
-        if self._ignore_playlist_updates:
-            return
+        # if self._ignore_playlist_updates:
+        #     return
 
         try:
             self._vibin_vars["current_playlist"] = self.playlist()
