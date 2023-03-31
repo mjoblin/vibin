@@ -131,17 +131,10 @@ class Vibin:
         self._db_file = Path(self._data_dir, "db.json")
         self._db = TinyDB(self._db_file)
         self._playlists = self._db.table("playlists")
-        # self._active_stored_playlist_id = None
-        # self._active_playlist_synced_with_store = False
-        # self._activating_stored_playlist = False
-
         self._favorites = self._db.table("favorites")
         self._lyrics = self._db.table("lyrics")
         self._links = self._db.table("links")
 
-    # def _check_for_active_playlist_in_store(
-    #         self, call_handler_on_sync_loss=True, no_active_if_not_found=False
-    # ):
     def _check_for_active_playlist_in_store(self):
         # See if the current streamer playlist matches a stored playlist
         # streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
@@ -183,7 +176,6 @@ class Vibin:
             self._reset_stored_playlist_status(send_update=False)
             self._cached_stored_playlist = None
 
-        logger.info(f"PLAYLIST STORE CHECK: id:{self._stored_playlist_status.active_id} sync:{self._stored_playlist_status.is_active_synced_with_store}")
         self._send_stored_playlists_update()
 
     def _add_external_service(self, service_class, token_env_var=None):
@@ -507,7 +499,6 @@ class Vibin:
 
         if action == "REPLACE":
             self._reset_stored_playlist_status(send_update=True)
-            # self._check_for_active_playlist_in_store(no_active_if_not_found=True)
 
     def pause(self):
         try:
@@ -635,12 +626,12 @@ class Vibin:
     @property
     def stored_playlist_details(self):
         return {
-            # "active_stored_playlist_id": self._active_stored_playlist_id,
-            # "active_synced_with_store": self._active_playlist_synced_with_store,
-            # "activating_stored_playlist": self._activating_stored_playlist,
-            "active_stored_playlist_id": self._stored_playlist_status.active_id,
-            "active_synced_with_store": self._stored_playlist_status.is_active_synced_with_store,
-            "activating_stored_playlist": self._stored_playlist_status.is_activating_new_playlist,
+            "active_stored_playlist_id":
+                self._stored_playlist_status.active_id,
+            "active_synced_with_store":
+                self._stored_playlist_status.is_active_synced_with_store,
+            "activating_stored_playlist":
+                self._stored_playlist_status.is_activating_new_playlist,
             "stored_playlists": self._playlists.all(),
         }
 
@@ -860,32 +851,19 @@ class Vibin:
 
     def _streamer_playlist_matches_stored(self, streamer_playlist):
         if not self._cached_stored_playlist:
-            logger.info("NO CACHED STORED PLAYLIST")
             return False
 
         streamer_playlist_ids = [entry["trackMediaId"] for entry in streamer_playlist]
         stored_playlist_ids = self._cached_stored_playlist.entry_ids
 
-        logger.info(f"STREAMER: {[entry['trackMediaId'] for entry in streamer_playlist]}")
-        logger.info(f"STORED: {stored_playlist_ids}")
-
         return streamer_playlist_ids == stored_playlist_ids
 
-    # TODO: Should _on_playlist_modified receive some information about the
-    #   modification.
     def _on_playlist_modified(self, playlist_entries):
-        logger.info("GOT PLAYLIST UPDATE")
-        # if self.streamer:
         if (
                 not self._ignore_playlist_updates
                 and self._stored_playlist_status.active_id
                 and self.streamer
         ):
-            logger.info("NOT IGNORING")
-            # self._check_for_active_playlist_in_store(
-            #     call_handler_on_sync_loss=False
-            # )
-
             # The playlist has been modified. If a stored playlist is active
             # then compare this playlist against the stored playlist and
             # set the status appropriately. The goal here is to ensure that
@@ -893,8 +871,17 @@ class Vibin:
             # matching the stored playlist (which can happen during playlist
             # editing when entries are moved, deleted, added, etc).
 
+            # NOTE:
+            #
+            # If Vibin is tracking an active stored playlist, and another app
+            # replaces the streamer playlist, then Vibin will treat that
+            # replacement as an *update to the active stored playlist* rather
+            # than a "replace playlist and no longer consider this an active
+            # stored playlist" action. The playlist changes won't actually be
+            # persisted unless the user requests it, but the behavior might
+            # feel inconsistent.
+
             if self._stored_playlist_status.active_id:
-                logger.info(f"PLAYLIST SYNCED: {self._streamer_playlist_matches_stored(playlist_entries)}")
                 prior_sync_state = self._stored_playlist_status.is_active_synced_with_store
 
                 self._stored_playlist_status.is_active_synced_with_store = \
@@ -920,10 +907,7 @@ class Vibin:
         return self._playlists.get(PlaylistQuery.id == playlist_id)
 
     def set_current_playlist(self, playlist_id: str) -> StoredPlaylist:
-        # self._activating_stored_playlist = True
         self._reset_stored_playlist_status(is_activating=True, send_update=True)
-
-        # self._send_stored_playlists_update()
 
         PlaylistQuery = Query()
         playlist = self._playlists.get(PlaylistQuery.id == playlist_id)
@@ -936,7 +920,6 @@ class Vibin:
 
         self.streamer.playlist_clear()
 
-        # self.streamer.ignore_playlist_updates(True)
         self._ignore_playlist_updates = True
 
         for entry_id in playlist_data.entry_ids:
@@ -944,7 +927,6 @@ class Vibin:
                 self.media.get_metadata(entry_id), action="APPEND"
             )
 
-        # self.streamer.ignore_playlist_updates(False)
         self._ignore_playlist_updates = False
 
         self._reset_stored_playlist_status(
@@ -953,12 +935,6 @@ class Vibin:
             is_activating=False,
             send_update=True
         )
-
-        # self._active_stored_playlist_id = playlist_id
-        # self._active_playlist_synced_with_store = True
-        # self._activating_stored_playlist = False
-        #
-        # self._send_stored_playlists_update()
 
         return StoredPlaylist(**playlist)
 
@@ -971,7 +947,6 @@ class Vibin:
         now = time.time()
         new_playlist_id = str(uuid.uuid4())
 
-        # if self._active_stored_playlist_id is None or replace is False:
         if self._stored_playlist_status.active_id is None or replace is False:
             # Brand new stored playlist
             playlist_data = StoredPlaylist(
@@ -983,7 +958,6 @@ class Vibin:
             )
 
             self._playlists.insert(asdict(playlist_data))
-            # self._active_stored_playlist_id = new_playlist_id
             self._cached_stored_playlist = playlist_data
 
             self._reset_stored_playlist_status(
@@ -1008,7 +982,6 @@ class Vibin:
 
             try:
                 doc_id = self._playlists.update(
-                    # updates, PlaylistQuery.id == self._active_stored_playlist_id
                     updates, PlaylistQuery.id == self._stored_playlist_status.active_id
                 )[0]
 
@@ -1023,7 +996,6 @@ class Vibin:
                 )
 
                 raise VibinError(
-                    # f"Could not update Playlist Id: {self._active_stored_playlist_id}"
                     f"Could not update Playlist Id: {self._stored_playlist_status.active_id}"
                 )
 
@@ -1033,9 +1005,6 @@ class Vibin:
                 is_activating=False,
                 send_update=True,
             )
-
-        # self._active_playlist_synced_with_store = True
-        # self._send_stored_playlists_update()
 
         return playlist_data
 
