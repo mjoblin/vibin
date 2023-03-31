@@ -1,5 +1,6 @@
 import concurrent.futures
 import dataclasses
+import logging
 from dataclasses import asdict
 import uuid
 from functools import lru_cache
@@ -41,6 +42,7 @@ from vibin.models import (
     Lyrics,
     Preset,
     StoredPlaylist,
+    StoredPlaylistStatus,
     Track,
 )
 import vibin.streamers as streamers
@@ -79,8 +81,9 @@ class Vibin:
         self._add_external_service(external_services.RateYourMusic)
         self._add_external_service(external_services.Wikipedia)
 
-        self._set_playlist_not_saved(send_update=False)
-
+        self._stored_playlist_status = StoredPlaylistStatus()
+        self._ignore_playlist_updates = False
+        self._cached_stored_playlist: Optional[StoredPlaylist] = None
         self._init_db()
 
         # Discover devices
@@ -101,10 +104,16 @@ class Vibin:
 
         self._check_for_active_playlist_in_store()
 
-    def _set_playlist_not_saved(self, send_update=True):
-        self._active_stored_playlist_id = None
-        self._active_playlist_synced_with_store = False
-        self._activating_stored_playlist = False
+    def _reset_stored_playlist_status(
+            self,
+            active_id=None,
+            is_synced=False,
+            is_activating=False,
+            send_update=False,
+    ):
+        self._stored_playlist_status.active_id = active_id
+        self._stored_playlist_status.is_active_synced_with_store = is_synced
+        self._stored_playlist_status.is_activating_new_playlist = is_activating
 
         if send_update:
             self._send_stored_playlists_update()
@@ -126,14 +135,15 @@ class Vibin:
         self._lyrics = self._db.table("lyrics")
         self._links = self._db.table("links")
 
-    def _check_for_active_playlist_in_store(
-            self, call_handler_on_sync_loss=True, no_active_if_not_found=False
-    ):
+    def _check_for_active_playlist_in_store(self):
         # See if the current streamer playlist matches a stored playlist
-        streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
+        # streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
+        streamer_playlist = self.streamer.playlist()
 
         if len(streamer_playlist) <= 0:
-            self._set_playlist_not_saved()
+            # self._active_stored_playlist_id = None
+            # self._active_playlist_synced_with_store = False
+            self._reset_stored_playlist_status(send_update=True)
             return
 
         # See if there's a stored playlist which matches the currently-active
@@ -153,13 +163,18 @@ class Vibin:
                 if playlist.entry_ids == active_playlist_media_ids
             ], key=operator.attrgetter("updated"), reverse=True)[0]
 
-            self._active_stored_playlist_id = stored_playlist_matching_active.id
-            self._active_playlist_synced_with_store = True
+            # self._active_stored_playlist_id = stored_playlist_matching_active.id
+            # self._active_playlist_synced_with_store = True
+            self._stored_playlist_status.active_id = stored_playlist_matching_active.id
+            self._stored_playlist_status.is_active_synced_with_store = True
+            self._cached_stored_playlist = stored_playlist_matching_active
         except IndexError:
-            self._active_playlist_synced_with_store = False
-
-            if no_active_if_not_found:
-                self._active_stored_playlist_id = None
+            # self._active_playlist_synced_with_store = False
+            #
+            # if no_active_if_not_found:
+            #     self._active_stored_playlist_id = None
+            self._reset_stored_playlist_status(send_update=False)
+            self._cached_stored_playlist = None
 
         self._send_stored_playlists_update()
 
@@ -436,10 +451,12 @@ class Vibin:
         self.play_id(track.id)
 
     def play_id(self, id: str):
+        self._reset_stored_playlist_status(send_update=True)
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
     def play_ids(self, media_ids, max_count: int = 10):
+        self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
 
         # TODO: Consider adding a hard max_count limit
@@ -453,6 +470,7 @@ class Vibin:
             self._last_played_id = None
 
     def play_favorite_albums(self, max_count: int = 10):
+        self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
 
         # TODO: Consider adding a hard max_count limit
@@ -462,6 +480,7 @@ class Vibin:
         self.streamer.play_playlist_index(0)
 
     def play_favorite_tracks(self, max_count: int = 100):
+        self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
 
         # TODO: Consider adding a hard max_count limit
@@ -477,7 +496,9 @@ class Vibin:
             insert_index: Optional[int] = None,
     ):
         self.streamer.play_metadata(self.media.get_metadata(id), action, insert_index)
-        self._set_playlist_not_saved()
+
+        if action == "REPLACE":
+            self._reset_stored_playlist_status(send_update=True)
 
     def pause(self):
         try:
@@ -605,9 +626,12 @@ class Vibin:
     @property
     def stored_playlist_details(self):
         return {
-            "active_stored_playlist_id": self._active_stored_playlist_id,
-            "active_synced_with_store": self._active_playlist_synced_with_store,
-            "activating_stored_playlist": self._activating_stored_playlist,
+            "active_stored_playlist_id":
+                self._stored_playlist_status.active_id,
+            "active_synced_with_store":
+                self._stored_playlist_status.is_active_synced_with_store,
+            "activating_stored_playlist":
+                self._stored_playlist_status.is_activating_new_playlist,
             "stored_playlists": self._playlists.all(),
         }
 
@@ -825,10 +849,46 @@ class Vibin:
         for handler in self._on_websocket_update_handlers:
             handler(message_type, data)
 
-    # TODO: Should _on_playlist_modified receive some information about the
-    #   modification.
-    def _on_playlist_modified(self):
-        pass
+    def _streamer_playlist_matches_stored(self, streamer_playlist):
+        if not self._cached_stored_playlist:
+            return False
+
+        streamer_playlist_ids = [entry["trackMediaId"] for entry in streamer_playlist]
+        stored_playlist_ids = self._cached_stored_playlist.entry_ids
+
+        return streamer_playlist_ids == stored_playlist_ids
+
+    def _on_playlist_modified(self, playlist_entries):
+        if (
+                not self._ignore_playlist_updates
+                and self._stored_playlist_status.active_id
+                and self.streamer
+        ):
+            # The playlist has been modified. If a stored playlist is active
+            # then compare this playlist against the stored playlist and
+            # set the status appropriately. The goal here is to ensure that
+            # we catch the playlist differing from the stored playlist, or
+            # matching the stored playlist (which can happen during playlist
+            # editing when entries are moved, deleted, added, etc).
+
+            # NOTE:
+            #
+            # If Vibin is tracking an active stored playlist, and another app
+            # replaces the streamer playlist, then Vibin will treat that
+            # replacement as an *update to the active stored playlist* rather
+            # than a "replace playlist and no longer consider this an active
+            # stored playlist" action. The playlist changes won't actually be
+            # persisted unless the user requests it, but the behavior might
+            # feel inconsistent.
+
+            if self._stored_playlist_status.active_id:
+                prior_sync_state = self._stored_playlist_status.is_active_synced_with_store
+
+                self._stored_playlist_status.is_active_synced_with_store = \
+                    self._streamer_playlist_matches_stored(playlist_entries)
+
+                if self._stored_playlist_status.is_active_synced_with_store != prior_sync_state:
+                    self._send_stored_playlists_update()
 
     def shutdown(self):
         logger.info("Vibin is shutting down")
@@ -847,8 +907,7 @@ class Vibin:
         return self._playlists.get(PlaylistQuery.id == playlist_id)
 
     def set_current_playlist(self, playlist_id: str) -> StoredPlaylist:
-        self._activating_stored_playlist = True
-        self._send_stored_playlists_update()
+        self._reset_stored_playlist_status(is_activating=True, send_update=True)
 
         PlaylistQuery = Query()
         playlist = self._playlists.get(PlaylistQuery.id == playlist_id)
@@ -857,22 +916,25 @@ class Vibin:
             raise VibinNotFoundError()
 
         playlist_data = StoredPlaylist(**playlist)
+        self._cached_stored_playlist = playlist_data
+
         self.streamer.playlist_clear()
 
-        self.streamer.ignore_playlist_updates(True)
+        self._ignore_playlist_updates = True
 
         for entry_id in playlist_data.entry_ids:
             self.streamer.play_metadata(
                 self.media.get_metadata(entry_id), action="APPEND"
             )
 
-        self.streamer.ignore_playlist_updates(False)
+        self._ignore_playlist_updates = False
 
-        self._active_stored_playlist_id = playlist_id
-        self._active_playlist_synced_with_store = True
-        self._activating_stored_playlist = False
-
-        self._send_stored_playlists_update()
+        self._reset_stored_playlist_status(
+            active_id=playlist_id,
+            is_synced=True,
+            is_activating=False,
+            send_update=True
+        )
 
         return StoredPlaylist(**playlist)
 
@@ -885,7 +947,8 @@ class Vibin:
         now = time.time()
         new_playlist_id = str(uuid.uuid4())
 
-        if self._active_stored_playlist_id is None or replace is False:
+        if self._stored_playlist_status.active_id is None or replace is False:
+            # Brand new stored playlist
             playlist_data = StoredPlaylist(
                 id=new_playlist_id,
                 name=metadata["name"] if metadata and "name" in metadata else "Unnamed",
@@ -895,8 +958,16 @@ class Vibin:
             )
 
             self._playlists.insert(asdict(playlist_data))
-            self._active_stored_playlist_id = new_playlist_id
+            self._cached_stored_playlist = playlist_data
+
+            self._reset_stored_playlist_status(
+                active_id=new_playlist_id,
+                is_synced=True,
+                is_activating=False,
+                send_update=True,
+            )
         else:
+            # Updates to an existing playlist
             updates = {
                 "updated": now,
                 "entry_ids": [
@@ -911,17 +982,29 @@ class Vibin:
 
             try:
                 doc_id = self._playlists.update(
-                    updates, PlaylistQuery.id == self._active_stored_playlist_id
+                    updates, PlaylistQuery.id == self._stored_playlist_status.active_id
                 )[0]
 
                 playlist_data = StoredPlaylist(**self._playlists.get(doc_id=doc_id))
+                self._cached_stored_playlist = playlist_data
             except IndexError:
-                raise VibinError(
-                    f"Could not update Playlist Id: {self._active_stored_playlist_id}"
+                self._reset_stored_playlist_status(
+                    active_id=None,
+                    is_synced=False,
+                    is_activating=False,
+                    send_update=True,
                 )
 
-        self._active_playlist_synced_with_store = True
-        self._send_stored_playlists_update()
+                raise VibinError(
+                    f"Could not update Playlist Id: {self._stored_playlist_status.active_id}"
+                )
+
+            self._reset_stored_playlist_status(
+                active_id=self._stored_playlist_status.active_id,
+                is_synced=True,
+                is_activating=False,
+                send_update=True,
+            )
 
         return playlist_data
 
