@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import asynccontextmanager
+import functools
 import json
 from pathlib import Path
 import platform
@@ -62,23 +64,34 @@ def get_local_ip():
 def server_start(
         host="0.0.0.0",
         port=VIBIN_PORT,
-        streamer="streamer",
-        media="Asset UPnP: thicc",
+        streamer=None,
+        media=None,
         discovery_timeout=5,
         vibinui=None,
 ):
     local_ip = get_local_ip() if host == "0.0.0.0" else host
 
     # TODO: This could be in a FastAPI on_startup handler.
-    vibin = Vibin(
-        streamer=streamer,
-        media=media,
-        discovery_timeout=discovery_timeout,
-        subscribe_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
-    )
+    try:
+        vibin = Vibin(
+            streamer=streamer,
+            media=media,
+            discovery_timeout=discovery_timeout,
+            subscribe_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
+        )
+    except VibinError as e:
+        logger.error(f"Vibin server start unsuccessful: {e}")
+        return
 
-    logger.info("Starting server")
-    vibin_app = FastAPI()
+    @asynccontextmanager
+    async def api_lifespan(app: FastAPI):
+        yield
+
+        logger.info("Vibin server shutdown requested")
+        vibin.shutdown()
+        logger.info("Vibin server successfully shut down")
+
+    vibin_app = FastAPI(lifespan=api_lifespan)
 
     start_time = time.time()
     connected_websockets = {}
@@ -86,6 +99,34 @@ def server_start(
     success = {
         "result": "success"
     }
+
+    # TODO: Clean up sync/async in general, including these two decorators
+
+    def requires_media(func):
+        @functools.wraps(func)
+        def wrapper_requires_media(*args, **kwargs):
+            if vibin.media is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Feature unavailable (no local media server registered with Vibin)",
+                )
+
+            return func(*args, **kwargs)
+
+        return wrapper_requires_media
+
+    def requires_media_async(func):
+        @functools.wraps(func)
+        async def wrapper_requires_media_async(*args, **kwargs):
+            if vibin.media is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Feature unavailable (no local media server registered with Vibin)",
+                )
+
+            return await func(*args, **kwargs)
+
+        return wrapper_requires_media_async
 
     # -------------------------------------------------------------------------
     # Experiments in proxying the UI for both production and dev.
@@ -218,6 +259,7 @@ def server_start(
         return server_status()
 
     @vibin_app.post("/vibin/clear_media_caches")
+    @requires_media
     def vibin_clear_media_caches():
         return vibin.media.clear_caches()
 
@@ -319,6 +361,7 @@ def server_start(
 
     # TODO: Decide what to call this endpoint
     @vibin_app.get("/contents/{media_path:path}")
+    @requires_media_async
     async def path_contents(media_path) -> List:
         try:
             return vibin.media.get_path_contents(Path(media_path))
@@ -326,14 +369,17 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums")
+    @requires_media_async
     async def albums() -> List[Album]:
         return vibin.media.albums
 
     @vibin_app.get("/albums/new")
+    @requires_media_async
     async def albums_new() -> List[Album]:
         return vibin.media.new_albums
 
     @vibin_app.get("/albums/{album_id}")
+    @requires_media
     def album_by_id(album_id: str):
         try:
             return vibin.media.album(album_id)
@@ -341,18 +387,22 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums/{album_id}/tracks")
+    @requires_media_async
     async def album_tracks(album_id: str) -> List[Track]:
         return vibin.media.album_tracks(album_id)
 
     @vibin_app.get("/albums/{album_id}/links")
+    @requires_media
     def album_links(album_id: str, all_types: bool = False):
         return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/artists")
+    @requires_media_async
     async def artists() -> List[Artist]:
         return vibin.media.artists
 
     @vibin_app.get("/artists/{artist_id}")
+    @requires_media
     def artist_by_id(artist_id: str):
         try:
             return vibin.media.artist(artist_id)
@@ -360,6 +410,7 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks")
+    @requires_media_async
     async def tracks() -> List[Track]:
         return vibin.media.tracks
 
@@ -404,6 +455,7 @@ def server_start(
         )
 
     @vibin_app.get("/tracks/{track_id}")
+    @requires_media
     def track_by_id(track_id: str):
         try:
             return vibin.media.track(track_id)
@@ -649,6 +701,7 @@ def server_start(
         return vibin.browse_media(parent_id)
 
     @vibin_app.get("/metadata/{id}")
+    @requires_media_async
     async def browse(id: str):
         return xmltodict.parse(vibin.media.get_metadata(id))
 
@@ -894,11 +947,10 @@ def server_start(
                     websocket,
                 ))
 
-    @vibin_app.on_event("shutdown")
-    def shutdown_event():
-        vibin.shutdown()
-
     # -------------------------------------------------------------------------
+
+    logger.info(f"Starting REST API")
+    logger.info(f"API docs: http://{local_ip}:{port}{vibin_app.docs_url}")
 
     uvicorn.run(
         vibin_app,

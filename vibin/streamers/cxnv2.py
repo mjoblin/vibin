@@ -130,6 +130,8 @@ class CXNv2(Streamer):
         self._navigator_id = None
         self._subscriptions: ServiceSubscriptions = {}
         self._subscription_renewal_thread = None
+        self._websocket_thread = None
+        self._websocket_timeout = 1
 
         self._uu_vol_control = device.UuVolControl
         self._av_transport = device.AVTransport
@@ -227,6 +229,7 @@ class CXNv2(Streamer):
         if self._disconnected:
             return
 
+        logger.info("CXNv2 disconnect requested")
         self._disconnected = True
 
         # Clean up the navigator.
@@ -239,12 +242,17 @@ class CXNv2(Streamer):
         # Clean up any UPnP subscriptions.
         self._cancel_subscriptions()
 
-        # TODO: Shut down updates websocket connection.
-
         if self._subscription_renewal_thread:
             logger.info("Stopping subscription renewal thread")
             self._subscription_renewal_thread.stop()
             self._subscription_renewal_thread.join()
+
+        if self._websocket_thread:
+            logger.info("Stopping streamer Websocket thread")
+            self._websocket_thread.stop()
+            self._websocket_thread.join()
+
+        logger.info("CXNv2 disconnection complete")
 
     def register_media_source(self, media_source: MediaSource):
         self._media_device = media_source
@@ -641,9 +649,7 @@ class CXNv2(Streamer):
 
     def _handle_websocket_to_streamer(self):
         async def async_websocket_manager():
-            # TODO: Externalize the Websocket host/path
-            uri = "ws://streamer.local:80/smoip"
-
+            uri = f"ws://{self._device_hostname}:80/smoip"
             logger.info(f"Connecting to {self.name} Websocket server on {uri}")
 
             async with websockets.connect(
@@ -742,10 +748,21 @@ class CXNv2(Streamer):
                 #   "play_pause"
                 # ]
 
-                # TODO: The stop check will never be performed if messages
-                #   aren't coming in from the websocket (due to the recv await).
-                while not self._websocket_thread.stop_event.is_set():
-                    update = await websocket.recv()
+                wait_for_message = True
+
+                while wait_for_message:
+                    try:
+                        # Wait for an incoming message
+                        update = await asyncio.wait_for(
+                            websocket.recv(), timeout=self._websocket_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        if not self._websocket_thread.stop_event.is_set():
+                            # Keep listening for incoming messages
+                            continue
+
+                        # The thread we're running in has been told to stop
+                        wait_for_message = False
 
                     try:
                         update_dict = json.loads(update)
@@ -841,7 +858,7 @@ class CXNv2(Streamer):
                             self._system_state["power"] = "on" if power == "ON" else "off"
                             self._updates_handler("System", json.dumps(self._system_state))
                         else:
-                            logger.warn(f"Unknown message: {update}")
+                            logger.warning(f"Unknown message: {update}")
                             self._updates_handler("Unknown", update)
                     except (KeyError, json.decoder.JSONDecodeError) as e:
                         # TODO: This currently quietly ignores unexpected
@@ -1124,7 +1141,7 @@ class CXNv2(Streamer):
             ][0]
         except (IndexError, KeyError):
             self._vibin_vars["current_audio_source"] = None
-            logger.error(
+            logger.warning(
                 f"Could not determine current audio source from id '{source_id}', setting to None"
             )
 
