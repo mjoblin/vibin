@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import functools
 import json
+import os
 from pathlib import Path
 import platform
 import socket
@@ -70,6 +71,10 @@ def server_start(
         vibinui=None,
 ):
     local_ip = get_local_ip() if host == "0.0.0.0" else host
+
+    if not os.path.exists(vibinui):
+        logger.error(f"Cannot serve Web UI: Path does not exist: {vibinui}")
+        return
 
     # TODO: This could be in a FastAPI on_startup handler.
     try:
@@ -152,8 +157,10 @@ def server_start(
                 StaticFiles(directory=Path(vibinui, "static"), html=True),
                 name="vibinui",
             )
+
+            logger.info(f"Web UI available at http://{local_ip}:{port}/ui")
         except RuntimeError as e:
-            logger.error(f"Cannot serve UI: {e}")
+            logger.error(f"Cannot serve Web UI: {e}")
 
     @vibin_app.router.get("/", include_in_schema=False)
     def redirect_root_to_ui():
@@ -164,7 +171,7 @@ def server_start(
         if not vibinui:
             raise HTTPException(
                 status_code=404,
-                detail="UI unavailable; see 'vibin serve --vibinui'",
+                detail="Web UI unavailable; see 'vibin serve --vibinui'",
             )
 
         return FileResponse(path=Path(vibinui, "index.html"))
@@ -174,7 +181,7 @@ def server_start(
         if not vibinui:
             raise HTTPException(
                 status_code=404,
-                detail="UI unavailable; see 'vibin serve --vibinui'",
+                detail="Web UI unavailable; see 'vibin serve --vibinui'",
             )
 
         if resource in [
