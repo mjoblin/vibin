@@ -7,6 +7,7 @@ from vibin.models import Album, Artist, Track
 # http://upnp.org/specs/av/UPnP-av-ContentDirectory-v4-Service.pdf
 
 
+# TODO: Rename MediaServer
 class MediaSource(metaclass=ABCMeta):
     model_name = "VibinMediaSource"
 

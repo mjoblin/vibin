@@ -25,7 +25,7 @@ def cli():
     A commandline interface to the Vibin server.
 
     Note that "vibin serve" must be running before any other commands will
-    function.
+    function. See "vibin serve --help" for more information.
     """
     pass
 
@@ -49,7 +49,7 @@ def cli():
 )
 @click.option(
     "--streamer", "-s",
-    help="Streamer UPnP friendly name.",
+    help="Streamer (hostname, UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
     default=None,
@@ -57,11 +57,17 @@ def cli():
 )
 @click.option(
     "--media", "-m",
-    help="Media source UPnP friendly name.",
+    help="Media server (UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
     default=None,
     show_default=True,
+)
+@click.option(
+    "--no-media", "-n",
+    help="Ignore any local media servers.",
+    is_flag=True,
+    default=False,
 )
 @click.option(
     "--discovery-timeout", "-t",
@@ -79,17 +85,55 @@ def cli():
     default=None,
     show_default=True,
 )
-def serve(host, port, streamer, media, discovery_timeout, vibinui):
+def serve(host, port, streamer, media, no_media, discovery_timeout, vibinui):
     """
-    Start the Vibin server. The server is responsible for finding the provided
-    streamer and media source on the network (via UPnP discovery), and exposing
-    an API for interacting with the streamer and media.
+    Start the Vibin server.
 
-    The API exposed by the server is required for the other CLI commands to
-    function.
+    VIBIN API
 
-    Once the server has started, an interactive Web interface to the API will
-    be available at http://<host>:<port>/docs
+    The Vibin server exposes a REST API for interacting with the music streamer
+    and (when available) the local media server. This API is required for the
+    other Vibin CLI commands to work, as well as for use by the Web interface.
+
+    STREAMER AND MUSIC SERVER
+
+    The Vibin server needs to know which music streamer on the network to
+    interact with. By default, it will attempt to auto-find a Cambridge Audio
+    streamer using UPnP discovery. Alternatively, the --streamer flag can be
+    used to specify a streamer hostname (e.g. 192.168.1.100), UPnP friendly
+    name, or UPnP location URL.
+
+    Vibin currently expects the streamer to be a Cambridge Audio device
+    supporting StreamMagic.
+
+    If a local media server is also available on the network then it will be
+    auto-detected from the Cambridge Audio streamer settings. Alternatively,
+    the --media flag can be used to specify a media server UPnP friendly name,
+    or UPnP location URL.
+
+    WEB INTERFACE
+
+    The Vibin server can also serve the Web interface to browsers on the
+    network. The path to the Web interface application files can be specified
+    with the --vibinui flag.
+
+    Once the Vibin server has started, the Web interface will be available at
+    http://<host>:<port>/ui (where <host> is the --hostname, and <port> is the
+    --port).
+
+    EXAMPLES
+
+    To auto-discover the streamer and any local media server:
+
+     $ vibin serve
+
+    To specify a streamer hostname:
+
+     $ vibin serve --streamer 192.168.1.100
+
+    To specify a streamer and media server by UPnP friendly name:
+
+     $ vibin serve --streamer MyStreamer --media MyMediaServer
     """
     with open(SERVER_FILE, "w") as server_file:
         server_file.write(f"http://{host}:{port}")
@@ -99,7 +143,7 @@ def serve(host, port, streamer, media, discovery_timeout, vibinui):
             host=host,
             port=port,
             streamer=streamer,
-            media=media,
+            media=False if no_media else media,
             discovery_timeout=discovery_timeout,
             vibinui=vibinui,
         )
