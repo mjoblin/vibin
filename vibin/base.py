@@ -55,9 +55,9 @@ from .logger import logger
 def requires_media(return_val=None):
     def decorator_requires_media(func):
         @functools.wraps(func)
-        def wrapper_requires_media(self, *args, **kwargs):
-            if self.media is not None:
-                func(self, *args, **kwargs)
+        def wrapper_requires_media(*args, **kwargs):
+            if args[0].media is not None:
+                return func(*args, **kwargs)
             else:
                 return return_val
 
@@ -221,7 +221,7 @@ class Vibin:
     #   useful information from it, in a Vibin-contract-friendly way (well-
     #   defined concepts for title, artist, album, track artist vs. album
     #   artist, composer, etc).
-    @requires_media
+    @requires_media()
     def _artist_from_track_media_info(self, track):
         artist = None
 
@@ -248,19 +248,19 @@ class Vibin:
 
         return artist
 
-    @requires_media
+    @requires_media()
     def _send_stored_playlists_update(self):
         self._websocket_message_handler(
             "StoredPlaylists", json.dumps(self.stored_playlist_details)
         )
 
-    @requires_media
+    @requires_media()
     def _send_favorites_update(self):
         self._websocket_message_handler(
             "Favorites", json.dumps(self.favorites())
         )
 
-    @requires_media
+    @requires_media()
     def media_links(
             self,
             *,
@@ -415,25 +415,25 @@ class Vibin:
     def media(self):
         return self._current_media_server
 
-    @requires_media
+    @requires_media()
     def browse_media(self, parent_id: str = "0"):
         return self.media.children(parent_id)
 
-    @requires_media
+    @requires_media()
     def play_album(self, album: Album):
         self.play_id(album.id)
 
-    @requires_media
+    @requires_media()
     def play_track(self, track: Track):
         self.play_id(track.id)
 
-    @requires_media
+    @requires_media()
     def play_id(self, id: str):
         self._reset_stored_playlist_status(send_update=True)
         self.streamer.play_metadata(self.media.get_metadata(id))
         self._last_played_id = id
 
-    @requires_media
+    @requires_media()
     def play_ids(self, media_ids, max_count: int = 10):
         self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
@@ -448,7 +448,7 @@ class Vibin:
         else:
             self._last_played_id = None
 
-    @requires_media
+    @requires_media()
     def play_favorite_albums(self, max_count: int = 10):
         self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
@@ -459,7 +459,7 @@ class Vibin:
 
         self.streamer.play_playlist_index(0)
 
-    @requires_media
+    @requires_media()
     def play_favorite_tracks(self, max_count: int = 100):
         self._reset_stored_playlist_status(send_update=True)
         self.streamer.playlist_clear()
@@ -470,7 +470,7 @@ class Vibin:
 
         self.streamer.play_playlist_index(0)
 
-    @requires_media
+    @requires_media()
     def modify_playlist(
             self,
             id: str,
@@ -726,7 +726,7 @@ class Vibin:
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than
     #   relying on @lru_cache.
     @lru_cache
-    @requires_media
+    @requires_media()
     def waveform_for_track(
             self, track_id, data_format="json", width=800, height=250
     ):
@@ -889,7 +889,7 @@ class Vibin:
         PlaylistQuery = Query()
         return self._playlists.get(PlaylistQuery.id == playlist_id)
 
-    @requires_media
+    @requires_media()
     def set_current_playlist(self, playlist_id: str) -> StoredPlaylist:
         self._reset_stored_playlist_status(is_activating=True, send_update=True)
 
@@ -922,7 +922,7 @@ class Vibin:
 
         return StoredPlaylist(**playlist)
 
-    @requires_media
+    @requires_media()
     def store_current_playlist(
             self,
             metadata: Optional[dict[str, any]] = None,
@@ -993,7 +993,7 @@ class Vibin:
 
         return playlist_data
 
-    @requires_media
+    @requires_media()
     def delete_playlist(self, playlist_id: str):
         PlaylistQuery = Query()
         playlist_to_delete = self._playlists.get(PlaylistQuery.id == playlist_id)
@@ -1054,7 +1054,7 @@ class Vibin:
             if requested_types is None or favorite["type"] in requested_types
         ]
 
-    @requires_media
+    @requires_media()
     def store_favorite(self, favorite_type: str, media_id: str):
         # Check for existing favorite with this media_id
         FavoritesQuery = Query()
@@ -1089,7 +1089,7 @@ class Vibin:
 
         return favorite_data
 
-    @requires_media
+    @requires_media()
     def delete_favorite(self, media_id: str):
         FavoritesQuery = Query()
         favorite_to_delete = self._favorites.get(FavoritesQuery.media_id == media_id)
