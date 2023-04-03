@@ -1,6 +1,5 @@
 import concurrent.futures
 import dataclasses
-import logging
 from dataclasses import asdict
 import uuid
 import functools
@@ -19,7 +18,6 @@ from typing import Callable, List, Optional, Union
 
 import requests
 from tinydb import TinyDB, Query
-import upnpclient
 from upnpclient.soap import SOAPError
 import xml
 import xmltodict
@@ -875,6 +873,9 @@ class Vibin:
 
     def shutdown(self):
         logger.info("Vibin is shutting down")
+
+        logger.info("Closing database")
+        self._db.close()
 
         if self._current_streamer:
             logger.info(f"Disconnecting from {self._current_streamer.name}")
