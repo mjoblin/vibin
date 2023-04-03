@@ -9,7 +9,6 @@ from rich.table import Table
 from vibin import VibinError
 from vibin.server import server_start
 from vibin.constants import VIBIN_PORT
-from vibin.utils import install_vibinui
 
 
 CONTEXT_SETTINGS = {
@@ -80,10 +79,11 @@ def cli():
 )
 @click.option(
     "--vibinui", "-u",
-    help="Path to Web UI static files; use 'auto' to find --installui location",
+    help="Path to vibinui static files.",
     metavar="DIR",
     type=click.STRING,
-    default="",
+    default=None,
+    show_default=True,
 )
 def serve(host, port, streamer, media, no_media, discovery_timeout, vibinui):
     """
@@ -193,17 +193,6 @@ def call_vibin(endpoint, method="POST", payload=None):
             f"Unable to connect to the Vibin server at {vibin_server}. Is " +
             f"'vibin serve' running?"
         )
-
-
-@cli.command(context_settings=CONTEXT_SETTINGS)
-def installui():
-    """
-    Install the Vibin Web UI.
-    """
-    try:
-        install_vibinui()
-    except VibinError as e:
-        raise click.ClickException(f"Unable to install the Web UI: {e}")
 
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
