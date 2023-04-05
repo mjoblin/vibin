@@ -7,15 +7,18 @@ from pathlib import Path
 import platform
 import socket
 import time
-import uuid
 from typing import List, Optional, Union
+import uuid
 
 from fastapi import FastAPI, Header, HTTPException, Response, WebSocket
 from fastapi.responses import RedirectResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-import httpx  # TODO: Not in requirements; using to proxy to react on 3000
+import httpx
 import starlette.requests
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from starlette.endpoints import WebSocketEndpoint
 import uvicorn
 import xmltodict
@@ -34,12 +37,12 @@ from vibin.models import (
     Favorite,
     LyricsQuery,
     PlaylistModifyPayload,
-    Preset,
     StoredPlaylist,
     Track,
 )
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
+from vibin.utils import replace_media_server_urls_with_proxy
 
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
@@ -69,6 +72,7 @@ def server_start(
         media=None,
         discovery_timeout=5,
         vibinui=None,
+        proxy_media_server=False,
 ):
     local_ip = get_local_ip() if host == "0.0.0.0" else host
 
@@ -88,12 +92,46 @@ def server_start(
         logger.error(f"Vibin server start unsuccessful: {e}")
         return
 
+    media_server_proxy_client = None
+    media_server_proxy_target = None
+
+    # Configure art reverse proxy to media server
+    if proxy_media_server:
+        if vibin.media is not None:
+            media_server_proxy_target = vibin.media.url_prefix
+            media_server_proxy_client = \
+                httpx.AsyncClient(base_url=media_server_proxy_target)
+
+            logger.info(
+                f"Proxying art at /proxy (target: {media_server_proxy_target})"
+            )
+        else:
+            error = "Unable to proxy art; media server not located"
+            logger.error(error)
+            vibin.shutdown()
+
+            raise VibinError(error)
+
+    def transform_media_server_urls_if_proxying(func):
+        @functools.wraps(func)
+        async def wrapper_transform_media_server_urls_if_proxying(*args, **kwargs):
+            if proxy_media_server:
+                return replace_media_server_urls_with_proxy(
+                    await func(*args, **kwargs), media_server_proxy_target
+                )
+
+            return await func(*args, **kwargs)
+
+        return wrapper_transform_media_server_urls_if_proxying
+
     @asynccontextmanager
     async def api_lifespan(app: FastAPI):
         yield
 
         logger.info("Vibin server shutdown requested")
         vibin.shutdown()
+        logger.info("Shutting down media server proxy")
+        await media_server_proxy_client.aclose()
         logger.info("Vibin server successfully shut down")
 
     vibin_app = FastAPI(lifespan=api_lifespan)
@@ -368,6 +406,7 @@ def server_start(
 
     # TODO: Decide what to call this endpoint
     @vibin_app.get("/contents/{media_path:path}")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def path_contents(media_path) -> List:
         try:
@@ -376,24 +415,28 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def albums() -> List[Album]:
         return vibin.media.albums
 
     @vibin_app.get("/albums/new")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def albums_new() -> List[Album]:
         return vibin.media.new_albums
 
     @vibin_app.get("/albums/{album_id}")
+    @transform_media_server_urls_if_proxying
     @requires_media
-    def album_by_id(album_id: str):
+    async def album_by_id(album_id: str) -> Album:
         try:
             return vibin.media.album(album_id)
         except VibinNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums/{album_id}/tracks")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def album_tracks(album_id: str) -> List[Track]:
         return vibin.media.album_tracks(album_id)
@@ -404,19 +447,22 @@ def server_start(
         return vibin.media_links(album_id, all_types)
 
     @vibin_app.get("/artists")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def artists() -> List[Artist]:
         return vibin.media.artists
 
     @vibin_app.get("/artists/{artist_id}")
+    @transform_media_server_urls_if_proxying
     @requires_media
-    def artist_by_id(artist_id: str):
+    async def artist_by_id(artist_id: str):
         try:
             return vibin.media.artist(artist_id)
         except VibinNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def tracks() -> List[Track]:
         return vibin.media.tracks
@@ -462,8 +508,9 @@ def server_start(
         )
 
     @vibin_app.get("/tracks/{track_id}")
+    @transform_media_server_urls_if_proxying
     @requires_media
-    def track_by_id(track_id: str):
+    async def track_by_id(track_id: str) -> Track:
         try:
             return vibin.media.track(track_id)
         except VibinNotFoundError as e:
@@ -557,6 +604,7 @@ def server_start(
         return vibin.media_links(media_id=track_id, include_all=all_types)
 
     @vibin_app.get("/playlist")
+    @transform_media_server_urls_if_proxying
     async def playlist():
         return vibin.streamer.playlist()
 
@@ -667,21 +715,28 @@ def server_start(
         return vibin.store_current_playlist(metadata=metadata, replace=replace)
 
     @vibin_app.get("/favorites")
+    @transform_media_server_urls_if_proxying
     async def favorites():
         return {
             "favorites": vibin.favorites(),
         }
 
     @vibin_app.get("/favorites/albums")
+    @transform_media_server_urls_if_proxying
     async def favorites_albums():
+        favorites = vibin.favorites(requested_types=["album"])
+
         return {
-            "favorites": vibin.favorites(requested_types=["album"]),
+            "favorites": favorites,
         }
 
     @vibin_app.get("/favorites/tracks")
+    @transform_media_server_urls_if_proxying
     async def favorites_tracks():
+        favorites = vibin.favorites(requested_types=["track"])
+
         return {
-            "favorites": vibin.favorites(requested_types=["track"])
+            "favorites": favorites,
         }
 
     @vibin_app.post("/favorites")
@@ -696,7 +751,8 @@ def server_start(
         vibin.delete_favorite(media_id)
 
     @vibin_app.get("/presets")
-    def presets() -> list[Preset]:
+    @transform_media_server_urls_if_proxying
+    async def presets() -> dict:
         return vibin.presets
 
     @vibin_app.post("/presets/{preset_id}/play")
@@ -704,10 +760,13 @@ def server_start(
         return vibin.streamer.play_preset_id(preset_id)
 
     @vibin_app.get("/browse/{parent_id}")
+    @transform_media_server_urls_if_proxying
+    @requires_media_async
     async def browse(parent_id: str):
         return vibin.browse_media(parent_id)
 
     @vibin_app.get("/metadata/{id}")
+    @transform_media_server_urls_if_proxying
     @requires_media_async
     async def browse(id: str):
         return xmltodict.parse(vibin.media.get_metadata(id))
@@ -747,6 +806,42 @@ def server_start(
             )
 
         return vibin.db_set(data)
+
+    @vibin_app.get("/proxy/{path:path}")
+    async def art_proxy(request: Request):
+        if not proxy_media_server:
+            raise HTTPException(
+                status_code=404,
+                detail="Art proxy is not enabled; see 'vibin serve --proxy-art'",
+            )
+
+        if media_server_proxy_client is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Art proxy was unable to be configured",
+            )
+
+        url = httpx.URL(
+            path=request.path_params["path"],
+            query=request.url.query.encode("utf-8")
+        )
+
+        proxy_request = media_server_proxy_client.build_request(
+            request.method,
+            url,
+            headers=request.headers.raw,
+            content=await request.body(),
+            timeout=20.0,
+        )
+
+        proxy_response = await media_server_proxy_client.send(proxy_request, stream=True)
+
+        return StreamingResponse(
+            proxy_response.aiter_raw(),
+            status_code=proxy_response.status_code,
+            headers=proxy_response.headers,
+            background=BackgroundTask(proxy_response.aclose),
+        )
 
     @vibin_app.api_route(
         UPNP_EVENTS_BASE_ROUTE + "/{service}",
@@ -937,6 +1032,16 @@ def server_start(
                 }
             elif messageType == "VibinStatus":
                 message["payload"] = data_as_dict
+
+            # Some messages contain media server urls that we may want to proxy.
+            if proxy_media_server and messageType in [
+                "DeviceDisplay",
+                "Favorites",
+                "PlayState",
+                "Presets",
+                "StateVars",
+            ]:
+                message = replace_media_server_urls_with_proxy(message, media_server_proxy_target)
 
             return json.dumps(message)
 

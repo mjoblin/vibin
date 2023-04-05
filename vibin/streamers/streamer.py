@@ -39,6 +39,11 @@ class Streamer(metaclass=ABCMeta):
     ):
         pass
 
+    @property
+    @abstractmethod
+    def device(self):
+        pass
+
     @abstractmethod
     def register_media_source(self, media_source: MediaSource):
         pass

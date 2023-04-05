@@ -1,5 +1,9 @@
+from collections.abc import Iterable
+import dataclasses
 import math
 import re
+
+from pydantic import BaseModel
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
@@ -27,3 +31,45 @@ def hmmss_to_secs(input_hmmss: str) -> int:
     [h, mm, ss] = [float(component) for component in input_hmmss.split(":")]
 
     return round(h * ONE_HOUR_IN_SECS + mm * ONE_MIN_IN_SECS + ss)
+
+
+def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
+    def transform(item):
+        item_is_iterable = isinstance(item, Iterable)
+
+        if isinstance(item, BaseModel) or dataclasses.is_dataclass(item):
+            # The item is a data class or a pydantic model
+
+            uri_attrs = ["album_art_uri", "albumArtURI", "uri", "art_url"]
+
+            # TODO: Extend this case to work like iterables, which support
+            #   transforming nested fields as well as transforming any
+            #   string value which starts with the proxy target (rather
+            #   than just a hardcoded list of attr names like is done here)
+
+            for uri_attr in uri_attrs:
+                if hasattr(item, uri_attr):
+                    setattr(
+                        item,
+                        uri_attr,
+                        getattr(item, uri_attr).replace(media_server_url_prefix, "/proxy")
+                    )
+        elif item_is_iterable:
+            # The item is a dict, list, or string.
+            if isinstance(item, dict):
+                # If the item is a dict
+                for key, value in item.items():
+                    if isinstance(value, str) and value.startswith(media_server_url_prefix):
+                        item[key] = value.replace(media_server_url_prefix, "/proxy")
+                    elif isinstance(value, Iterable):
+                        item[key] = transform(value)
+            elif isinstance(item, list):
+                # If the item is a list
+                return [transform(child) for child in item]
+            else:
+                # Probably a string
+                return item
+
+        return item
+
+    return transform(payload)
