@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 import typing
+from urllib.parse import urlparse
 import upnpclient
 import xml.etree.ElementTree as ET
 
@@ -27,6 +28,17 @@ class Asset(MediaSource):
     @property
     def name(self):
         return self._device.friendly_name
+
+    @property
+    def device(self):
+        return self._device
+
+    @property
+    def url_prefix(self):
+        media_location = self.device.location
+        parsed_location = urlparse(media_location)
+
+        return f"{parsed_location.scheme}://{parsed_location.netloc}"
 
     @property
     def system_state(self):

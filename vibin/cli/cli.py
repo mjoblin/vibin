@@ -40,7 +40,7 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--port", "-i",
+    "--port", "-p",
     help="Port to listen on.",
     metavar="PORT",
     type=click.INT,
@@ -85,7 +85,22 @@ def cli():
     default=None,
     show_default=True,
 )
-def serve(host, port, streamer, media, no_media, discovery_timeout, vibinui):
+@click.option(
+    "--proxy-media-server", "-o",
+    help="Act as a proxy for the media server.",
+    is_flag=True,
+    default=False,
+)
+def serve(
+        host,
+        port,
+        streamer,
+        media,
+        no_media,
+        discovery_timeout,
+        vibinui,
+        proxy_media_server,
+):
     """
     Start the Vibin server.
 
@@ -135,6 +150,11 @@ def serve(host, port, streamer, media, no_media, discovery_timeout, vibinui):
 
      $ vibin serve --streamer MyStreamer --media MyMediaServer
     """
+    if proxy_media_server and no_media:
+        raise click.ClickException(
+            f"Cannot specify both --proxy-media-server and --no-media"
+        )
+
     with open(SERVER_FILE, "w") as server_file:
         server_file.write(f"http://{host}:{port}")
 
@@ -146,6 +166,7 @@ def serve(host, port, streamer, media, no_media, discovery_timeout, vibinui):
             media=False if no_media else media,
             discovery_timeout=discovery_timeout,
             vibinui=vibinui,
+            proxy_media_server=proxy_media_server,
         )
     except VibinError as e:
         raise click.ClickException(f"Could not start Vibin server: {e}")

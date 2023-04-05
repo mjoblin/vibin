@@ -3,5 +3,6 @@
 /venv*
 /vibin.egg-info
 /vibin/_data
+/vibin/_webui
 
 __pycache__

@@ -18,6 +18,16 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
+    def device(self):
+        pass
+
+    @property
+    @abstractmethod
+    def url_prefix(self):
+        pass
+
+    @property
+    @abstractmethod
     def system_state(self):
         pass
 

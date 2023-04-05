@@ -156,10 +156,17 @@ class CXNv2(Streamer):
         if nav_check["IsRegistered"]:
             self._navigator_id = nav_check["RetNavigatorId"]
         else:
-            new_nav = device.UuVolControl.RegisterNamedNavigator(
-                NewNavigatorName=self.navigator_name
-            )
-            self._navigator_id = new_nav["RetNavigatorId"]
+            try:
+                new_nav = device.UuVolControl.RegisterNamedNavigator(
+                    NewNavigatorName=self.navigator_name
+                )
+                self._navigator_id = new_nav["RetNavigatorId"]
+            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+                logger.error(
+                    "Could not acquire CXNv2 navigator. If device is in " +
+                    "standby, power it on and try again."
+                )
+                raise VibinDeviceError(f"Could not acquire CXNv2 navigator: {e}")
 
         atexit.register(self.disconnect)
 
@@ -224,6 +231,10 @@ class CXNv2(Streamer):
         # which want it, but it isn't already there when sent from the streamer.
         self._last_seen_track_id = None
         self._last_seen_album_id = None
+
+    @property
+    def device(self):
+        return self._device
 
     def disconnect(self):
         if self._disconnected:
