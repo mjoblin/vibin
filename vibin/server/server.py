@@ -114,13 +114,13 @@ def server_start(
 
     def transform_media_server_urls_if_proxying(func):
         @functools.wraps(func)
-        async def wrapper_transform_media_server_urls_if_proxying(*args, **kwargs):
+        def wrapper_transform_media_server_urls_if_proxying(*args, **kwargs):
             if proxy_media_server:
                 return replace_media_server_urls_with_proxy(
-                    await func(*args, **kwargs), media_server_proxy_target
+                    func(*args, **kwargs), media_server_proxy_target
                 )
 
-            return await func(*args, **kwargs)
+            return func(*args, **kwargs)
 
         return wrapper_transform_media_server_urls_if_proxying
 
@@ -143,8 +143,6 @@ def server_start(
         "result": "success"
     }
 
-    # TODO: Clean up sync/async in general, including these two decorators
-
     def requires_media(func):
         @functools.wraps(func)
         def wrapper_requires_media(*args, **kwargs):
@@ -157,19 +155,6 @@ def server_start(
             return func(*args, **kwargs)
 
         return wrapper_requires_media
-
-    def requires_media_async(func):
-        @functools.wraps(func)
-        async def wrapper_requires_media_async(*args, **kwargs):
-            if vibin.media is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Feature unavailable (no local media server registered with Vibin)",
-                )
-
-            return await func(*args, **kwargs)
-
-        return wrapper_requires_media_async
 
     # -------------------------------------------------------------------------
     # Experiments in proxying the UI for both production and dev.
@@ -310,7 +295,7 @@ def server_start(
 
     # TODO: Do we want /system endpoints for both streamer and media?
     @vibin_app.post("/system/power/toggle")
-    async def system_power_toggle():
+    def system_power_toggle():
         try:
             vibin.streamer.power_toggle()
             return success
@@ -318,7 +303,7 @@ def server_start(
             raise HTTPException(status_code=500, detail=f"{e}")
 
     @vibin_app.post("/system/source")
-    async def system_source(source: str):
+    def system_source(source: str):
         try:
             vibin.streamer.set_source(source)
             return success
@@ -326,7 +311,7 @@ def server_start(
             raise HTTPException(status_code=500, detail=f"{e}")
 
     @vibin_app.post("/transport/pause")
-    async def transport_pause():
+    def transport_pause():
         try:
             vibin.pause()
             return success
@@ -334,7 +319,7 @@ def server_start(
             raise HTTPException(status_code=500, detail=f"{e}")
 
     @vibin_app.post("/transport/play")
-    async def transport_play():
+    def transport_play():
         try:
             vibin.play()
             return success
@@ -342,7 +327,7 @@ def server_start(
             raise HTTPException(status_code=500, detail=f"{e}")
 
     @vibin_app.post("/transport/next")
-    async def transport_next():
+    def transport_next():
         try:
             vibin.next_track()
             return success
@@ -350,30 +335,30 @@ def server_start(
             raise HTTPException(status_code=500, detail=f"{e}")
 
     @vibin_app.post("/transport/previous")
-    async def transport_previous():
+    def transport_previous():
         vibin.previous_track()
 
     # TODO: Consider whether repeat and shuffle should be toggles or not.
     @vibin_app.post("/transport/repeat")
-    async def transport_repeat():
+    def transport_repeat():
         vibin.repeat("toggle")
 
     @vibin_app.post("/transport/shuffle")
-    async def transport_shuffle():
+    def transport_shuffle():
         vibin.shuffle("toggle")
 
     @vibin_app.post("/transport/seek")
-    async def transport_seek(target: SeekTarget):
+    def transport_seek(target: SeekTarget):
         vibin.seek(target)
 
     @vibin_app.get("/transport/position")
-    async def transport_position():
+    def transport_position():
         return {
             "position": vibin.transport_position()
         }
 
     @vibin_app.post("/transport/play/{media_id}")
-    async def transport_play_media_id(media_id: str):
+    def transport_play_media_id(media_id: str):
         vibin.play_id(media_id)
 
     # TODO: Deprecate this? It uses (on CXNv2)
@@ -381,25 +366,25 @@ def server_start(
     #   don't always seem correct (such as track skipping on internet radio).
     #   Use allowed_actions instead.
     @vibin_app.get("/transport/actions")
-    async def transport_actions():
+    def transport_actions():
         return {
             "actions": vibin.transport_actions()
         }
 
     @vibin_app.get("/transport/active_controls")
-    async def transport_active_controls():
+    def transport_active_controls():
         return {
             "actions": vibin.transport_active_controls()
         }
 
     @vibin_app.get("/transport/state")
-    async def transport_state():
+    def transport_state():
         return {
             "state": vibin.transport_state(),
         }
 
     @vibin_app.get("/transport/status")
-    async def transport_status():
+    def transport_status():
         return {
             "status": vibin.transport_status(),
         }
@@ -407,8 +392,8 @@ def server_start(
     # TODO: Decide what to call this endpoint
     @vibin_app.get("/contents/{media_path:path}")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def path_contents(media_path) -> List:
+    @requires_media
+    def path_contents(media_path) -> List:
         try:
             return vibin.media.get_path_contents(Path(media_path))
         except VibinNotFoundError as e:
@@ -416,20 +401,20 @@ def server_start(
 
     @vibin_app.get("/albums")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def albums() -> List[Album]:
+    @requires_media
+    def albums() -> List[Album]:
         return vibin.media.albums
 
     @vibin_app.get("/albums/new")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def albums_new() -> List[Album]:
+    @requires_media
+    def albums_new() -> List[Album]:
         return vibin.media.new_albums
 
     @vibin_app.get("/albums/{album_id}")
     @transform_media_server_urls_if_proxying
     @requires_media
-    async def album_by_id(album_id: str) -> Album:
+    def album_by_id(album_id: str) -> Album:
         try:
             return vibin.media.album(album_id)
         except VibinNotFoundError as e:
@@ -437,8 +422,8 @@ def server_start(
 
     @vibin_app.get("/albums/{album_id}/tracks")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def album_tracks(album_id: str) -> List[Track]:
+    @requires_media
+    def album_tracks(album_id: str) -> List[Track]:
         return vibin.media.album_tracks(album_id)
 
     @vibin_app.get("/albums/{album_id}/links")
@@ -448,14 +433,14 @@ def server_start(
 
     @vibin_app.get("/artists")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def artists() -> List[Artist]:
+    @requires_media
+    def artists() -> List[Artist]:
         return vibin.media.artists
 
     @vibin_app.get("/artists/{artist_id}")
     @transform_media_server_urls_if_proxying
     @requires_media
-    async def artist_by_id(artist_id: str):
+    def artist_by_id(artist_id: str):
         try:
             return vibin.media.artist(artist_id)
         except VibinNotFoundError as e:
@@ -463,8 +448,8 @@ def server_start(
 
     @vibin_app.get("/tracks")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def tracks() -> List[Track]:
+    @requires_media
+    def tracks() -> List[Track]:
         return vibin.media.tracks
 
     @vibin_app.get("/tracks/lyrics")
@@ -510,7 +495,7 @@ def server_start(
     @vibin_app.get("/tracks/{track_id}")
     @transform_media_server_urls_if_proxying
     @requires_media
-    async def track_by_id(track_id: str) -> Track:
+    def track_by_id(track_id: str) -> Track:
         try:
             return vibin.media.track(track_id)
         except VibinNotFoundError as e:
@@ -605,11 +590,11 @@ def server_start(
 
     @vibin_app.get("/playlist")
     @transform_media_server_urls_if_proxying
-    async def playlist():
+    def playlist():
         return vibin.streamer.playlist()
 
     @vibin_app.post("/playlist/modify")
-    async def playlist_modify_multiple_entries(payload: PlaylistModifyPayload):
+    def playlist_modify_multiple_entries(payload: PlaylistModifyPayload):
         if payload.action != "REPLACE":
             raise HTTPException(
                 status_code=400,
@@ -619,7 +604,7 @@ def server_start(
         return vibin.play_ids(payload.media_ids, max_count=payload.max_count)
 
     @vibin_app.post("/playlist/modify/{media_id}")
-    async def playlist_modify_single_entry(
+    def playlist_modify_single_entry(
             media_id: str,
             action: str = "REPLACE",
             insert_index: Optional[int] = None,
@@ -627,31 +612,31 @@ def server_start(
         return vibin.modify_playlist(media_id, action, insert_index)
 
     @vibin_app.post("/playlist/play/id/{playlist_entry_id}")
-    async def playlist_play_id(playlist_entry_id: int):
+    def playlist_play_id(playlist_entry_id: int):
         return vibin.streamer.play_playlist_id(playlist_entry_id)
 
     @vibin_app.post("/playlist/play/index/{index}")
-    async def playlist_play_index(index: int):
+    def playlist_play_index(index: int):
         return vibin.streamer.play_playlist_index(index)
 
     @vibin_app.post("/playlist/play/favorites/albums")
-    async def playlist_play_favorite_albums(max_count: int = 10):
+    def playlist_play_favorite_albums(max_count: int = 10):
         return vibin.play_favorite_albums(max_count=max_count)
 
     @vibin_app.post("/playlist/play/favorites/tracks")
-    async def playlist_play_favorite_tracks(max_count: int = 100):
+    def playlist_play_favorite_tracks(max_count: int = 100):
         return vibin.play_favorite_tracks(max_count=max_count)
 
     @vibin_app.post("/playlist/clear")
-    async def playlist_clear():
+    def playlist_clear():
         return vibin.streamer.playlist_clear()
 
     @vibin_app.post("/playlist/delete/{playlist_entry_id}")
-    async def playlist_delete_entry(playlist_entry_id: int):
+    def playlist_delete_entry(playlist_entry_id: int):
         return vibin.streamer.playlist_delete_entry(playlist_entry_id)
 
     @vibin_app.post("/playlist/move/{playlist_entry_id}")
-    async def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
+    def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
         return vibin.streamer.playlist_move_entry(playlist_entry_id, from_index, to_index)
 
     @vibin_app.get("/playlists")
@@ -716,14 +701,14 @@ def server_start(
 
     @vibin_app.get("/favorites")
     @transform_media_server_urls_if_proxying
-    async def favorites():
+    def favorites():
         return {
             "favorites": vibin.favorites(),
         }
 
     @vibin_app.get("/favorites/albums")
     @transform_media_server_urls_if_proxying
-    async def favorites_albums():
+    def favorites_albums():
         favorites = vibin.favorites(requested_types=["album"])
 
         return {
@@ -732,7 +717,7 @@ def server_start(
 
     @vibin_app.get("/favorites/tracks")
     @transform_media_server_urls_if_proxying
-    async def favorites_tracks():
+    def favorites_tracks():
         favorites = vibin.favorites(requested_types=["track"])
 
         return {
@@ -740,19 +725,19 @@ def server_start(
         }
 
     @vibin_app.post("/favorites")
-    async def favorites_create(favorite: Favorite):
+    def favorites_create(favorite: Favorite):
         try:
             return vibin.store_favorite(favorite.type, favorite.media_id)
         except VibinNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.delete("/favorites/{media_id}")
-    async def favorites_delete(media_id):
+    def favorites_delete(media_id):
         vibin.delete_favorite(media_id)
 
     @vibin_app.get("/presets")
     @transform_media_server_urls_if_proxying
-    async def presets() -> dict:
+    def presets() -> dict:
         return vibin.presets
 
     @vibin_app.post("/presets/{preset_id}/play")
@@ -761,38 +746,38 @@ def server_start(
 
     @vibin_app.get("/browse/{parent_id}")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def browse(parent_id: str):
+    @requires_media
+    def browse(parent_id: str):
         return vibin.browse_media(parent_id)
 
     @vibin_app.get("/metadata/{id}")
     @transform_media_server_urls_if_proxying
-    @requires_media_async
-    async def browse(id: str):
+    @requires_media
+    def browse(id: str):
         return xmltodict.parse(vibin.media.get_metadata(id))
 
     @vibin_app.post("/subscribe")
-    async def transport_play_media_id():
+    def transport_play_media_id():
         vibin.subscribe()
 
     @vibin_app.get("/statevars")
-    async def state_vars() -> dict:
+    def state_vars() -> dict:
         return vibin.state_vars
 
     @vibin_app.get("/playstate")
-    async def play_state() -> dict:
+    def play_state() -> dict:
         return vibin.play_state
 
     @vibin_app.get("/devicedisplay")
-    async def device_display() -> dict:
+    def device_display() -> dict:
         return vibin.device_display
 
     @vibin_app.get("/db")
-    async def db_get():
+    def db_get():
         return vibin.db_get()
 
     @vibin_app.put("/db")
-    async def db_set(data: dict):
+    def db_set(data: dict):
         # TODO: This takes a user-provided chunk of data and writes it to disk.
         #   This could be exploited for much harm if used with ill intent.
         try:
@@ -834,7 +819,11 @@ def server_start(
             timeout=20.0,
         )
 
-        proxy_response = await media_server_proxy_client.send(proxy_request, stream=True)
+        try:
+            proxy_response = \
+                await media_server_proxy_client.send(proxy_request, stream=True)
+        except httpx.TimeoutException:
+            logger.warning(f"Proxy timed out on request: {request.url}")
 
         return StreamingResponse(
             proxy_response.aiter_raw(),

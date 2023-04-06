@@ -717,7 +717,7 @@ class Vibin:
         return [
             result["media_id"]
             for result in results
-            if result["media_id"] is not None
+            if result["media_id"] is not None and result["is_valid"] is True
         ]
 
     # Expect data_format to be "json", "dat", or "png"
