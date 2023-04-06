@@ -29,6 +29,8 @@ from vibin.mediasources import MediaSource
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
 
+# TODO: Consider using httpx instead of requests, and making some of these
+#   methods (particularly the ones that use SMOIP) async.
 
 # -----------------------------------------------------------------------------
 # NOTE: Media IDs only make sense when streaming from a local source. This
