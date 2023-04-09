@@ -131,8 +131,11 @@ def server_start(
 
         logger.info("Vibin server shutdown requested")
         vibin.shutdown()
-        logger.info("Shutting down media server proxy")
-        await media_server_proxy_client.aclose()
+
+        if media_server_proxy_client is not None:
+            logger.info("Shutting down media server proxy")
+            await media_server_proxy_client.aclose()
+
         logger.info("Vibin server successfully shut down")
 
     vibin_app = FastAPI(lifespan=api_lifespan)
