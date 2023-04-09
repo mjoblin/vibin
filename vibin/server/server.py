@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import functools
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -583,6 +584,25 @@ def server_start(
                 status_code=404,
                 detail=f"Cannot generate waveform due to missing dependency: {e}",
             )
+
+    @vibin_app.get("/tracks/{track_id}/rms")
+    def track_rms(track_id: str):
+        waveform = vibin.waveform_for_track(track_id, data_format="json")
+
+        samples = waveform["data"]
+        squared_samples = [sample ** 2 for sample in samples]
+        squared_sum = sum(squared_samples)
+
+        mean = squared_sum / len(samples)
+        rms = math.sqrt(mean)
+        peak = max((abs(sample) for sample in samples))
+        rms_to_peak_ratio = rms / peak
+
+        return {
+            "rms": rms,
+            "peak": peak,
+            "rms_to_peak": rms_to_peak_ratio,
+        }
 
     @vibin_app.get("/tracks/{track_id}/links")
     def track_links_by_track_id(track_id: str, all_types: bool = False):
