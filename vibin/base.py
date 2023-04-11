@@ -28,7 +28,7 @@ from vibin import (
     VibinMissingDependencyError,
     __version__,
 )
-from vibin.constants import APP_ROOT
+from vibin.constants import DB_ROOT
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
@@ -138,15 +138,13 @@ class Vibin:
 
     def _init_db(self):
         # Configure app-level persistent data directory.
-        self._data_dir = Path(APP_ROOT, "_data")
-
         try:
-            os.makedirs(self._data_dir, exist_ok=True)
+            os.makedirs(DB_ROOT, exist_ok=True)
         except OSError:
-            raise VibinError(f"Cannot create data directory: {self._data_dir}")
+            raise VibinError(f"Cannot create data directory: {DB_ROOT}")
 
         # Configure data store.
-        self._db_file = Path(self._data_dir, "db.json")
+        self._db_file = Path(DB_ROOT, "db.json")
         self._db = TinyDB(self._db_file)
         self._playlists = self._db.table("playlists")
         self._favorites = self._db.table("favorites")
