@@ -82,7 +82,7 @@ def cli():
 )
 @click.option(
     "--vibinui", "-u",
-    help="Path to Web UI static files; use 'auto' to find --installui location.",
+    help="Path to Web UI static files; use 'auto' to find 'vibin installui' location.",
     metavar="DIR",
     type=click.STRING,
     default=None,

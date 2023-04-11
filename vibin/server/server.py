@@ -77,7 +77,7 @@ def server_start(
 ):
     local_ip = get_local_ip() if host == "0.0.0.0" else host
 
-    if not os.path.exists(vibinui):
+    if vibinui is not None and not os.path.exists(vibinui):
         logger.error(f"Cannot serve Web UI: Path does not exist: {vibinui}")
         return
 
@@ -179,6 +179,8 @@ def server_start(
 
     if vibinui:
         try:
+            logger.info(f"Serving Web UI from: {vibinui}")
+
             vibin_app.mount(
                 "/ui/static",
                 StaticFiles(directory=Path(vibinui, "static"), html=True),

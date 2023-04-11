@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import requests
 
 from vibin import VibinError
-from vibin.constants import UI_REPOSITORY, UI_ROOT
+from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from .logger import logger
 
 
@@ -89,17 +89,14 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
 
 
 def install_vibinui():
-    logger.info(f"Installing the Web UI into '{UI_ROOT}'")
+    logger.info(f"Installing the Web UI into: {UI_ROOT}")
 
-    # Check that the Web UI directory doesn't already exist
-    try:
-        os.makedirs(UI_ROOT, exist_ok=False)
-    except FileExistsError:
-        raise VibinError(f"Cannot create directory for Web UI: '{UI_ROOT}' already exists")
+    # Create the UI root directory if it doesn't already exist
+    os.makedirs(UI_ROOT, exist_ok=True)
 
     # Call the GitHub API to get the tag name for "latest"
     try:
-        logger.info(f"Retrieving latest version tag from GitHub...")
+        logger.info(f"Retrieving latest version tag from GitHub repository ({UI_REPOSITORY})...")
         response = \
             requests.get(f"https://api.github.com/repos/{UI_REPOSITORY}/releases/latest")
         api_response = response.json()
@@ -123,11 +120,31 @@ def install_vibinui():
             # Extract the build directory from the zipfile to the requested location
             with zipfile.ZipFile(local_ui_zipfile, "r") as zip_data:
                 logger.info(f"Unpacking files...")
-                for build_file in [file for file in zip_data.namelist() if "/tests/" in file]:
-                    zip_data.extract(build_file, path=UI_ROOT)
 
-            logger.info(f"Web UI {latest_tag} installed into '{UI_ROOT}'")
-            logger.info(f"Run 'vibin serve --vibinui' to serve this UI instance")
+                top_level_zip_dir = zip_data.filelist[0].filename
+                ui_install_dir = Path(UI_ROOT, top_level_zip_dir)
+
+                if ui_install_dir.is_dir():
+                    raise VibinError(
+                        f"Install directory already exists: {ui_install_dir}"
+                    )
+
+                ui_build_files = [
+                    file for file in zip_data.namelist() if UI_BUILD_DIR in file
+                ]
+
+                if len(ui_build_files) <= 0:
+                    raise VibinError(
+                        f"Web UI archive does not contain any '{UI_BUILD_DIR}' files"
+                    )
+
+                for ui_build_file in ui_build_files:
+                    zip_data.extract(ui_build_file, path=UI_ROOT)
+
+            logger.info(f"Web UI {latest_tag} installed into: {ui_install_dir}")
+            logger.info(
+                f"Specify '--vibinui auto' when running 'vibin serve' to serve this UI instance"
+            )
     except requests.RequestException as e:
         raise VibinError(f"Could not download the {latest_tag} release from GitHub: {e}")
     except zipfile.BadZipFile:
@@ -135,24 +152,22 @@ def install_vibinui():
 
 
 def get_ui_install_dir() -> Path | None:
-    ui_appname = UI_REPOSITORY.split("/")[1]
-
     try:
         candidates = [
             uidir for uidir in os.listdir(UI_ROOT)
-            if uidir.startswith(ui_appname)
+            if uidir.startswith(UI_APPNAME)
             and os.path.isdir(Path(UI_ROOT, uidir))
         ]
     except FileNotFoundError:
         return None
 
     candidate_versions = [
-        candidate.replace(f"{ui_appname}-", "") for candidate in candidates
+        candidate.replace(f"{UI_APPNAME}-", "") for candidate in candidates
     ]
 
     candidate_versions.sort(key=StrictVersion, reverse=True)
 
     try:
-        return Path(UI_ROOT, f"{ui_appname}-{candidate_versions[0]}")
+        return Path(UI_ROOT, f"{UI_APPNAME}-{candidate_versions[0]}")
     except IndexError:
         return None

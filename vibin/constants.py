@@ -9,3 +9,5 @@ DB_ROOT = Path(APP_ROOT, "_data")
 UI_ROOT = Path(APP_ROOT, "_webui")
 
 UI_REPOSITORY = "mjoblin/vibinui"
+UI_BUILD_DIR = "/build/"  # Directory in the repo which holds the UI build
+UI_APPNAME = UI_REPOSITORY.split("/")[1]
