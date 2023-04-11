@@ -1,9 +1,22 @@
 from collections.abc import Iterable
 import dataclasses
+from distutils.version import StrictVersion
+import json
 import math
+import os
+from pathlib import Path
 import re
+import shutil
+import tempfile
+import zipfile
 
 from pydantic import BaseModel
+import requests
+
+from vibin import VibinError
+from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
+from .logger import logger
+
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
@@ -73,3 +86,88 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
         return item
 
     return transform(payload)
+
+
+def install_vibinui():
+    logger.info(f"Installing the Web UI into: {UI_ROOT}")
+
+    # Create the UI root directory if it doesn't already exist
+    os.makedirs(UI_ROOT, exist_ok=True)
+
+    # Call the GitHub API to get the tag name for "latest"
+    try:
+        logger.info(f"Retrieving latest version tag from GitHub repository ({UI_REPOSITORY})...")
+        response = \
+            requests.get(f"https://api.github.com/repos/{UI_REPOSITORY}/releases/latest")
+        api_response = response.json()
+
+        latest_tag = api_response["tag_name"]
+        logger.info(f"Installing version {latest_tag}")
+    except (requests.RequestException, json.JSONDecodeError, KeyError):
+        raise VibinError("Could not determine latest UI release tag from GitHub")
+
+    # Download and extract the files.
+    try:
+        # Build the path to the latest release archive zipfile
+        latest_zip = f"https://github.com/{UI_REPOSITORY}/archive/{latest_tag}.zip"
+        logger.info(f"Downloading {latest_tag} archive from GitHub...")
+
+        with tempfile.TemporaryFile() as local_ui_zipfile:
+            # Download the latest release archive zipfile
+            with requests.get(latest_zip, stream=True) as response:
+                shutil.copyfileobj(response.raw, local_ui_zipfile)
+
+            # Extract the build directory from the zipfile to the requested location
+            with zipfile.ZipFile(local_ui_zipfile, "r") as zip_data:
+                logger.info(f"Unpacking files...")
+
+                top_level_zip_dir = zip_data.filelist[0].filename
+                ui_install_dir = Path(UI_ROOT, top_level_zip_dir)
+
+                if ui_install_dir.is_dir():
+                    raise VibinError(
+                        f"Install directory already exists: {ui_install_dir}"
+                    )
+
+                ui_build_files = [
+                    file for file in zip_data.namelist() if UI_BUILD_DIR in file
+                ]
+
+                if len(ui_build_files) <= 0:
+                    raise VibinError(
+                        f"Web UI archive does not contain any '{UI_BUILD_DIR}' files"
+                    )
+
+                for ui_build_file in ui_build_files:
+                    zip_data.extract(ui_build_file, path=UI_ROOT)
+
+            logger.info(f"Web UI {latest_tag} installed into: {ui_install_dir}")
+            logger.info(
+                f"Specify '--vibinui auto' when running 'vibin serve' to serve this UI instance"
+            )
+    except requests.RequestException as e:
+        raise VibinError(f"Could not download the {latest_tag} release from GitHub: {e}")
+    except zipfile.BadZipFile:
+        raise VibinError(f"The downloaded UI archive does not appear to be a valid zipfile")
+
+
+def get_ui_install_dir() -> Path | None:
+    try:
+        candidates = [
+            uidir for uidir in os.listdir(UI_ROOT)
+            if uidir.startswith(UI_APPNAME)
+            and os.path.isdir(Path(UI_ROOT, uidir))
+        ]
+    except FileNotFoundError:
+        return None
+
+    candidate_versions = [
+        candidate.replace(f"{UI_APPNAME}-", "") for candidate in candidates
+    ]
+
+    candidate_versions.sort(key=StrictVersion, reverse=True)
+
+    try:
+        return Path(UI_ROOT, f"{UI_APPNAME}-{candidate_versions[0]}")
+    except IndexError:
+        return None

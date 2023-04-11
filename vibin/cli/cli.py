@@ -1,4 +1,6 @@
 import json
+import os.path
+from pathlib import Path
 import tempfile
 
 import click
@@ -8,7 +10,8 @@ from rich.table import Table
 
 from vibin import VibinError
 from vibin.server import server_start
-from vibin.constants import VIBIN_PORT
+from vibin.constants import UI_ROOT, VIBIN_PORT
+from vibin.utils import get_ui_install_dir, install_vibinui
 
 
 CONTEXT_SETTINGS = {
@@ -79,7 +82,7 @@ def cli():
 )
 @click.option(
     "--vibinui", "-u",
-    help="Path to vibinui static files.",
+    help="Path to Web UI static files; use 'auto' to find 'vibin installui' location.",
     metavar="DIR",
     type=click.STRING,
     default=None,
@@ -149,11 +152,30 @@ def serve(
     To specify a streamer and media server by UPnP friendly name:
 
      $ vibin serve --streamer MyStreamer --media MyMediaServer
+
+    To serve the Web UI and act as a proxy for all media server URLs:
+
+     $ vibin serve --vibinui auto --proxy-media-server
     """
     if proxy_media_server and no_media:
         raise click.ClickException(
             f"Cannot specify both --proxy-media-server and --no-media"
         )
+
+    if vibinui == "auto":
+        latest_ui_install_dir = get_ui_install_dir()
+
+        if latest_ui_install_dir is None:
+            raise click.ClickException(
+                f"Could not determine latest UI version from {UI_ROOT}"
+            )
+
+        if not os.path.isfile(Path(latest_ui_install_dir, "build", "index.html")):
+            raise click.ClickException(
+                f"Could not locate 'build/index.html' in UI directory '{latest_ui_install_dir}'"
+            )
+
+        vibinui = str(Path(latest_ui_install_dir, "build"))
 
     with open(SERVER_FILE, "w") as server_file:
         server_file.write(f"http://{host}:{port}")
@@ -214,6 +236,17 @@ def call_vibin(endpoint, method="POST", payload=None):
             f"Unable to connect to the Vibin server at {vibin_server}. Is " +
             f"'vibin serve' running?"
         )
+
+
+@cli.command(context_settings=CONTEXT_SETTINGS)
+def installui():
+    """
+    Install the Vibin Web UI.
+    """
+    try:
+        install_vibinui()
+    except VibinError as e:
+        raise click.ClickException(f"Unable to install the Web UI: {e}")
 
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
