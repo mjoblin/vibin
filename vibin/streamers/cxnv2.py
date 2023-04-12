@@ -261,7 +261,7 @@ class CXNv2(Streamer):
             self._subscription_renewal_thread.join()
 
         if self._websocket_thread:
-            logger.info("Stopping streamer Websocket thread")
+            logger.info("Stopping streamer WebSocket thread")
             self._websocket_thread.stop()
             self._websocket_thread.join()
 
@@ -663,7 +663,7 @@ class CXNv2(Streamer):
     def _handle_websocket_to_streamer(self):
         async def async_websocket_manager():
             uri = f"ws://{self._device_hostname}:80/smoip"
-            logger.info(f"Connecting to {self.name} Websocket server on {uri}")
+            logger.info(f"Connecting to {self.name} WebSocket server on {uri}")
 
             async with websockets.connect(
                 uri,
@@ -673,7 +673,7 @@ class CXNv2(Streamer):
                 }
             ) as websocket:
                 logger.info(
-                    f"Successfully connected to {self.name} Websocket server"
+                    f"Successfully connected to {self.name} WebSocket server"
                 )
 
                 # Request playhead position updates (these arrive one per sec).
@@ -1023,14 +1023,14 @@ class CXNv2(Streamer):
 
     @property
     def play_state(self):
-        # TODO: This is a raw CXNv2 Websocket payload shape. This should
+        # TODO: This is a raw CXNv2 WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
         return self._play_state
 
     @property
     def device_display(self):
-        # TODO: This is a raw CXNv2 Websocket payload shape. This should
+        # TODO: This is a raw CXNv2 WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
         return self._device_display

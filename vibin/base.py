@@ -613,9 +613,9 @@ class Vibin:
             "stored_playlists": self._playlists.all(),
         }
 
-    # TODO: Fix handling of state_vars (UPNP) and updates (Websocket) to be
+    # TODO: Fix handling of state_vars (UPNP) and updates (WebSocket) to be
     #   more consistent. One option: more clearly configure handling of UPNP
-    #   subscriptions and Websocket events from the streamer; both can be
+    #   subscriptions and WebSocket events from the streamer; both can be
     #   passed back to the client on the same Vibin->Client websocket
     #   connection, perhaps with different message type identifiers.
 
