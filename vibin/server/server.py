@@ -889,7 +889,7 @@ def server_start(
             }
 
             logger.info(
-                f"Websocket connection accepted from {client_ip}:{client_port}"
+                f"WebSocket connection accepted from {client_ip}:{client_port}"
             )
             self.sender_task = asyncio.create_task(self.sender(websocket))
 
@@ -967,7 +967,7 @@ def server_start(
             )
 
             logger.info(
-                f"Websocket connection closed [{close_code}] for client " +
+                f"WebSocket connection closed [{close_code}] for client " +
                 f"{client_ip}:{client_port}"
             )
 
@@ -1077,6 +1077,11 @@ def server_start(
 
     logger.info(f"Starting REST API")
     logger.info(f"API docs: http://{local_ip}:{port}{vibin_app.docs_url}")
+
+    uvicorn.config.LOGGING_CONFIG["formatters"]["default"]["fmt"] = \
+        "%(asctime)s %(name)s [%(levelname)s] %(message)s"
+    uvicorn.config.LOGGING_CONFIG["formatters"]["access"]["fmt"] = \
+        '%(asctime)s %(name)s [%(levelname)s] %(client_addr)s [%(status_code)s] %(request_line)s'
 
     uvicorn.run(
         vibin_app,
