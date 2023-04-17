@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 import typing
 
+import upnpclient
+
 from vibin.models import Album, Artist, Track
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
@@ -11,6 +13,10 @@ from vibin.models import Album, Artist, Track
 class MediaSource(metaclass=ABCMeta):
     model_name = "VibinMediaSource"
 
+    @abstractmethod
+    def __init__(self, device: upnpclient.Device):
+        pass
+
     @property
     @abstractmethod
     def name(self):
@@ -19,6 +25,21 @@ class MediaSource(metaclass=ABCMeta):
     @property
     @abstractmethod
     def device(self):
+        pass
+
+    @property
+    @abstractmethod
+    def all_albums_path(self):
+        pass
+
+    @property
+    @abstractmethod
+    def new_albums_path(self):
+        pass
+
+    @property
+    @abstractmethod
+    def all_artists_path(self):
         pass
 
     @property

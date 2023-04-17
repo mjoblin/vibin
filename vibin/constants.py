@@ -4,6 +4,12 @@ from pathlib import Path
 
 VIBIN_PORT = 7669
 
+# These media path defaults come from Asset UPnP DLNA. They can be overridden
+# using the API (or via the Web UI).
+DEFAULT_ALL_ALBUMS_PATH = "Album/[All Albums]"
+DEFAULT_NEW_ALBUMS_PATH = "New Albums"
+DEFAULT_ALL_ARTISTS_PATH = "Artist/[All Artists]"
+
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_ROOT = Path(APP_ROOT, "_data")
 UI_ROOT = Path(APP_ROOT, "_webui")

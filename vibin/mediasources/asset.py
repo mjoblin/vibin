@@ -2,9 +2,9 @@ from functools import lru_cache
 from pathlib import Path
 import typing
 from urllib.parse import urlparse
-import upnpclient
 import xml.etree.ElementTree as ET
 
+import upnpclient
 import untangle
 
 from vibin import VibinNotFoundError
@@ -15,8 +15,12 @@ from vibin.models import Album, Artist, Track
 class Asset(MediaSource):
     model_name = "Asset UPnP Server"
 
-    def __init__(self, device):
+    def __init__(self, device: upnpclient.Device):
         self._device = device
+
+        self._all_albums_path = None
+        self._new_albums_path = None
+        self._all_artists_path = None
 
         self._media_namespaces = {
             "didl": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
@@ -24,6 +28,30 @@ class Asset(MediaSource):
             "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
             "dlna": "urn:schemas-dlna-org:metadata-1-0/",
         }
+
+    @property
+    def all_albums_path(self):
+        return self._all_albums_path
+
+    @all_albums_path.setter
+    def all_albums_path(self, path):
+        self._all_albums_path = path
+
+    @property
+    def new_albums_path(self):
+        return self._new_albums_path
+
+    @new_albums_path.setter
+    def new_albums_path(self, path):
+        self._new_albums_path = path
+
+    @property
+    def all_artists_path(self):
+        return self._all_artists_path
+
+    @all_artists_path.setter
+    def all_artists_path(self, path):
+        self._all_artists_path = path
 
     @property
     def name(self):
@@ -88,7 +116,10 @@ class Asset(MediaSource):
 
     @lru_cache
     def _albums(self) -> typing.List[Album]:
-        return self.get_path_contents(Path("Album", "[All Albums]"))
+        if self.all_albums_path is None:
+            return []
+
+        return self.get_path_contents(Path(self.all_albums_path))
 
     @property
     def albums(self) -> typing.List[Album]:
@@ -98,7 +129,7 @@ class Asset(MediaSource):
     def _new_albums(self) -> typing.List[Album]:
         # NOTE: This could just:
         #
-        #   return self.get_path_contents(Path("New Albums"))
+        #   return self.get_path_contents(Path(self.new_albums_path))
         #
         # ... but "New Albums" returns albums with different Ids from the
         # "All Albums" path. So after getting the New Albums, we replace each
@@ -107,7 +138,7 @@ class Asset(MediaSource):
         # two distinct albums might share the same title/artist/etc).
 
         all_albums = self.albums
-        new_albums = self.get_path_contents(Path("New Albums"))
+        new_albums = self.get_path_contents(Path(self.new_albums_path))
 
         def album_from_all(new_album):
             for album in all_albums:
@@ -139,7 +170,7 @@ class Asset(MediaSource):
 
     @lru_cache
     def _artists(self) -> typing.List[Artist]:
-        return self.get_path_contents(Path("Artist", "[All Artists]"))
+        return self.get_path_contents(Path(self.all_artists_path))
 
     @property
     def artists(self) -> typing.List[Artist]:

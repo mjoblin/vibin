@@ -40,6 +40,7 @@ from vibin.models import (
     PlaylistModifyPayload,
     StoredPlaylist,
     Track,
+    VibinSettings,
 )
 from vibin.streamers import SeekTarget
 from vibin.logger import logger
@@ -299,6 +300,17 @@ def server_start(
     def vibin_clear_media_caches():
         return vibin.media.clear_caches()
 
+    @vibin_app.get("/vibin/settings")
+    def vibin_settings():
+        return vibin.settings
+
+    @vibin_app.put("/vibin/settings")
+    @requires_media
+    def vibin_update_settings(settings: VibinSettings):
+        vibin.settings = settings
+
+        return vibin.settings
+
     # TODO: Do we want /system endpoints for both streamer and media?
     @vibin_app.post("/system/power/toggle")
     def system_power_toggle():
@@ -409,13 +421,19 @@ def server_start(
     @transform_media_server_urls_if_proxying
     @requires_media
     def albums() -> List[Album]:
-        return vibin.media.albums
+        try:
+            return vibin.media.albums
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums/new")
     @transform_media_server_urls_if_proxying
     @requires_media
     def albums_new() -> List[Album]:
-        return vibin.media.new_albums
+        try:
+            return vibin.media.new_albums
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/albums/{album_id}")
     @transform_media_server_urls_if_proxying
@@ -441,7 +459,10 @@ def server_start(
     @transform_media_server_urls_if_proxying
     @requires_media
     def artists() -> List[Artist]:
-        return vibin.media.artists
+        try:
+            return vibin.media.artists
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/artists/{artist_id}")
     @transform_media_server_urls_if_proxying
@@ -456,7 +477,10 @@ def server_start(
     @transform_media_server_urls_if_proxying
     @requires_media
     def tracks() -> List[Track]:
-        return vibin.media.tracks
+        try:
+            return vibin.media.tracks
+        except VibinNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/lyrics")
     def track_lyrics(
