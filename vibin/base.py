@@ -28,7 +28,12 @@ from vibin import (
     VibinMissingDependencyError,
     __version__,
 )
-from vibin.constants import DB_ROOT
+from vibin.constants import (
+    DB_ROOT,
+    DEFAULT_ALL_ALBUMS_PATH,
+    DEFAULT_ALL_ARTISTS_PATH,
+    DEFAULT_NEW_ALBUMS_PATH,
+)
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 import vibin.mediasources as mediasources
@@ -43,6 +48,7 @@ from vibin.models import (
     StoredPlaylist,
     StoredPlaylistStatus,
     Track,
+    VibinSettings,
 )
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
@@ -116,6 +122,11 @@ class Vibin:
             self._current_media_server = \
                 self._instantiate_media_server_instance(media_server_device)
             self._current_streamer.register_media_source(self._current_media_server)
+
+            settings = self.settings
+            self._current_media_server.all_albums_path = settings.all_albums_path
+            self._current_media_server.new_albums_path = settings.new_albums_path
+            self._current_media_server.all_artists_path = settings.all_artists_path
         else:
             logger.warning("Not using a local media server; some features will be unavailable")
 
@@ -146,10 +157,20 @@ class Vibin:
         # Configure data store.
         self._db_file = Path(DB_ROOT, "db.json")
         self._db = TinyDB(self._db_file)
+        self._settings_table = self._db.table("settings")
         self._playlists = self._db.table("playlists")
         self._favorites = self._db.table("favorites")
         self._lyrics = self._db.table("lyrics")
         self._links = self._db.table("links")
+
+        if len(self._settings_table.all()) == 0:
+            settings = VibinSettings(
+                all_albums_path=DEFAULT_ALL_ALBUMS_PATH,
+                new_albums_path=DEFAULT_NEW_ALBUMS_PATH,
+                all_artists_path=DEFAULT_ALL_ARTISTS_PATH,
+            )
+
+            self._settings_table.insert(settings.dict())
 
     def _check_for_active_playlist_in_store(self):
         # See if the current streamer playlist matches a stored playlist
@@ -207,6 +228,18 @@ class Vibin:
             logger.info(f"Registered external service: {service_instance.name}")
         except KeyError:
             pass
+
+    @property
+    def settings(self):
+        return VibinSettings.parse_obj(self._settings_table.all()[0])
+
+    @settings.setter
+    def settings(self, settings: VibinSettings):
+        self._settings_table.update(settings.dict())
+
+        self._current_media_server.all_albums_path = settings.all_albums_path
+        self._current_media_server.new_albums_path = settings.new_albums_path
+        self._current_media_server.all_artists_path = settings.all_artists_path
 
     # TODO: Do we want this
     def artist_links(self, artist: str):

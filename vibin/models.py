@@ -6,6 +6,12 @@ from pydantic import BaseModel
 # TODO: Add a Container class?
 
 
+class VibinSettings(BaseModel):
+    all_albums_path: str
+    new_albums_path: str
+    all_artists_path: str
+
+
 @dataclass
 class Album:
     id: str
