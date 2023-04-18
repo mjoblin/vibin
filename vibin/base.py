@@ -18,6 +18,7 @@ from typing import Callable, List, Optional, Union
 
 import requests
 from tinydb import TinyDB, Query
+from tinyrecord import transaction
 from upnpclient.soap import SOAPError
 import xml
 import xmltodict
@@ -170,7 +171,8 @@ class Vibin:
                 all_artists_path=DEFAULT_ALL_ARTISTS_PATH,
             )
 
-            self._settings_table.insert(settings.dict())
+            with transaction(self._settings_table) as tr:
+                tr.insert(settings.dict())
 
     def _check_for_active_playlist_in_store(self):
         # See if the current streamer playlist matches a stored playlist
@@ -235,7 +237,8 @@ class Vibin:
 
     @settings.setter
     def settings(self, settings: VibinSettings):
-        self._settings_table.update(settings.dict())
+        with transaction(self._settings_table) as tr:
+            tr.update(settings.dict())
 
         self._current_media_server.all_albums_path = settings.all_albums_path
         self._current_media_server.new_albums_path = settings.new_albums_path
@@ -388,7 +391,8 @@ class Vibin:
                 links=results,
             )
 
-            self._links.insert(link_data.dict())
+            with transaction(self._links) as tr:
+                tr.insert(link_data.dict())
 
         return results
 
@@ -673,7 +677,8 @@ class Vibin:
 
         if stored_lyrics is not None:
             if update_cache:
-                self._lyrics.remove(doc_ids=[stored_lyrics.doc_id])
+                with transaction(self._lyrics) as tr:
+                    tr.remove(doc_ids=[stored_lyrics.doc_id])
             else:
                 lyrics_data = Lyrics(**stored_lyrics)
                 return lyrics_data
@@ -706,7 +711,8 @@ class Vibin:
                 chunks=lyric_chunks if lyric_chunks is not None else [],
             )
 
-            self._lyrics.insert(lyric_data.dict())
+            with transaction(self._lyrics) as tr:
+                tr.insert(lyric_data.dict())
 
             return lyric_data
         except VibinError as e:
@@ -721,9 +727,8 @@ class Vibin:
         if stored_lyrics is None:
             raise VibinNotFoundError(f"Could not find lyrics id: {lyrics_id}")
 
-        self._lyrics.update(
-            {"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id]
-        )
+        with transaction(self._lyrics) as tr:
+            tr.update({"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id])
 
     def lyrics_search(self, search_query: str):
         def matches_regex(values, pattern):
@@ -974,7 +979,9 @@ class Vibin:
                 entry_ids=[entry["trackMediaId"] for entry in current_playlist],
             )
 
-            self._playlists.insert(asdict(playlist_data))
+            with transaction(self._playlists) as tr:
+                tr.insert(asdict(playlist_data))
+
             self._cached_stored_playlist = playlist_data
 
             self._reset_stored_playlist_status(
@@ -998,9 +1005,10 @@ class Vibin:
             PlaylistQuery = Query()
 
             try:
-                doc_id = self._playlists.update(
-                    updates, PlaylistQuery.id == self._stored_playlist_status.active_id
-                )[0]
+                with transaction(self._playlists) as tr:
+                    doc_id = tr.update(
+                        updates, PlaylistQuery.id == self._stored_playlist_status.active_id
+                    )[0]
 
                 playlist_data = StoredPlaylist(**self._playlists.get(doc_id=doc_id))
                 self._cached_stored_playlist = playlist_data
@@ -1033,7 +1041,9 @@ class Vibin:
         if playlist_to_delete is None:
             raise VibinNotFoundError()
 
-        self._playlists.remove(doc_ids=[playlist_to_delete.doc_id])
+        with transaction(self._playlists) as tr:
+            tr.remove(doc_ids=[playlist_to_delete.doc_id])
+
         self._send_stored_playlists_update()
 
     def update_playlist_metadata(
@@ -1043,13 +1053,14 @@ class Vibin:
         PlaylistQuery = Query()
 
         try:
-            updated_ids = self._playlists.update(
-                {
-                    "updated": now,
-                    "name": metadata["name"],
-                },
-                PlaylistQuery.id == playlist_id
-            )
+            with transaction(self._playlists) as tr:
+                updated_ids = tr.update(
+                    {
+                        "updated": now,
+                        "name": metadata["name"],
+                    },
+                    PlaylistQuery.id == playlist_id
+                )
 
             if updated_ids is None or len(updated_ids) <= 0:
                 raise VibinNotFoundError()
@@ -1116,7 +1127,9 @@ class Vibin:
             when_favorited=time.time(),
         )
 
-        self._favorites.insert(favorite_data.dict())
+        with transaction(self._favorites) as tr:
+            tr.insert(favorite_data.dict())
+
         self._send_favorites_update()
 
         return favorite_data
@@ -1129,7 +1142,9 @@ class Vibin:
         if favorite_to_delete is None:
             raise VibinNotFoundError()
 
-        self._favorites.remove(doc_ids=[favorite_to_delete.doc_id])
+        with transaction(self._favorites) as tr:
+            tr.remove(doc_ids=[favorite_to_delete.doc_id])
+
         self._send_favorites_update()
 
     @property
@@ -1137,10 +1152,14 @@ class Vibin:
         return self.streamer.presets
 
     def db_get(self):
+        # NOTE: TinyDB isn't thread safe, and this code doesn't use tinyrecord,
+        #   so it could in theory produce an incomplete result.
         with open(self._db_file, "r") as fh:
             return json.loads(fh.read())
 
     def db_set(self, data):
+        # NOTE: TinyDB isn't thread safe, and this code doesn't use tinyrecord,
+        #   so it could in theory corrupt the database.
         with open(self._db_file, "w") as fh:
             fh.write(json.dumps(data))
 

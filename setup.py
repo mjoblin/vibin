@@ -36,6 +36,7 @@ setup(
         "rich",
         "starlette",
         "tinydb",
+        "tinyrecord",
         "untangle",
         "upnpclient",
         "uvicorn[standard]",
