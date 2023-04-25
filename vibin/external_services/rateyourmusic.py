@@ -23,11 +23,11 @@ class RateYourMusic(ExternalService):
         return path.lower().replace(" ", "-")
 
     def links(
-            self,
-            artist: Optional[str] = None,
-            album: Optional[str] = None,
-            track: Optional[str] = None,
-            link_type: str = "All",
+        self,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        track: Optional[str] = None,
+        link_type: str = "All",
     ) -> list[ExternalServiceLink]:
         links = []
 
@@ -43,20 +43,24 @@ class RateYourMusic(ExternalService):
         if link_type == "All" or artist:
             url = f"{self._url_base}/artist/{self._rym_friendly_path(artist)}"
 
-            links.append(ExternalServiceLink(
-                type="Artist",
-                name="Artist",
-                url=url,
-            ))
+            links.append(
+                ExternalServiceLink(
+                    type="Artist",
+                    name="Artist",
+                    url=url,
+                )
+            )
 
         if link_type == "All" or (artist and album):
             url = f"{self._url_base}/release/album/{self._rym_friendly_path(artist)}/{self._rym_friendly_path(album)}"
 
-            links.append(ExternalServiceLink(
-                type="Album",
-                name="Album",
-                url=url,
-            ))
+            links.append(
+                ExternalServiceLink(
+                    type="Album",
+                    name="Album",
+                    url=url,
+                )
+            )
 
         return links
 

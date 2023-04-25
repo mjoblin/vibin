@@ -16,10 +16,10 @@ class ExternalService(metaclass=ABCMeta):
 
     @abstractmethod
     def links(
-            self,
-            artist: Optional[str] = None,
-            album: Optional[str] = None,
-            track: Optional[str] = None,
-            link_type: Optional[str] = "All",
+        self,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        track: Optional[str] = None,
+        link_type: Optional[str] = "All",
     ) -> list[ExternalServiceLink]:
         pass

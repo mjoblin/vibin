@@ -73,12 +73,12 @@ def requires_media(return_val=None):
 
 class Vibin:
     def __init__(
-            self,
-            streamer: Optional[str] = None,
-            media: Union[str, bool, None] = None,
-            discovery_timeout: int = 5,
-            subscribe_callback_base: Optional[str] = None,
-            on_streamer_websocket_update=None,
+        self,
+        streamer: Optional[str] = None,
+        media: Union[str, bool, None] = None,
+        discovery_timeout: int = 5,
+        subscribe_callback_base: Optional[str] = None,
+        on_streamer_websocket_update=None,
     ):
         logger.info("Initializing Vibin")
 
@@ -107,8 +107,9 @@ class Vibin:
         self._current_streamer: Optional[Streamer] = None
         self._current_media_server: Optional[MediaSource] = None
 
-        streamer_device, media_server_device = \
-            determine_streamer_and_media_server(streamer, media)
+        streamer_device, media_server_device = determine_streamer_and_media_server(
+            streamer, media
+        )
 
         if streamer_device is None:
             raise VibinError("Could not find streamer on the network")
@@ -119,9 +120,12 @@ class Vibin:
         logger.info(f"Using streamer UPnP device: {self.streamer.name}")
 
         if media_server_device:
-            logger.info(f"Using media server UPnP device: {media_server_device.friendly_name}")
-            self._current_media_server = \
-                self._instantiate_media_server_instance(media_server_device)
+            logger.info(
+                f"Using media server UPnP device: {media_server_device.friendly_name}"
+            )
+            self._current_media_server = self._instantiate_media_server_instance(
+                media_server_device
+            )
             self._current_streamer.register_media_source(self._current_media_server)
 
             settings = self.settings
@@ -129,17 +133,19 @@ class Vibin:
             self._current_media_server.new_albums_path = settings.new_albums_path
             self._current_media_server.all_artists_path = settings.all_artists_path
         else:
-            logger.warning("Not using a local media server; some features will be unavailable")
+            logger.warning(
+                "Not using a local media server; some features will be unavailable"
+            )
 
         self._check_for_active_playlist_in_store()
         self.subscribe()
 
     def _reset_stored_playlist_status(
-            self,
-            active_id=None,
-            is_synced=False,
-            is_activating=False,
-            send_update=False,
+        self,
+        active_id=None,
+        is_synced=False,
+        is_activating=False,
+        send_update=False,
     ):
         self._stored_playlist_status.active_id = active_id
         self._stored_playlist_status.is_active_synced_with_store = is_synced
@@ -192,15 +198,18 @@ class Vibin:
             entry["trackMediaId"] for entry in streamer_playlist
         ]
 
-        stored_playlists_as_dicts = [
-            StoredPlaylist(**p) for p in self._playlists.all()
-        ]
+        stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._playlists.all()]
 
         try:
-            stored_playlist_matching_active = sorted([
-                playlist for playlist in stored_playlists_as_dicts
-                if playlist.entry_ids == active_playlist_media_ids
-            ], key=operator.attrgetter("updated"), reverse=True)[0]
+            stored_playlist_matching_active = sorted(
+                [
+                    playlist
+                    for playlist in stored_playlists_as_dicts
+                    if playlist.entry_ids == active_playlist_media_ids
+                ],
+                key=operator.attrgetter("updated"),
+                reverse=True,
+            )[0]
 
             # self._active_stored_playlist_id = stored_playlist_matching_active.id
             # self._active_playlist_synced_with_store = True
@@ -288,19 +297,17 @@ class Vibin:
 
     @requires_media()
     def _send_favorites_update(self):
-        self._websocket_message_handler(
-            "Favorites", json.dumps(self.favorites())
-        )
+        self._websocket_message_handler("Favorites", json.dumps(self.favorites()))
 
     @requires_media()
     def media_links(
-            self,
-            *,
-            media_id: Optional[str] = None,
-            artist: Optional[str] = None,
-            album: Optional[str] = None,
-            title: Optional[str] = None,
-            include_all: bool = False,
+        self,
+        *,
+        media_id: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        title: Optional[str] = None,
+        include_all: bool = False,
     ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
         if len(self._external_services) == 0:
             return {}
@@ -335,8 +342,8 @@ class Vibin:
                     title = didl["item"]["dc:title"]
                 else:
                     logger.error(
-                        f"Could not determine whether media item is an Album or " +
-                        f"a Track: {media_id}"
+                        f"Could not determine whether media item is an Album or "
+                        + f"a Track: {media_id}"
                     )
                     return {}
             except xml.parsers.expat.ExpatError as e:
@@ -345,14 +352,11 @@ class Vibin:
                 )
                 return {}
             except KeyError as e:
-                logger.error(
-                    f"Could not find expected media key in {media_id}: {e}"
-                )
+                logger.error(f"Could not find expected media key in {media_id}: {e}")
                 return {}
 
         try:
-            link_type = \
-                "All" if include_all else ("Album" if not title else "Track")
+            link_type = "All" if include_all else ("Album" if not title else "Track")
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future_to_link_getters = {
@@ -363,21 +367,20 @@ class Vibin:
                             "album": album,
                             "track": title,
                             "link_type": link_type,
-                        }
-                    ): service for service in self._external_services.values()
+                        },
+                    ): service
+                    for service in self._external_services.values()
                 }
 
-                for future in concurrent.futures.as_completed(
-                        future_to_link_getters
-                ):
+                for future in concurrent.futures.as_completed(future_to_link_getters):
                     link_getter = future_to_link_getters[future]
 
                     try:
                         results[link_getter.name] = future.result()
                     except Exception as exc:
                         logger.error(
-                            f"Could not retrieve links from " +
-                            f"{link_getter.name}: {exc}"
+                            f"Could not retrieve links from "
+                            + f"{link_getter.name}: {exc}"
                         )
         except xml.parsers.expat.ExpatError as e:
             logger.error(
@@ -396,9 +399,7 @@ class Vibin:
 
         return results
 
-    def _instantiate_streamer_instance(
-            self, streamer_device, subscribe_callback_base
-    ):
+    def _instantiate_streamer_instance(self, streamer_device, subscribe_callback_base):
         # Build a map (device model name to Streamer subclass) of all the
         # streamers Vibin is able to handle.
         known_streamers_by_model: dict[str, Streamer] = {}
@@ -433,7 +434,9 @@ class Vibin:
         try:
             # Create an instance of the MediaSource subclass which we can use to
             # manage our media device.
-            media_server_class = known_media_servers_by_model[media_server_device.model_name]
+            media_server_class = known_media_servers_by_model[
+                media_server_device.model_name
+            ]
             return media_server_class(device=media_server_device)
         except KeyError:
             raise VibinError(
@@ -505,10 +508,10 @@ class Vibin:
 
     @requires_media()
     def modify_playlist(
-            self,
-            id: str,
-            action: str = "REPLACE",
-            insert_index: Optional[int] = None,
+        self,
+        id: str,
+        action: str = "REPLACE",
+        insert_index: Optional[int] = None,
     ):
         self.streamer.play_metadata(self.media.get_metadata(id), action, insert_index)
 
@@ -520,36 +523,28 @@ class Vibin:
             self.streamer.pause()
         except SOAPError as e:
             code, err = e.args
-            raise VibinError(
-                f"Unable to perform Pause transition: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to perform Pause transition: [{code}] {err}")
 
     def play(self):
         try:
             self.streamer.play()
         except SOAPError as e:
             code, err = e.args
-            raise VibinError(
-                f"Unable to perform Play transition: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to perform Play transition: [{code}] {err}")
 
     def next_track(self):
         try:
             self.streamer.next_track()
         except SOAPError as e:
             code, err = e.args
-            raise VibinError(
-                f"Unable to perform Next transition: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to perform Next transition: [{code}] {err}")
 
     def previous_track(self):
         try:
             self.streamer.previous_track()
         except SOAPError as e:
             code, err = e.args
-            raise VibinError(
-                f"Unable to perform Previous transition: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to perform Previous transition: [{code}] {err}")
 
     def repeat(self, state: Optional[str] = "toggle"):
         try:
@@ -557,9 +552,7 @@ class Vibin:
         except SOAPError as e:
             # TODO: Will no longer get a SOAPError after switching to SMOIP
             code, err = e.args
-            raise VibinError(
-                f"Unable to interact with Repeat setting: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to interact with Repeat setting: [{code}] {err}")
 
     def shuffle(self, state: Optional[str] = "toggle"):
         try:
@@ -567,9 +560,7 @@ class Vibin:
         except SOAPError as e:
             # TODO: Will no longer get a SOAPError after switching to SMOIP
             code, err = e.args
-            raise VibinError(
-                f"Unable to interact with Shuffle setting: [{code}] {err}"
-            )
+            raise VibinError(f"Unable to interact with Shuffle setting: [{code}] {err}")
 
     def seek(self, target):
         self.streamer.seek(target)
@@ -616,8 +607,8 @@ class Vibin:
             self.streamer.name: self.streamer.state_vars,
             "vibin": {
                 "last_played_id": self._last_played_id,
-                self.streamer.name: self.streamer.vibin_vars
-            }
+                self.streamer.name: self.streamer.vibin_vars,
+            },
         }
 
         return all_vars
@@ -641,12 +632,9 @@ class Vibin:
     @property
     def stored_playlist_details(self):
         return {
-            "active_stored_playlist_id":
-                self._stored_playlist_status.active_id,
-            "active_synced_with_store":
-                self._stored_playlist_status.is_active_synced_with_store,
-            "activating_stored_playlist":
-                self._stored_playlist_status.is_activating_new_playlist,
+            "active_stored_playlist_id": self._stored_playlist_status.active_id,
+            "active_synced_with_store": self._stored_playlist_status.is_active_synced_with_store,
+            "activating_stored_playlist": self._stored_playlist_status.is_activating_new_playlist,
             "stored_playlists": self._playlists.all(),
         }
 
@@ -657,10 +645,11 @@ class Vibin:
     #   connection, perhaps with different message type identifiers.
 
     def lyrics_for_track(
-            self, update_cache=False, *, track_id=None, artist=None, title=None
+        self, update_cache=False, *, track_id=None, artist=None, title=None
     ):
-        if ("Genius" not in self._external_services.keys()) \
-                or (track_id is None and (artist is None or title is None)):
+        if ("Genius" not in self._external_services.keys()) or (
+            track_id is None and (artist is None or title is None)
+        ):
             return
 
         def storage_id(track_id, artist, title) -> str:
@@ -733,16 +722,17 @@ class Vibin:
     def lyrics_search(self, search_query: str):
         def matches_regex(values, pattern):
             return any(
-                re.search(pattern, value, flags=re.IGNORECASE)
-                for value in values
+                re.search(pattern, value, flags=re.IGNORECASE) for value in values
             )
 
         Lyrics = Query()
         Chunk = Query()
 
-        results = self._lyrics.search(Lyrics.chunks.any(
-            Chunk.header.search(search_query, flags=re.IGNORECASE) |
-            Chunk.body.test(matches_regex, search_query))
+        results = self._lyrics.search(
+            Lyrics.chunks.any(
+                Chunk.header.search(search_query, flags=re.IGNORECASE)
+                | Chunk.body.test(matches_regex, search_query)
+            )
         )
 
         # Only return stored lyrics which include a media id. This is because
@@ -761,22 +751,20 @@ class Vibin:
     #   relying on @lru_cache.
     @lru_cache
     @requires_media()
-    def waveform_for_track(
-            self, track_id, data_format="json", width=800, height=250
-    ):
+    def waveform_for_track(self, track_id, data_format="json", width=800, height=250):
         try:
             track_info = xmltodict.parse(self.media.get_metadata(track_id))
 
             audio_files = [
-                file for file in track_info["DIDL-Lite"]["item"]["res"]
-                if file["#text"].endswith(".flac")
-                or file["#text"].endswith(".wav")
+                file
+                for file in track_info["DIDL-Lite"]["item"]["res"]
+                if file["#text"].endswith(".flac") or file["#text"].endswith(".wav")
             ]
 
             audio_file = audio_files[0]["#text"]
 
             with tempfile.NamedTemporaryFile(
-                    prefix="vibin_", suffix=track_id
+                prefix="vibin_", suffix=track_id
             ) as flac_file:
                 with requests.get(audio_file, stream=True) as response:
                     shutil.copyfileobj(response.raw, flac_file)
@@ -795,8 +783,8 @@ class Vibin:
                         Path(audio_file).suffix[1:],
                         "--output-format",
                         data_format,
-                    ] +
-                    (
+                    ]
+                    + (
                         [
                             "--zoom",
                             "auto",
@@ -808,7 +796,9 @@ class Vibin:
                             "audition",
                             "--split-channels",
                             "--no-axis-labels",
-                        ] if data_format == "png" else []
+                        ]
+                        if data_format == "png"
+                        else []
                     ),
                     capture_output=True,
                 )
@@ -828,9 +818,7 @@ class Vibin:
                 f"Could not find .flac or .wav file URL for track: {track_id}"
             )
         except xml.parsers.expat.ExpatError as e:
-            logger.error(
-                f"Could not convert XML to JSON for track: {track_id}: {e}"
-            )
+            logger.error(f"Could not convert XML to JSON for track: {track_id}: {e}")
         except VibinError as e:
             logger.error(e)
 
@@ -877,9 +865,9 @@ class Vibin:
 
     def _on_playlist_modified(self, playlist_entries):
         if (
-                not self._ignore_playlist_updates
-                and self._stored_playlist_status.active_id
-                and self.streamer
+            not self._ignore_playlist_updates
+            and self._stored_playlist_status.active_id
+            and self.streamer
         ):
             # The playlist has been modified. If a stored playlist is active
             # then compare this playlist against the stored playlist and
@@ -899,12 +887,18 @@ class Vibin:
             # feel inconsistent.
 
             if self._stored_playlist_status.active_id:
-                prior_sync_state = self._stored_playlist_status.is_active_synced_with_store
+                prior_sync_state = (
+                    self._stored_playlist_status.is_active_synced_with_store
+                )
 
-                self._stored_playlist_status.is_active_synced_with_store = \
+                self._stored_playlist_status.is_active_synced_with_store = (
                     self._streamer_playlist_matches_stored(playlist_entries)
+                )
 
-                if self._stored_playlist_status.is_active_synced_with_store != prior_sync_state:
+                if (
+                    self._stored_playlist_status.is_active_synced_with_store
+                    != prior_sync_state
+                ):
                     self._send_stored_playlists_update()
 
     def shutdown(self):
@@ -951,19 +945,16 @@ class Vibin:
         self._ignore_playlist_updates = False
 
         self._reset_stored_playlist_status(
-            active_id=playlist_id,
-            is_synced=True,
-            is_activating=False,
-            send_update=True
+            active_id=playlist_id, is_synced=True, is_activating=False, send_update=True
         )
 
         return StoredPlaylist(**playlist)
 
     @requires_media()
     def store_current_playlist(
-            self,
-            metadata: Optional[dict[str, any]] = None,
-            replace: bool = True,
+        self,
+        metadata: Optional[dict[str, any]] = None,
+        replace: bool = True,
     ) -> StoredPlaylist:
         current_playlist = self.streamer.playlist()
         now = time.time()
@@ -994,9 +985,7 @@ class Vibin:
             # Updates to an existing playlist
             updates = {
                 "updated": now,
-                "entry_ids": [
-                    entry["trackMediaId"] for entry in current_playlist
-                ],
+                "entry_ids": [entry["trackMediaId"] for entry in current_playlist],
             }
 
             if metadata and "name" in metadata:
@@ -1007,7 +996,8 @@ class Vibin:
             try:
                 with transaction(self._playlists) as tr:
                     doc_id = tr.update(
-                        updates, PlaylistQuery.id == self._stored_playlist_status.active_id
+                        updates,
+                        PlaylistQuery.id == self._stored_playlist_status.active_id,
                     )[0]
 
                 playlist_data = StoredPlaylist(**self._playlists.get(doc_id=doc_id))
@@ -1047,7 +1037,7 @@ class Vibin:
         self._send_stored_playlists_update()
 
     def update_playlist_metadata(
-            self, playlist_id: str, metadata: dict[str, any]
+        self, playlist_id: str, metadata: dict[str, any]
     ) -> StoredPlaylist:
         now = time.time()
         PlaylistQuery = Query()
@@ -1059,7 +1049,7 @@ class Vibin:
                         "updated": now,
                         "name": metadata["name"],
                     },
-                    PlaylistQuery.id == playlist_id
+                    PlaylistQuery.id == playlist_id,
                 )
 
             if updated_ids is None or len(updated_ids) <= 0:
@@ -1069,14 +1059,11 @@ class Vibin:
 
             return StoredPlaylist(**self._playlists.get(doc_id=updated_ids[0]))
         except IndexError:
-            raise VibinError(
-                f"Could not update Playlist Id: {playlist_id}"
-            )
+            raise VibinError(f"Could not update Playlist Id: {playlist_id}")
 
     @requires_media(return_val=[])
     def favorites(
-            self,
-            requested_types: Optional[list[str]] = None
+        self, requested_types: Optional[list[str]] = None
     ) -> list[dict[str, Album | Track]]:
         media_hydrators = {
             "album": self.media.album,

@@ -7,6 +7,7 @@ import upnpclient
 from vibin.mediasources import MediaSource
 from vibin.types_foo import ServiceSubscriptions
 
+
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
 # http://upnp.org/specs/av/UPnP-av-AVTransport-v3-Service.pdf
 
@@ -31,11 +32,11 @@ class Streamer(metaclass=ABCMeta):
 
     @abstractmethod
     def __init__(
-            self,
-            device: upnpclient.Device,
-            subscribe_callback_base: typing.Optional[str],
-            updates_handler=None,
-            on_playlist_modified=None,
+        self,
+        device: upnpclient.Device,
+        subscribe_callback_base: typing.Optional[str],
+        updates_handler=None,
+        on_playlist_modified=None,
     ):
         pass
 
@@ -112,17 +113,17 @@ class Streamer(metaclass=ABCMeta):
 
     # TODO: Make this a settable property
     @abstractmethod
-    def ignore_playlist_updates(self, ignore = False):
+    def ignore_playlist_updates(self, ignore=False):
         pass
 
     # TODO: Fix the name as it's not always going to result in playing
     #   something. e.g. "APPEND" won't change what's playing.
     @abstractmethod
     def play_metadata(
-            self,
-            metadata: str,
-            action: str = "REPLACE",
-            insert_index: typing.Optional[int] = None
+        self,
+        metadata: str,
+        action: str = "REPLACE",
+        insert_index: typing.Optional[int] = None,
     ):
         pass
 
