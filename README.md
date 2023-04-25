@@ -26,6 +26,8 @@ laptop), but may need to be restarted when the device comes out of sleep.
 
 ### Installing `vibin`
 
+`vibin` requires [Python 3.10] or higher.
+
 > The following installs `vibin` into a Python virtual environment. A virtual environment is
 > recommended for isolation/cleanliness, but is not required.
 
@@ -34,7 +36,7 @@ To install `vibin` inside a Python virtual environment:
 ```bash
 git clone https://github.com/mjoblin/vibin.git
 cd vibin
-python -m venv venv-vibin
+python3 -m venv venv-vibin
 source venv-vibin/bin/activate
 pip install .
 ```
@@ -235,6 +237,7 @@ The following message types are sent by `vibin`:
 
 [StreamMagic]: https://www.cambridgeaudio.com/row/en/products/streammagic
 [Asset UPnP]: https://dbpoweramp.com/asset-upnp-dlna.htm
+[Python 3.10]: https://www.python.org/downloads
 [Discogs]: https://www.discogs.com
 [Genius]: https://genius.com
 [Rate Your Music]: https://rateyourmusic.com
