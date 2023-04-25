@@ -178,7 +178,7 @@ def server_start(
     # See "Correct default route usage":
     #   https://github.com/tiangolo/fastapi/discussions/9146
 
-    if vibinui:
+    if vibinui is not None:
         try:
             logger.info(f"Serving Web UI from: {vibinui}")
 
@@ -191,6 +191,8 @@ def server_start(
             logger.info(f"Web UI available at http://{local_ip}:{port}/ui")
         except RuntimeError as e:
             logger.error(f"Cannot serve Web UI: {e}")
+    else:
+        logger.info(f"Not serving Web UI")
 
     @vibin_app.router.get("/", include_in_schema=False)
     def redirect_root_to_ui():
