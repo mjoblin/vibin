@@ -29,6 +29,7 @@ from vibin.mediasources import MediaSource
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
 
+
 # TODO: Consider using httpx instead of requests, and making some of these
 #   methods (particularly the ones that use SMOIP) async.
 
@@ -63,8 +64,9 @@ from .. import utils
 #   }
 # }
 
+
 class StoppableThread(threading.Thread):
-    def __init__(self,  *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(StoppableThread, self).__init__(*args, **kwargs)
         self.stop_event = threading.Event()
 
@@ -86,11 +88,11 @@ class CXNv2(Streamer):
     model_name = "CXNv2"
 
     def __init__(
-            self,
-            device: upnpclient.Device,
-            subscribe_callback_base: Optional[str],
-            updates_handler=None,
-            on_playlist_modified=None,
+        self,
+        device: upnpclient.Device,
+        subscribe_callback_base: Optional[str],
+        updates_handler=None,
+        on_playlist_modified=None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
@@ -123,7 +125,9 @@ class CXNv2(Streamer):
         self._state_var_handlers: StateVarHandlers = {
             StateVarName("LastChange"): self._last_change_event_handler,
             StateVarName("IdArray"): self._id_array_event_handler,
-            StateVarName("CurrentPlaylistTrackID"): self._current_playlist_track_id_event_handler,
+            StateVarName(
+                "CurrentPlaylistTrackID"
+            ): self._current_playlist_track_id_event_handler,
         }
 
         self._disconnected = False
@@ -165,8 +169,8 @@ class CXNv2(Streamer):
                 self._navigator_id = new_nav["RetNavigatorId"]
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
                 logger.error(
-                    "Could not acquire CXNv2 navigator. If device is in " +
-                    "standby, power it on and try again."
+                    "Could not acquire CXNv2 navigator. If device is in "
+                    + "standby, power it on and try again."
                 )
                 raise VibinDeviceError(f"Could not acquire CXNv2 navigator: {e}")
 
@@ -215,9 +219,7 @@ class CXNv2(Streamer):
         # Current playlist track index.
         try:
             response = device.UuVolControl.GetCurrentPlaylistTrack()
-            self._set_current_playlist_track_index(
-                response["CurrentPlaylistTrackID"]
-            )
+            self._set_current_playlist_track_index(response["CurrentPlaylistTrackID"])
         except Exception:
             # TODO
             pass
@@ -279,24 +281,20 @@ class CXNv2(Streamer):
         return self._subscriptions
 
     def power_toggle(self):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/system/power?power=toggle"
-        )
+        requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
 
     def set_source(self, source: str):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/zone/state?source={source}"
-        )
+        requests.get(f"http://{self._device_hostname}/smoip/zone/state?source={source}")
 
     def ignore_playlist_updates(self, ignore=False):
         self._ignore_playlist_updates = ignore
 
     # TODO: Consider renaming to modify_playlist() or similar
     def play_metadata(
-            self,
-            metadata: str,
-            action: str = "REPLACE",
-            insert_index: Optional[int] = None,  # Only used by INSERT action
+        self,
+        metadata: str,
+        action: str = "REPLACE",
+        insert_index: Optional[int] = None,  # Only used by INSERT action
     ):
         try:
             if action == "INSERT":
@@ -320,9 +318,7 @@ class CXNv2(Streamer):
             raise VibinDeviceError(e)
 
     def play_playlist_index(self, index: int):
-        self._uu_vol_control.SetCurrentPlaylistTrack(
-            CurrentPlaylistTrackID=index
-        )
+        self._uu_vol_control.SetCurrentPlaylistTrack(CurrentPlaylistTrackID=index)
 
     def play_playlist_id(self, playlist_id: int):
         try:
@@ -371,9 +367,7 @@ class CXNv2(Streamer):
                 media_info = self._av_transport.GetMediaInfo(InstanceID=0)
                 duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
 
-                target_hmmss = utils.secs_to_hmmss(
-                    math.floor(duration_secs * target)
-                )
+                target_hmmss = utils.secs_to_hmmss(math.floor(duration_secs * target))
             else:
                 target_hmmss = utils.secs_to_hmmss(int(target))
         elif isinstance(target, str):
@@ -541,9 +535,7 @@ class CXNv2(Streamer):
             return []
 
         try:
-            return self._transform_active_controls(
-                response.json()["data"]["controls"]
-            )
+            return self._transform_active_controls(response.json()["data"]["controls"])
         except (KeyError, json.decoder.JSONDecodeError) as e:
             return []
 
@@ -622,15 +614,14 @@ class CXNv2(Streamer):
                 "albumMediaId": None,
             }
 
-            for (key, tag) in key_tag_map.items():
-                entry_data[key] = item_elem .findtext(tag, namespaces=ns)
+            for key, tag in key_tag_map.items():
+                entry_data[key] = item_elem.findtext(tag, namespaces=ns)
 
-            entry_data["duration"] = (
-                item_elem.find("res", namespaces=ns).attrib["duration"]
-            )
+            entry_data["duration"] = item_elem.find("res", namespaces=ns).attrib[
+                "duration"
+            ]
 
-            this_album_id, this_track_id = \
-                self._album_and_track_ids_from_file(uri)
+            this_album_id, this_track_id = self._album_and_track_ids_from_file(uri)
 
             entry_data["albumMediaId"] = this_album_id
             entry_data["trackMediaId"] = this_track_id
@@ -645,10 +636,10 @@ class CXNv2(Streamer):
             except KeyError:
                 pass
 
-        cached_playlist_media_ids = \
-            [entry["trackMediaId"] for entry in self._cached_playlist]
-        active_playlist_media_ids = \
-            [entry["trackMediaId"] for entry in results]
+        cached_playlist_media_ids = [
+            entry["trackMediaId"] for entry in self._cached_playlist
+        ]
+        active_playlist_media_ids = [entry["trackMediaId"] for entry in results]
 
         if cached_playlist_media_ids != active_playlist_media_ids:
             # NOTE: All changes to the active playlist should be detected here,
@@ -670,11 +661,9 @@ class CXNv2(Streamer):
                 ssl=None,
                 extra_headers={
                     "Origin": "vibin",
-                }
+                },
             ) as websocket:
-                logger.info(
-                    f"Successfully connected to {self.name} WebSocket server"
-                )
+                logger.info(f"Successfully connected to {self.name} WebSocket server")
 
                 # Request playhead position updates (these arrive one per sec).
                 await websocket.send(
@@ -803,19 +792,26 @@ class CXNv2(Streamer):
                                 play_state_metadata = play_state_data["metadata"]
                                 play_state_queue_index = play_state_data["queue_index"]
                                 play_state_title = play_state_metadata["title"]
-                                queue_entry = self._cached_playlist[play_state_queue_index]
+                                queue_entry = self._cached_playlist[
+                                    play_state_queue_index
+                                ]
 
                                 if (
-                                    play_state_data["state"] == "pause" and
-                                    queue_entry["title"] == play_state_title
+                                    play_state_data["state"] == "pause"
+                                    and queue_entry["title"] == play_state_title
                                 ):
                                     if "album" not in play_state_metadata:
-                                        play_state_metadata["album"] = queue_entry["album"]
+                                        play_state_metadata["album"] = queue_entry[
+                                            "album"
+                                        ]
                                     if "artist" not in play_state_metadata:
-                                        play_state_metadata["artist"] = queue_entry["artist"]
+                                        play_state_metadata["artist"] = queue_entry[
+                                            "artist"
+                                        ]
                                     if "duration" not in play_state_metadata:
-                                        play_state_metadata["duration"] = \
-                                            utils.hmmss_to_secs(queue_entry["duration"])
+                                        play_state_metadata[
+                                            "duration"
+                                        ] = utils.hmmss_to_secs(queue_entry["duration"])
                             except (IndexError, KeyError) as e:
                                 pass
 
@@ -829,16 +825,20 @@ class CXNv2(Streamer):
 
                             self._updates_handler(
                                 "ActiveTransportControls",
-                                json.dumps(self._transform_active_controls(
-                                    update_dict["params"]["data"]["controls"]
-                                ))
+                                json.dumps(
+                                    self._transform_active_controls(
+                                        update_dict["params"]["data"]["controls"]
+                                    )
+                                ),
                             )
 
                             # TODO: Figure out what to do with current audio
                             #   source. This call to _set_current_audio_source
                             #   will ensure the source is set for the next
                             #   StateVars message publish.
-                            audio_source_id = update_dict["params"]["data"]["source"]["id"]
+                            audio_source_id = update_dict["params"]["data"]["source"][
+                                "id"
+                            ]
 
                             self._set_current_audio_source(audio_source_id)
 
@@ -857,19 +857,22 @@ class CXNv2(Streamer):
                                     self._device_display = display_info
                                     self._updates_handler(
                                         "DeviceDisplay",
-                                        json.dumps(self._device_display)
+                                        json.dumps(self._device_display),
                                     )
                             except KeyError:
                                 pass
                         elif update_dict["path"] == "/presets/list":
                             self._updates_handler(
-                                "Presets",
-                                json.dumps(update_dict["params"]["data"])
+                                "Presets", json.dumps(update_dict["params"]["data"])
                             )
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
-                            self._system_state["power"] = "on" if power == "ON" else "off"
-                            self._updates_handler("System", json.dumps(self._system_state))
+                            self._system_state["power"] = (
+                                "on" if power == "ON" else "off"
+                            )
+                            self._updates_handler(
+                                "System", json.dumps(self._system_state)
+                            )
                         else:
                             logger.warning(f"Unknown message: {update}")
                             self._updates_handler("Unknown", update)
@@ -890,10 +893,12 @@ class CXNv2(Streamer):
         # coming from anything implementing Streamer.
 
         try:
-            self._play_state["params"]["data"]["metadata"]["current_track_media_id"] = \
-                self._last_seen_track_id
-            self._play_state["params"]["data"]["metadata"]["current_album_media_id"] = \
-                self._last_seen_album_id
+            self._play_state["params"]["data"]["metadata"][
+                "current_track_media_id"
+            ] = self._last_seen_track_id
+            self._play_state["params"]["data"]["metadata"][
+                "current_album_media_id"
+            ] = self._last_seen_album_id
         except KeyError:
             pass
 
@@ -914,24 +919,19 @@ class CXNv2(Streamer):
             for service, subscription in self._subscriptions.items():
                 now = int(time.time())
 
-                if (
-                    (subscription.timeout is not None)
-                    and (now > (subscription.next_renewal - renewal_buffer))
+                if (subscription.timeout is not None) and (
+                    now > (subscription.next_renewal - renewal_buffer)
                 ):
-                    logger.info(
-                        f"Renewing UPnP subscription for {service.name}"
-                    )
+                    logger.info(f"Renewing UPnP subscription for {service.name}")
 
                     try:
                         timeout = service.renew_subscription(subscription.id)
                         subscription.timeout = timeout
-                        subscription.next_renewal = (
-                            (now + timeout) if timeout else None
-                        )
+                        subscription.next_renewal = (now + timeout) if timeout else None
                     except HTTPError:
                         logger.warning(
-                            "Could not renew UPnP subscription. Attempting " +
-                            "re-subscribe of all subscriptions."
+                            "Could not renew UPnP subscription. Attempting "
+                            + "re-subscribe of all subscriptions."
                         )
                         # TODO: This is the renewal thread, but subscribe()
                         #   attempts to stop the thread; and can't join itself.
@@ -950,33 +950,29 @@ class CXNv2(Streamer):
         if self._subscribe_callback_base:
             for service in self._subscribed_services:
                 now = int(time.time())
-                (subscription_id, timeout) = service.subscribe(callback_url=(
-                    f"{self._subscribe_callback_base}/{service.name}"
-                ))
+                (subscription_id, timeout) = service.subscribe(
+                    callback_url=(f"{self._subscribe_callback_base}/{service.name}")
+                )
 
                 self._subscriptions[service] = Subscription(
                     id=subscription_id,
                     timeout=timeout,
-                    next_renewal=(now + timeout) if timeout else None
+                    next_renewal=(now + timeout) if timeout else None,
                 )
 
                 logger.info(
-                    f"Subscribed to UPnP events from {service.name} with " +
-                    f"timeout {timeout}"
+                    f"Subscribed to UPnP events from {service.name} with "
+                    + f"timeout {timeout}"
                 )
 
             if self._subscription_renewal_thread:
-                logger.warning(
-                    "Stopping UPnP subscription renewal thread"
-                )
+                logger.warning("Stopping UPnP subscription renewal thread")
 
                 try:
                     self._subscription_renewal_thread.stop()
                     self._subscription_renewal_thread.join()
                 except RuntimeError as e:
-                    logger.warning(
-                        f"Cannot stop UPnP subscription renewal thread: {e}"
-                    )
+                    logger.warning(f"Cannot stop UPnP subscription renewal thread: {e}")
                 finally:
                     self._subscription_renewal_thread = None
 
@@ -990,7 +986,7 @@ class CXNv2(Streamer):
 
     def _cancel_subscriptions(self):
         # Clean up any UPnP subscriptions.
-        for (service, subscription) in self._subscriptions.items():
+        for service, subscription in self._subscriptions.items():
             try:
                 logger.info(f"Canceling UPnP subscription for {service.name}")
                 service.cancel_subscription(subscription.id)
@@ -1001,8 +997,8 @@ class CXNv2(Streamer):
             except HTTPError as e:
                 if e.response.status_code == 412:
                     logger.warning(
-                        f"Could not unsubscribe from {service.name} events; " +
-                        f"subscription appears to have expired"
+                        f"Could not unsubscribe from {service.name} events; "
+                        + f"subscription appears to have expired"
                     )
                 else:
                     raise
@@ -1038,9 +1034,7 @@ class CXNv2(Streamer):
     @property
     def presets(self):
         # TODO: Change to local cache data, as received from websocket.
-        response = requests.get(
-            f"http://{self._device_hostname}/smoip/presets/list"
-        )
+        response = requests.get(f"http://{self._device_hostname}/smoip/presets/list")
 
         return response.json()["data"]
 
@@ -1050,7 +1044,9 @@ class CXNv2(Streamer):
         )
 
     def _last_change_event_handler(
-            self, service_name: ServiceName, element: etree.Element,
+        self,
+        service_name: ServiceName,
+        element: etree.Element,
     ):
         nested_element = etree.fromstring(element.text)
         instance_element = nested_element.find(
@@ -1065,7 +1061,8 @@ class CXNv2(Streamer):
             try:
                 _, marshaled_value = marshal_value(
                     self._device[service_name].statevars[param_name.localname][
-                        "datatype"],
+                        "datatype"
+                    ],
                     parameter.get("val"),
                 )
 
@@ -1077,7 +1074,7 @@ class CXNv2(Streamer):
         return result
 
     def _id_array_event_handler(
-            self, service_name: ServiceName, element: etree.Element
+        self, service_name: ServiceName, element: etree.Element
     ):
         if service_name == "PlaylistExtension":
             id_array = element.text
@@ -1087,15 +1084,15 @@ class CXNv2(Streamer):
                 self._set_current_playlist()
 
     def _current_playlist_track_id_event_handler(
-            self, service_name: ServiceName, element: etree.Element
+        self, service_name: ServiceName, element: etree.Element
     ):
         self._set_current_playlist_track_index(int(element.text))
 
     def set_state_var(
-            self,
-            service_name: ServiceName,
-            state_var_name: StateVarName,
-            state_var_element: etree.Element
+        self,
+        service_name: ServiceName,
+        state_var_name: StateVarName,
+        state_var_element: etree.Element,
     ):
         if service_name not in self._state_vars:
             self._state_vars[service_name] = {}
@@ -1126,8 +1123,8 @@ class CXNv2(Streamer):
                     self._state_vars[service_name][json_var_name] = xmltodict.parse(xml)
                 except xml.parsers.expat.ExpatError as e:
                     logger.error(
-                        f"Could not convert XML to JSON for " +
-                        f"{service_name}:{state_var_name}: {e}"
+                        f"Could not convert XML to JSON for "
+                        + f"{service_name}:{state_var_name}: {e}"
                     )
 
     def set_vibin_state_vars(self):
@@ -1141,7 +1138,9 @@ class CXNv2(Streamer):
 
         try:
             self._set_current_playback_details(
-                self._state_vars["UuVolControl"]["PlaybackJSON"]["reciva"]["playback-details"]
+                self._state_vars["UuVolControl"]["PlaybackJSON"]["reciva"][
+                    "playback-details"
+                ]
             )
         except KeyError:
             pass
@@ -1149,7 +1148,8 @@ class CXNv2(Streamer):
     def _set_current_audio_source(self, source_id: str):
         try:
             self._vibin_vars["current_audio_source"] = [
-                source for source in self._vibin_vars["audio_sources"]
+                source
+                for source in self._vibin_vars["audio_sources"]
                 if source["id"] == source_id
             ][0]
         except (IndexError, KeyError):
@@ -1193,8 +1193,9 @@ class CXNv2(Streamer):
         # extract the Track ID and Album ID.
         try:
             stream_url = details["stream"]["url"]
-            this_album_id, this_track_id = \
-                self._album_and_track_ids_from_file(stream_url)
+            this_album_id, this_track_id = self._album_and_track_ids_from_file(
+                stream_url
+            )
 
             send_update = True
 

@@ -143,11 +143,11 @@ class Asset(MediaSource):
         def album_from_all(new_album):
             for album in all_albums:
                 if (
-                        album.title == new_album.title and
-                        album.creator == new_album.creator and
-                        album.date == new_album.date and
-                        album.artist == new_album.artist and
-                        album.genre == new_album.genre
+                    album.title == new_album.title
+                    and album.creator == new_album.creator
+                    and album.date == new_album.date
+                    and album.artist == new_album.artist
+                    and album.genre == new_album.genre
                 ):
                     return album
 
@@ -163,10 +163,7 @@ class Asset(MediaSource):
         album_tracks_xml = self._get_children_xml(album_id)
         parsed_metadata = untangle.parse(album_tracks_xml)
 
-        return [
-            self._track_from_item(item)
-            for item in parsed_metadata.DIDL_Lite.item
-        ]
+        return [self._track_from_item(item) for item in parsed_metadata.DIDL_Lite.item]
 
     @lru_cache
     def _artists(self) -> typing.List[Artist]:
@@ -230,8 +227,9 @@ class Asset(MediaSource):
         parsed_metadata = untangle.parse(metadata)
 
         if (
-            "container" not in parsed_metadata.DIDL_Lite or
-            parsed_metadata.DIDL_Lite.container.upnp_class.cdata != "object.container.album.musicAlbum"
+            "container" not in parsed_metadata.DIDL_Lite
+            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
+            != "object.container.album.musicAlbum"
         ):
             raise VibinNotFoundError(f"Could not find Album")
 
@@ -241,8 +239,9 @@ class Asset(MediaSource):
         parsed_metadata = untangle.parse(metadata)
 
         if (
-            "container" not in parsed_metadata.DIDL_Lite or
-            parsed_metadata.DIDL_Lite.container.upnp_class.cdata != "object.container.person.musicArtist"
+            "container" not in parsed_metadata.DIDL_Lite
+            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
+            != "object.container.person.musicArtist"
         ):
             raise VibinNotFoundError(f"Could not find Artist")
 
@@ -263,7 +262,7 @@ class Asset(MediaSource):
         try:
             artist = next(
                 (artist for artist in item.upnp_artist if artist["role"] is None),
-                item.upnp_artist[0]
+                item.upnp_artist[0],
             ).cdata
         except IndexError:
             try:
@@ -289,8 +288,9 @@ class Asset(MediaSource):
         parsed_metadata = untangle.parse(metadata)
 
         if (
-            "item" not in parsed_metadata.DIDL_Lite or
-            parsed_metadata.DIDL_Lite.item.upnp_class.cdata != "object.item.audioItem.musicTrack"
+            "item" not in parsed_metadata.DIDL_Lite
+            or parsed_metadata.DIDL_Lite.item.upnp_class.cdata
+            != "object.item.audioItem.musicTrack"
         ):
             raise VibinNotFoundError(f"Could not find Track")
 
@@ -364,7 +364,7 @@ class Asset(MediaSource):
             }
 
             for xml_field, result_field in elem_name_map.items():
-                value = self._xml_elem_field_value(elem, xml_field )
+                value = self._xml_elem_field_value(elem, xml_field)
 
                 if value is not None:
                     child_elem[result_field] = value

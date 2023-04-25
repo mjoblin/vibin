@@ -17,7 +17,6 @@ from vibin import VibinError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from .logger import logger
 
-
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
 HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
@@ -29,9 +28,7 @@ def is_hmmss(input: str) -> bool:
 
 def secs_to_hmmss(input_secs: int) -> str:
     hours = math.floor(input_secs / ONE_HOUR_IN_SECS)
-    mins = math.floor(
-        (input_secs - hours * ONE_HOUR_IN_SECS) / ONE_MIN_IN_SECS
-    )
+    mins = math.floor((input_secs - hours * ONE_HOUR_IN_SECS) / ONE_MIN_IN_SECS)
     secs = input_secs - (hours * ONE_HOUR_IN_SECS) - (mins * ONE_MIN_IN_SECS)
 
     return f"{hours}:{mins:02}:{secs:02}"
@@ -65,14 +62,18 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
                     setattr(
                         item,
                         uri_attr,
-                        getattr(item, uri_attr).replace(media_server_url_prefix, "/proxy")
+                        getattr(item, uri_attr).replace(
+                            media_server_url_prefix, "/proxy"
+                        ),
                     )
         elif item_is_iterable:
             # The item is a dict, list, or string.
             if isinstance(item, dict):
                 # If the item is a dict
                 for key, value in item.items():
-                    if isinstance(value, str) and value.startswith(media_server_url_prefix):
+                    if isinstance(value, str) and value.startswith(
+                        media_server_url_prefix
+                    ):
                         item[key] = value.replace(media_server_url_prefix, "/proxy")
                     elif isinstance(value, Iterable):
                         item[key] = transform(value)
@@ -96,9 +97,12 @@ def install_vibinui():
 
     # Call the GitHub API to get the tag name for "latest"
     try:
-        logger.info(f"Retrieving latest version tag from GitHub repository ({UI_REPOSITORY})...")
-        response = \
-            requests.get(f"https://api.github.com/repos/{UI_REPOSITORY}/releases/latest")
+        logger.info(
+            f"Retrieving latest version tag from GitHub repository ({UI_REPOSITORY})..."
+        )
+        response = requests.get(
+            f"https://api.github.com/repos/{UI_REPOSITORY}/releases/latest"
+        )
         api_response = response.json()
 
         latest_tag = api_response["tag_name"]
@@ -146,17 +150,21 @@ def install_vibinui():
                 f"Specify '--vibinui auto' when running 'vibin serve' to serve this UI instance"
             )
     except requests.RequestException as e:
-        raise VibinError(f"Could not download the {latest_tag} release from GitHub: {e}")
+        raise VibinError(
+            f"Could not download the {latest_tag} release from GitHub: {e}"
+        )
     except zipfile.BadZipFile:
-        raise VibinError(f"The downloaded UI archive does not appear to be a valid zipfile")
+        raise VibinError(
+            f"The downloaded UI archive does not appear to be a valid zipfile"
+        )
 
 
 def get_ui_install_dir() -> Path | None:
     try:
         candidates = [
-            uidir for uidir in os.listdir(UI_ROOT)
-            if uidir.startswith(UI_APPNAME)
-            and os.path.isdir(Path(UI_ROOT, uidir))
+            uidir
+            for uidir in os.listdir(UI_ROOT)
+            if uidir.startswith(UI_APPNAME) and os.path.isdir(Path(UI_ROOT, uidir))
         ]
     except FileNotFoundError:
         return None

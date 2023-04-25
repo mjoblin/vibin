@@ -13,7 +13,6 @@ from vibin.server import server_start
 from vibin.constants import UI_ROOT, VIBIN_PORT
 from vibin.utils import get_ui_install_dir, install_vibinui
 
-
 CONTEXT_SETTINGS = {
     "max_content_width": 100,
     "help_option_names": ["--help"],
@@ -35,7 +34,8 @@ def cli():
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option(
-    "--host", "-h",
+    "--host",
+    "-h",
     help="Host to listen on.",
     metavar="HOST",
     type=click.STRING,
@@ -43,7 +43,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--port", "-p",
+    "--port",
+    "-p",
     help="Port to listen on.",
     metavar="PORT",
     type=click.INT,
@@ -51,7 +52,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--streamer", "-s",
+    "--streamer",
+    "-s",
     help="Streamer (hostname, UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
@@ -59,7 +61,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--media", "-m",
+    "--media",
+    "-m",
     help="Media server (UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
@@ -73,7 +76,8 @@ def cli():
     default=False,
 )
 @click.option(
-    "--discovery-timeout", "-t",
+    "--discovery-timeout",
+    "-t",
     help="UPnP discovery timeout (seconds).",
     metavar="SECS",
     type=click.INT,
@@ -81,7 +85,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--vibinui", "-u",
+    "--vibinui",
+    "-u",
     help="Path to Web UI static files; use 'auto' to find 'vibin installui' location.",
     metavar="DIR",
     type=click.STRING,
@@ -95,21 +100,22 @@ def cli():
     default=False,
 )
 @click.option(
-    "--proxy-media-server", "-o",
+    "--proxy-media-server",
+    "-o",
     help="Act as a proxy for the media server.",
     is_flag=True,
     default=False,
 )
 def serve(
-        host,
-        port,
-        streamer,
-        media,
-        no_media,
-        discovery_timeout,
-        vibinui,
-        no_vibinui,
-        proxy_media_server,
+    host,
+    port,
+    streamer,
+    media,
+    no_media,
+    discovery_timeout,
+    vibinui,
+    no_vibinui,
+    proxy_media_server,
 ):
     """
     Start the Vibin server.
@@ -215,11 +221,11 @@ def call_vibin(endpoint, method="POST", payload=None):
         vibin_server = get_server_info()
     except IOError:
         click.echo(
-            f"Unable to locate the Vibin server.\n\n" +
-            f"When 'vibin serve' is run, the server details are stored in\n" +
-            f"{SERVER_FILE}.\n\n" +
-            f"Either the server has not been started, or the server details " +
-            f"could not be stored.\n"
+            f"Unable to locate the Vibin server.\n\n"
+            + f"When 'vibin serve' is run, the server details are stored in\n"
+            + f"{SERVER_FILE}.\n\n"
+            + f"Either the server has not been started, or the server details "
+            + f"could not be stored.\n"
         )
 
         raise click.ClickException(f"Could not determine Vibin server details.")
@@ -240,8 +246,8 @@ def call_vibin(endpoint, method="POST", payload=None):
         return response.json()
     except requests.exceptions.ConnectionError:
         raise click.ClickException(
-            f"Unable to connect to the Vibin server at {vibin_server}. Is " +
-            f"'vibin serve' running?"
+            f"Unable to connect to the Vibin server at {vibin_server}. Is "
+            + f"'vibin serve' running?"
         )
 
 

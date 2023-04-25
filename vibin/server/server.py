@@ -46,7 +46,6 @@ from vibin.streamers import SeekTarget
 from vibin.logger import logger
 from vibin.utils import replace_media_server_urls_with_proxy
 
-
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
 HOSTNAME = "192.168.1.30"
 
@@ -68,13 +67,13 @@ def get_local_ip():
 
 
 def server_start(
-        host="0.0.0.0",
-        port=VIBIN_PORT,
-        streamer=None,
-        media=None,
-        discovery_timeout=5,
-        vibinui=None,
-        proxy_media_server=False,
+    host="0.0.0.0",
+    port=VIBIN_PORT,
+    streamer=None,
+    media=None,
+    discovery_timeout=5,
+    vibinui=None,
+    proxy_media_server=False,
 ):
     local_ip = get_local_ip() if host == "0.0.0.0" else host
 
@@ -101,12 +100,11 @@ def server_start(
     if proxy_media_server:
         if vibin.media is not None:
             media_server_proxy_target = vibin.media.url_prefix
-            media_server_proxy_client = \
-                httpx.AsyncClient(base_url=media_server_proxy_target)
-
-            logger.info(
-                f"Proxying art at /proxy (target: {media_server_proxy_target})"
+            media_server_proxy_client = httpx.AsyncClient(
+                base_url=media_server_proxy_target
             )
+
+            logger.info(f"Proxying art at /proxy (target: {media_server_proxy_target})")
         else:
             error = "Unable to proxy art; media server not located"
             logger.error(error)
@@ -144,9 +142,7 @@ def server_start(
     start_time = time.time()
     connected_websockets = {}
 
-    success = {
-        "result": "success"
-    }
+    success = {"result": "success"}
 
     def requires_media(func):
         @functools.wraps(func)
@@ -278,12 +274,14 @@ def server_start(
         for websocket_info in connected_websockets.values():
             client_ip, client_port = websocket_info["websocket"].client
 
-            clients.append({
-                "id": websocket_info["id"],
-                "when_connected": websocket_info["when_connected"],
-                "ip": client_ip,
-                "port": client_port,
-            })
+            clients.append(
+                {
+                    "id": websocket_info["id"],
+                    "when_connected": websocket_info["when_connected"],
+                    "ip": client_ip,
+                    "port": client_port,
+                }
+            )
 
         return {
             "start_time": start_time,
@@ -373,9 +371,7 @@ def server_start(
 
     @vibin_app.get("/transport/position")
     def transport_position():
-        return {
-            "position": vibin.transport_position()
-        }
+        return {"position": vibin.transport_position()}
 
     @vibin_app.post("/transport/play/{media_id}")
     def transport_play_media_id(media_id: str):
@@ -387,15 +383,11 @@ def server_start(
     #   Use allowed_actions instead.
     @vibin_app.get("/transport/actions")
     def transport_actions():
-        return {
-            "actions": vibin.transport_actions()
-        }
+        return {"actions": vibin.transport_actions()}
 
     @vibin_app.get("/transport/active_controls")
     def transport_active_controls():
-        return {
-            "actions": vibin.transport_active_controls()
-        }
+        return {"actions": vibin.transport_active_controls()}
 
     @vibin_app.get("/transport/state")
     def transport_state():
@@ -485,9 +477,7 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/lyrics")
-    def track_lyrics(
-            artist: str, title: str, update_cache: Optional[bool] = False
-    ):
+    def track_lyrics(artist: str, title: str, update_cache: Optional[bool] = False):
         lyrics = vibin.lyrics_for_track(
             artist=artist, title=title, update_cache=update_cache
         )
@@ -515,10 +505,10 @@ def server_start(
 
     @vibin_app.get("/tracks/links")
     def track_links(
-            artist: Optional[str],
-            album: Optional[str],
-            title: Optional[str],
-            all_types: bool = False
+        artist: Optional[str],
+        album: Optional[str],
+        title: Optional[str],
+        all_types: bool = False,
     ):
         return vibin.media_links(
             artist=artist, album=album, title=title, include_all=all_types
@@ -534,12 +524,8 @@ def server_start(
             raise HTTPException(status_code=404, detail=str(e))
 
     @vibin_app.get("/tracks/{track_id}/lyrics")
-    def track_lyrics_by_track_id(
-            track_id: str, update_cache: Optional[bool] = False
-    ):
-        lyrics = vibin.lyrics_for_track(
-            track_id=track_id, update_cache=update_cache
-        )
+    def track_lyrics_by_track_id(track_id: str, update_cache: Optional[bool] = False):
+        lyrics = vibin.lyrics_for_track(track_id=track_id, update_cache=update_cache)
 
         if lyrics is None:
             raise HTTPException(status_code=404, detail="Lyrics not found")
@@ -555,9 +541,9 @@ def server_start(
 
     @vibin_app.get("/tracks/{track_id}/waveform.png")
     def track_waveform_png(
-            track_id: str,
-            width: int = 800,
-            height: int = 250,
+        track_id: str,
+        width: int = 800,
+        height: int = 250,
     ):
         try:
             waveform = vibin.waveform_for_track(
@@ -568,9 +554,7 @@ def server_start(
         except VibinMissingDependencyError as e:
             # TODO: Where possible, have errors reference docs for possible
             #   actions the caller can take to resolve the issue.
-            logger.warning(
-                f"Cannot generate waveform due to missing dependency: {e}"
-            )
+            logger.warning(f"Cannot generate waveform due to missing dependency: {e}")
 
             raise HTTPException(
                 status_code=404,
@@ -579,10 +563,10 @@ def server_start(
 
     @vibin_app.get("/tracks/{track_id}/waveform")
     def track_waveform(
-            track_id: str,
-            width: int = 800,
-            height: int = 250,
-            accept: Union[str, None] = Header(default="application/json"),
+        track_id: str,
+        width: int = 800,
+        height: int = 250,
+        accept: Union[str, None] = Header(default="application/json"),
     ):
         # TODO: This waveform_format / media_type / "accept" header stuff
         #   feels too convoluted.
@@ -602,7 +586,9 @@ def server_start(
                     track_id, data_format=waveform_format, width=width, height=height
                 )
             else:
-                waveform = vibin.waveform_for_track(track_id, data_format=waveform_format)
+                waveform = vibin.waveform_for_track(
+                    track_id, data_format=waveform_format
+                )
 
             return Response(
                 content=json.dumps(waveform) if waveform_format == "json" else waveform,
@@ -621,7 +607,7 @@ def server_start(
         waveform = vibin.waveform_for_track(track_id, data_format="json")
 
         samples = waveform["data"]
-        squared_samples = [sample ** 2 for sample in samples]
+        squared_samples = [sample**2 for sample in samples]
         squared_sum = sum(squared_samples)
 
         mean = squared_sum / len(samples)
@@ -656,9 +642,9 @@ def server_start(
 
     @vibin_app.post("/playlist/modify/{media_id}")
     def playlist_modify_single_entry(
-            media_id: str,
-            action: str = "REPLACE",
-            insert_index: Optional[int] = None,
+        media_id: str,
+        action: str = "REPLACE",
+        insert_index: Optional[int] = None,
     ):
         return vibin.modify_playlist(media_id, action, insert_index)
 
@@ -688,7 +674,9 @@ def server_start(
 
     @vibin_app.post("/playlist/move/{playlist_entry_id}")
     def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
-        return vibin.streamer.playlist_move_entry(playlist_entry_id, from_index, to_index)
+        return vibin.streamer.playlist_move_entry(
+            playlist_entry_id, from_index, to_index
+        )
 
     @vibin_app.get("/playlists")
     def playlists() -> list[StoredPlaylist]:
@@ -706,7 +694,9 @@ def server_start(
         return playlist
 
     @vibin_app.put("/playlists/{playlist_id}")
-    def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredPlaylist:
+    def playlists_id_update(
+        playlist_id: str, name: Optional[str] = None
+    ) -> StoredPlaylist:
         metadata = {"name": name} if name else None
 
         try:
@@ -738,13 +728,11 @@ def server_start(
                 status_code=404, detail=f"Playlist not found: {playlist_id}"
             )
         except VibinDeviceError as e:
-            raise HTTPException(
-                status_code=503, detail=f"Downstream device error: {e}"
-            )
+            raise HTTPException(status_code=503, detail=f"Downstream device error: {e}")
 
     @vibin_app.post("/playlists/current/store")
     def playlists_current_store(
-            name: Optional[str] = None, replace: Optional[bool] = True
+        name: Optional[str] = None, replace: Optional[bool] = True
     ):
         metadata = {"name": name} if name else None
 
@@ -858,8 +846,7 @@ def server_start(
             )
 
         url = httpx.URL(
-            path=request.path_params["path"],
-            query=request.url.query.encode("utf-8")
+            path=request.path_params["path"], query=request.url.query.encode("utf-8")
         )
 
         proxy_request = media_server_proxy_client.build_request(
@@ -871,8 +858,9 @@ def server_start(
         )
 
         try:
-            proxy_response = \
-                await media_server_proxy_client.send(proxy_request, stream=True)
+            proxy_response = await media_server_proxy_client.send(
+                proxy_request, stream=True
+            )
         except httpx.TimeoutException:
             logger.warning(f"Proxy timed out on request: {request.url}")
 
@@ -914,72 +902,82 @@ def server_start(
                 "websocket": websocket,
             }
 
-            logger.info(
-                f"WebSocket connection accepted from {client_ip}:{client_port}"
-            )
+            logger.info(f"WebSocket connection accepted from {client_ip}:{client_port}")
             self.sender_task = asyncio.create_task(self.sender(websocket))
 
             # TODO: Fix this hack which encforces streamer-system-status
             #    (ignoring system_state["media_device"]).
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.system_state),
-                "System",
-                websocket,
-            ))
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.system_state),
+                    "System",
+                    websocket,
+                )
+            )
 
             # Send initial state to new client connection.
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.state_vars),
-                "StateVars",
-                websocket,
-            ))
-
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.play_state),
-                "PlayState",
-                websocket,
-            ))
-
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.streamer.transport_active_controls()),
-                "ActiveTransportControls",
-                websocket,
-            ))
-
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.streamer.device_display),
-                "DeviceDisplay",
-                websocket,
-            ))
-
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.favorites()), "Favorites", websocket)
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.state_vars),
+                    "StateVars",
+                    websocket,
+                )
             )
 
-            await websocket.send_text(self.build_message(
-                json.dumps(vibin.presets), "Presets", websocket)
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.play_state),
+                    "PlayState",
+                    websocket,
+                )
             )
 
-            await websocket.send_text(self.build_message(json.dumps(
-                vibin.stored_playlist_details),
-                "StoredPlaylists",
-                websocket,
-            ))
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.streamer.transport_active_controls()),
+                    "ActiveTransportControls",
+                    websocket,
+                )
+            )
 
-            await websocket.send_text(self.build_message(
-                json.dumps(server_status()), "VibinStatus", websocket)
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.streamer.device_display),
+                    "DeviceDisplay",
+                    websocket,
+                )
+            )
+
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.favorites()), "Favorites", websocket
+                )
+            )
+
+            await websocket.send_text(
+                self.build_message(json.dumps(vibin.presets), "Presets", websocket)
+            )
+
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(vibin.stored_playlist_details),
+                    "StoredPlaylists",
+                    websocket,
+                )
+            )
+
+            await websocket.send_text(
+                self.build_message(
+                    json.dumps(server_status()), "VibinStatus", websocket
+                )
             )
 
             # TODO: Allow the server to send a message to all connected
             #   websockets. Perhaps just make _websocket_message_handler more
             #   publicly accessible.
-            vibin._websocket_message_handler(
-                "VibinStatus", json.dumps(server_status())
-            )
+            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status()))
 
-        async def on_disconnect(
-                self, websocket: WebSocket, close_code: int
-        ) -> None:
+        async def on_disconnect(self, websocket: WebSocket, close_code: int) -> None:
             self.sender_task.cancel()
             client_ip, client_port = websocket.client
 
@@ -988,13 +986,11 @@ def server_start(
             except KeyError:
                 pass
 
-            vibin._websocket_message_handler(
-                "VibinStatus", json.dumps(server_status())
-            )
+            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status()))
 
             logger.info(
-                f"WebSocket connection closed [{close_code}] for client " +
-                f"{client_ip}:{client_port}"
+                f"WebSocket connection closed [{close_code}] for client "
+                + f"{client_ip}:{client_port}"
             )
 
         def state_vars_handler(self, data: str):
@@ -1017,16 +1013,17 @@ def server_start(
             return json.dumps(data_dict)
 
         def build_message(
-                self, data: str, messageType: str, client_ws: WebSocket = None
+            self, data: str, messageType: str, client_ws: WebSocket = None
         ) -> str:
             data_as_dict = json.loads(data)
 
             this_client = next(
                 (
-                    client for client in connected_websockets.values()
+                    client
+                    for client in connected_websockets.values()
                     if client["websocket"] == client_ws
                 ),
-                None
+                None,
             )
 
             message = {
@@ -1081,7 +1078,9 @@ def server_start(
                 "Presets",
                 "StateVars",
             ]:
-                message = replace_media_server_urls_with_proxy(message, media_server_proxy_target)
+                message = replace_media_server_urls_with_proxy(
+                    message, media_server_proxy_target
+                )
 
             return json.dumps(message)
 
@@ -1093,21 +1092,25 @@ def server_start(
                 # TODO: All the json.loads()/dumps() down the path from the
                 #   source through the queue and into the message builder is
                 #   all a bit much -- most of it can probably be avoided.
-                await websocket.send_text(self.build_message(
-                    json.dumps(to_send_dict["data"]),
-                    to_send_dict["type"],
-                    websocket,
-                ))
+                await websocket.send_text(
+                    self.build_message(
+                        json.dumps(to_send_dict["data"]),
+                        to_send_dict["type"],
+                        websocket,
+                    )
+                )
 
     # -------------------------------------------------------------------------
 
     logger.info(f"Starting REST API")
     logger.info(f"API docs: http://{local_ip}:{port}{vibin_app.docs_url}")
 
-    uvicorn.config.LOGGING_CONFIG["formatters"]["default"]["fmt"] = \
-        "%(asctime)s %(name)s [%(levelname)s] %(message)s"
-    uvicorn.config.LOGGING_CONFIG["formatters"]["access"]["fmt"] = \
-        '%(asctime)s %(name)s [%(levelname)s] %(client_addr)s [%(status_code)s] %(request_line)s'
+    uvicorn.config.LOGGING_CONFIG["formatters"]["default"][
+        "fmt"
+    ] = "%(asctime)s %(name)s [%(levelname)s] %(message)s"
+    uvicorn.config.LOGGING_CONFIG["formatters"]["access"][
+        "fmt"
+    ] = "%(asctime)s %(name)s [%(levelname)s] %(client_addr)s [%(status_code)s] %(request_line)s"
 
     uvicorn.run(
         vibin_app,

@@ -5,7 +5,6 @@ from typing import Literal, Optional
 
 import click
 
-
 # -----------------------------------------------------------------------------
 # COPIED FROM uvicorn.logging
 #
@@ -60,7 +59,9 @@ class ColourizedFormatter(logging.Formatter):
         # logging.INFO: lambda level_name: click.style(str(level_name), fg="green"),
         logging.INFO: lambda level_name: level_name,
         # logging.WARNING: lambda level_name: click.style(str(level_name), fg="yellow"),
-        logging.WARNING: lambda level_name: click.style(str(level_name), fg="bright_yellow"),
+        logging.WARNING: lambda level_name: click.style(
+            str(level_name), fg="bright_yellow"
+        ),
         logging.ERROR: lambda level_name: click.style(str(level_name), fg="red"),
         logging.CRITICAL: lambda level_name: click.style(
             str(level_name), fg="bright_red"
@@ -103,6 +104,7 @@ class ColourizedFormatter(logging.Formatter):
         recordcopy.__dict__["levelname"] = levelname
         return super().formatMessage(recordcopy)
 
+
 # END OF COPY FROM uvicorn.logging
 # -----------------------------------------------------------------------------
 
@@ -111,9 +113,7 @@ class ColourizedFormatter(logging.Formatter):
 logging.Formatter.default_time_format = "%Y-%m-%dT%H:%M:%S"
 logging.Formatter.default_msec_format = "%s.%03d"
 
-log_formatter = ColourizedFormatter(
-    "%(asctime)s %(name)s [%(levelname)s] %(message)s"
-)
+log_formatter = ColourizedFormatter("%(asctime)s %(name)s [%(levelname)s] %(message)s")
 log_handler = logging.StreamHandler()
 log_handler.setFormatter(log_formatter)
 

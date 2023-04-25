@@ -8,7 +8,6 @@ import upnpclient
 from vibin import VibinError
 from .logger import logger
 
-
 _upnp_devices = None
 
 
@@ -36,7 +35,7 @@ def _discover_upnp_devices(timeout: int):
 
 
 def _determine_streamer_device(
-        streamer_input: Optional[str], discovery_timeout: int
+    streamer_input: Optional[str], discovery_timeout: int
 ) -> Optional[upnpclient.Device]:
     """
     Attempt to find a streamer on the network.
@@ -78,7 +77,9 @@ def _determine_streamer_device(
     if streamer_input_as_url.hostname is not None:
         # A URL was provided by the caller. Attempt to use this as the UPnP
         # device description URL.
-        logger.info(f"Attempting to find streamer at provided UPnP location URL: {streamer_input}")
+        logger.info(
+            f"Attempting to find streamer at provided UPnP location URL: {streamer_input}"
+        )
 
         try:
             return upnpclient.Device(streamer_input)
@@ -92,7 +93,9 @@ def _determine_streamer_device(
 
         # See if it's a Cambridge Audio hostname.
         try:
-            logger.info(f"Attempting to find streamer at provided hostname: {streamer_input}")
+            logger.info(
+                f"Attempting to find streamer at provided hostname: {streamer_input}"
+            )
             response = requests.get(
                 f"http://{streamer_input}:80/smoip/system/upnp", timeout=10
             )
@@ -100,7 +103,8 @@ def _determine_streamer_device(
             if response.status_code == 200:
                 try:
                     streamer = [
-                        device for device in response.json()["data"]["devices"]
+                        device
+                        for device in response.json()["data"]["devices"]
                         if device["manufacturer"] == "Cambridge Audio"
                     ][0]
 
@@ -108,41 +112,41 @@ def _determine_streamer_device(
                         return upnpclient.Device(streamer["description_url"])
                     except KeyError:
                         raise VibinError(
-                            f"Cambridge Audio device found at {streamer_input}, " +
-                            f"but it did not have a description_url"
+                            f"Cambridge Audio device found at {streamer_input}, "
+                            + f"but it did not have a description_url"
                         )
                     except requests.RequestException:
                         raise VibinError(
-                            f"Cambridge Audio device found at {streamer_input}, " +
-                            f"but its description_url was unsuccessful: " +
-                            f"{streamer['description_url']}"
+                            f"Cambridge Audio device found at {streamer_input}, "
+                            + f"but its description_url was unsuccessful: "
+                            + f"{streamer['description_url']}"
                         )
                 except json.decoder.JSONDecodeError:
                     # The host responded, but the response was not JSON.
                     raise VibinError(
-                        f"A host was found at {streamer_input}, but it does not " +
-                        f"appear to be a Cambridge Audio device."
+                        f"A host was found at {streamer_input}, but it does not "
+                        + f"appear to be a Cambridge Audio device."
                     )
                 except KeyError:
                     # The JSON response does not include data.devices information.
                     raise VibinError(
-                        f"A host was found at {streamer_input}, but it does not " +
-                        f"appear to be a Cambridge Audio device."
+                        f"A host was found at {streamer_input}, but it does not "
+                        + f"appear to be a Cambridge Audio device."
                     )
                 except IndexError:
                     raise VibinError(
-                        f"Cambridge Audio device found at {streamer_input}, but " +
-                        f"it did oddly not specify any devices manufactured by " +
-                        f"Cambridge Audio"
+                        f"Cambridge Audio device found at {streamer_input}, but "
+                        + f"it did oddly not specify any devices manufactured by "
+                        + f"Cambridge Audio"
                     )
         except requests.Timeout:
-            raise VibinError(
-                f"Timed out attempting to connect to {streamer_input}"
-            )
+            raise VibinError(f"Timed out attempting to connect to {streamer_input}")
         except requests.RequestException:
             # It wasn't a Cambridge Audio host name, so see if it's one of the
             # UPnP friendly names.
-            logger.info(f"Attempting to find streamer by UPnP friendly name: {streamer_input}")
+            logger.info(
+                f"Attempting to find streamer by UPnP friendly name: {streamer_input}"
+            )
             devices = _discover_upnp_devices(discovery_timeout)
 
             try:
@@ -158,7 +162,9 @@ def _determine_streamer_device(
 
 
 def _determine_media_server_device(
-        media_server_input: Optional[str], discovery_timeout: int, streamer_device: upnpclient.Device,
+    media_server_input: Optional[str],
+    discovery_timeout: int,
+    streamer_device: upnpclient.Device,
 ) -> Optional[upnpclient.Device]:
     """
     Attempt to find a media server on the network.
@@ -182,8 +188,8 @@ def _determine_media_server_device(
 
         if streamer_device.manufacturer == "Cambridge Audio":
             logger.info(
-                f"No media server specified; looking to the Cambridge Audio " +
-                f"device '{streamer_device.friendly_name}' for its media server"
+                f"No media server specified; looking to the Cambridge Audio "
+                + f"device '{streamer_device.friendly_name}' for its media server"
             )
 
             try:
@@ -195,8 +201,10 @@ def _determine_media_server_device(
                     # The Cambridge response includes a list of devices. Iterate
                     # over each of those looking for the first MediaServer.
                     media_server = [
-                        cambridge_device for cambridge_device in response.json()["data"]["devices"]
-                        if "MediaServer" in upnpclient.Device(
+                        cambridge_device
+                        for cambridge_device in response.json()["data"]["devices"]
+                        if "MediaServer"
+                        in upnpclient.Device(
                             cambridge_device["description_url"]
                         ).device_type
                     ][0]
@@ -204,12 +212,15 @@ def _determine_media_server_device(
                     return upnpclient.Device(media_server["description_url"])
                 except IndexError:
                     logger.watning(
-                        f"Cambridge Audio device '{streamer_device.friendly_name}' " +
-                        f"did not specify a media server device"
+                        f"Cambridge Audio device '{streamer_device.friendly_name}' "
+                        + f"did not specify a media server device"
                     )
                     return None
             except (
-                    requests.RequestException, json.decoder.JSONDecodeError, KeyError, IndexError
+                requests.RequestException,
+                json.decoder.JSONDecodeError,
+                KeyError,
+                IndexError,
             ) as e:
                 raise VibinError(
                     f"Could not determine media server from Cambridge Audio device: {e}"
@@ -220,7 +231,9 @@ def _determine_media_server_device(
             devices = _discover_upnp_devices(discovery_timeout)
 
             try:
-                return [device for device in devices if "MediaServer" in device.device_type][0]
+                return [
+                    device for device in devices if "MediaServer" in device.device_type
+                ][0]
             except IndexError:
                 logger.warning("Could not find a MediaServer UPnP device")
                 return None
@@ -229,7 +242,9 @@ def _determine_media_server_device(
 
     if media_input_as_url.hostname is not None:
         # Check UPnP location url
-        logger.info(f"Attempting to find media server at provided URL: {media_server_input}")
+        logger.info(
+            f"Attempting to find media server at provided URL: {media_server_input}"
+        )
 
         try:
             return upnpclient.Device(media_server_input)
@@ -239,7 +254,9 @@ def _determine_media_server_device(
             )
     else:
         # Check UPnP friendly name option
-        logger.info(f"Attempting to find media server by UPnP friendly name: {media_server_input}")
+        logger.info(
+            f"Attempting to find media server by UPnP friendly name: {media_server_input}"
+        )
         devices = _discover_upnp_devices(discovery_timeout)
 
         try:
@@ -255,9 +272,9 @@ def _determine_media_server_device(
 
 
 def determine_streamer_and_media_server(
-        streamer_input: Optional[str],
-        media_server_input: Union[str, bool, None],
-        discovery_timeout: int = 5,
+    streamer_input: Optional[str],
+    media_server_input: Union[str, bool, None],
+    discovery_timeout: int = 5,
 ) -> (upnpclient.Device, Optional[upnpclient.Device]):
     """
     Attempt to locate a streamer and (optionally) a media server on the network.
