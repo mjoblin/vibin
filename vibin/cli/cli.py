@@ -67,7 +67,7 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--no-media", "-n",
+    "--no-media",
     help="Ignore any local media servers.",
     is_flag=True,
     default=False,
@@ -85,8 +85,14 @@ def cli():
     help="Path to Web UI static files; use 'auto' to find 'vibin installui' location.",
     metavar="DIR",
     type=click.STRING,
-    default=None,
+    default="auto",
     show_default=True,
+)
+@click.option(
+    "--no-vibinui",
+    help="Do not serve the Web UI.",
+    is_flag=True,
+    default=False,
 )
 @click.option(
     "--proxy-media-server", "-o",
@@ -102,6 +108,7 @@ def serve(
         no_media,
         discovery_timeout,
         vibinui,
+        no_vibinui,
         proxy_media_server,
 ):
     """
@@ -162,12 +169,12 @@ def serve(
             f"Cannot specify both --proxy-media-server and --no-media"
         )
 
-    if vibinui == "auto":
+    if vibinui == "auto" and not no_vibinui:
         latest_ui_install_dir = get_ui_install_dir()
 
         if latest_ui_install_dir is None:
             raise click.ClickException(
-                f"Could not determine latest UI version from {UI_ROOT}"
+                f"Could not determine latest UI version from {UI_ROOT} -- have you run 'vibin installui'?"
             )
 
         if not os.path.isfile(Path(latest_ui_install_dir, "build", "index.html")):
@@ -187,7 +194,7 @@ def serve(
             streamer=streamer,
             media=False if no_media else media,
             discovery_timeout=discovery_timeout,
-            vibinui=vibinui,
+            vibinui=vibinui if not no_vibinui else None,
             proxy_media_server=proxy_media_server,
         )
     except VibinError as e:
