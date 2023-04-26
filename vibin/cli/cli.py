@@ -351,7 +351,7 @@ def browse(id):
     """
     Browse the children of the given media id.
     """
-    browse_results = call_vibin(f"/browse/{id}", method="GET")
+    browse_results = call_vibin(f"/browse/children/{id}", method="GET")
 
     console = Console()
 

@@ -88,31 +88,40 @@ class Asset(MediaSource):
         parent_id = "0"
 
         for path_part in path.parts:
-            parent_id = self._child_id_by_title(parent_id, path_part)
+            parent_id, element_type = self._child_id_by_title(parent_id, path_part)
 
         leaf_id = parent_id
-        children = untangle.parse(self._get_children_xml(leaf_id))
 
-        contents = []
+        if element_type == "container":
+            children = untangle.parse(self._get_children_xml(leaf_id))
 
-        if "container" in children.DIDL_Lite:
-            for container in children.DIDL_Lite.container:
-                this_class = container.upnp_class.cdata
+            contents = []
 
-                if this_class == "object.container.album.musicAlbum":
-                    contents.append(self._album_from_container(container))
-                elif this_class == "object.container.person.musicArtist":
-                    contents.append(self._artist_from_container(container))
-                elif this_class == "object.container":
-                    contents.append(self._folder_from_container(container))
-        elif "item" in children.DIDL_Lite:
-            for item in children.DIDL_Lite.item:
-                this_class = item.upnp_class.cdata
+            if "container" in children.DIDL_Lite:
+                for container in children.DIDL_Lite.container:
+                    this_class = container.upnp_class.cdata
 
-                if this_class == "object.item.audioItem.musicTrack":
-                    contents.append(self._track_from_item(item))
+                    if this_class.startswith("object.container.album.musicAlbum"):
+                        contents.append(self._album_from_container(container))
+                    elif this_class.startswith("object.container.person.musicArtist"):
+                        contents.append(self._artist_from_container(container))
+                    elif this_class.startswith("object.container"):
+                        contents.append(self._folder_from_container(container))
+            elif "item" in children.DIDL_Lite:
+                for item in children.DIDL_Lite.item:
+                    this_class = item.upnp_class.cdata
 
-        return contents
+                    if this_class == "object.item.audioItem.musicTrack":
+                        contents.append(self._track_from_item(item))
+
+            return contents
+        elif element_type == "item":
+            try:
+                return self._track_from_metadata(self.get_metadata(leaf_id))
+            except VibinNotFoundError as e:
+                return None
+
+        return None
 
     @lru_cache
     def _albums(self) -> typing.List[Album]:
@@ -397,17 +406,29 @@ class Asset(MediaSource):
         children_xml = self._get_children_xml(parent_id)
         root = ET.fromstring(children_xml)
 
+        # Check for a container matching the given title
         found = root.find(
             f"didl:container/dc:title[.='{title}']..",
             namespaces=self._media_namespaces,
         )
+
+        element_type = "container"
+
+        # Check for an item (e.g. Track) matching the given title
+        if not found:
+            found = root.find(
+                f"didl:item/dc:title[.='{title}']..",
+                namespaces=self._media_namespaces,
+            )
+
+            element_type = "item"
 
         if not found:
             raise VibinNotFoundError(
                 f"Could not find path '{title}' under container id {parent_id}"
             )
 
-        return found.attrib["id"]
+        return found.attrib["id"], element_type
 
     def _get_children_xml(self, id):
         browse_result = self._device.ContentDirectory.Browse(
