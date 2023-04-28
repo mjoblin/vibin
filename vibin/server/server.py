@@ -2,16 +2,14 @@ import asyncio
 from contextlib import asynccontextmanager
 import functools
 import json
-import math
 import os
 from pathlib import Path
 import platform
 import socket
 import time
-from typing import List, Optional, Union
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException, Response, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import RedirectResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,31 +20,27 @@ from starlette.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.endpoints import WebSocketEndpoint
 import uvicorn
-import xmltodict
 
-from vibin import (
-    Vibin,
-    VibinDeviceError,
-    VibinError,
-    VibinNotFoundError,
-    VibinMissingDependencyError,
-)
+from vibin import Vibin, VibinError
 from vibin.constants import VIBIN_PORT
-from vibin.models import (
-    Album,
-    Artist,
-    Favorite,
-    LyricsQuery,
-    PlaylistModifyPayload,
-    ServerStatus,
-    StoredPlaylist,
-    Track,
-    VibinSettings,
-    WebSocketClientDetails,
+from vibin.models import ServerStatus, WebSocketClientDetails
+from vibin.server.routers import (
+    albums_router,
+    artists_router,
+    browse_router,
+    favorites_router,
+    playlist_router,
+    playlists_router,
+    presets_router,
+    system_router,
+    tracks_router,
+    transport_router,
+    vibin_router,
 )
-from vibin.streamers import SeekTarget
 from vibin.logger import logger
 from vibin.utils import replace_media_server_urls_with_proxy
+from .websocket_server import VibinWebSocketEndpoint
+from .websocket_server_three import websocket_endpoint_three
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
 HOSTNAME = "192.168.1.30"
@@ -257,46 +251,6 @@ def server_start(
 
         return FileResponse(path=Path(vibinui, resource))
 
-    # @vibin_app.get("/")
-    # async def ui(response: Response):
-    #     async with httpx.AsyncClient() as client:
-    #         proxy = await client.get(f"http://{HOSTNAME}:3000")
-    #         response.body = proxy.content
-    #         response.status_code = proxy.status_code
-    #
-    #         return response
-
-    # @vibin_app.get("/ui/{path:path}")
-    # async def ui(path, response: Response):
-    #     async with httpx.AsyncClient() as client:
-    #         proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
-    #         response.body = proxy.content
-    #         response.status_code = proxy.status_code
-    #
-    #         return response
-
-    # async def dev_ui(path, response: Response):
-    #     async with httpx.AsyncClient() as client:
-    #         proxy = await client.get(f"http://{HOSTNAME}:3000/{path}")
-    #         response.body = proxy.content
-    #         response.status_code = proxy.status_code
-    #
-    #         return response
-    #
-    # if vibinui == "dev":
-    #     vibin_app.router.add_route(
-    #         "/ui/{path:path}", dev_ui, methods=["GET"], include_in_schema=False
-    #     )
-
-    # @vibin_app.router.get("/ui/{resource}")
-    # def serve_index_html(resource: str):
-    #     # Intercept all UI calls and just return the index.html, allowing the
-    #     # UI's router to handle any routes like /ui/albums.
-    #     #
-    #     # See "Correct default route usage":
-    #     #   https://github.com/tiangolo/fastapi/discussions/9146
-    #     return FileResponse(path=Path(vibinui, "index.html"))
-
     # -------------------------------------------------------------------------
 
     def server_status() -> ServerStatus:
@@ -322,656 +276,31 @@ def server_start(
             clients=clients,
         )
 
-    @vibin_app.get(
-        "/vibin/status",
-        summary="Vibin server status",
-        description="Returns the current Vibin server status information.",
-        tags=["Vibin Server"],
+    vibin_app.include_router(vibin_router(vibin, requires_media, server_status))
+    vibin_app.include_router(system_router(vibin))
+    vibin_app.include_router(transport_router(vibin))
+    vibin_app.include_router(
+        browse_router(vibin, requires_media, transform_media_server_urls_if_proxying)
     )
-    def vibin_status() -> ServerStatus:
-        return server_status()
-
-    @vibin_app.post(
-        "/vibin/clear_media_caches",
-        summary="Clear media caches",
-        description="Clears the caches of Tracks, Albums, Artists, etc. To be used when the UPnP Media Server has been updated with (for example) new Albums, updated metadata, etc.",
-        tags=["Vibin Server"],
+    vibin_app.include_router(
+        albums_router(vibin, requires_media, transform_media_server_urls_if_proxying)
     )
-    @requires_media
-    def vibin_clear_media_caches():
-        return vibin.media.clear_caches()
-
-    @vibin_app.get("/vibin/settings", summary="", description="", tags=["Vibin Server"])
-    def vibin_settings():
-        return vibin.settings
-
-    @vibin_app.put("/vibin/settings", summary="", description="", tags=["Vibin Server"])
-    @requires_media
-    def vibin_update_settings(settings: VibinSettings):
-        vibin.settings = settings
-
-        return vibin.settings
-
-    @vibin_app.get("/vibin/db", summary="", description="", tags=["Vibin Server"])
-    def db_get():
-        return vibin.db_get()
-
-    @vibin_app.put("/vibin/db", summary="", description="", tags=["Vibin Server"])
-    def db_set(data: dict):
-        # TODO: This takes a user-provided chunk of data and writes it to disk.
-        #   This could be exploited for much harm if used with ill intent.
-        try:
-            json.dumps(data)
-        except (json.decoder.JSONDecodeError, TypeError) as e:
-            # TODO: This could do more validation to ensure the provided data
-            #   is TinyDB-compliant.
-            raise HTTPException(
-                status_code=400,
-                detail=f"Provided payload is not valid JSON: {e}",
-            )
-
-        return vibin.db_set(data)
-
-    # TODO: Do we want /system endpoints for both streamer and media?
-    @vibin_app.post(
-        "/system/streamer/power_toggle",
-        summary="",
-        description="",
-        tags=["Media System"],
+    vibin_app.include_router(
+        artists_router(vibin, requires_media, transform_media_server_urls_if_proxying)
     )
-    def system_power_toggle():
-        try:
-            vibin.streamer.power_toggle()
-            return success
-        except VibinError as e:
-            raise HTTPException(status_code=500, detail=f"{e}")
-
-    @vibin_app.post(
-        "/system/streamer/source", summary="", description="", tags=["Media System"]
+    vibin_app.include_router(
+        tracks_router(vibin, requires_media, transform_media_server_urls_if_proxying)
     )
-    def system_source(source: str):
-        try:
-            vibin.streamer.set_source(source)
-            return success
-        except VibinError as e:
-            raise HTTPException(status_code=500, detail=f"{e}")
-
-    @vibin_app.get(
-        "/system/streamer/device_display",
-        summary="",
-        description="",
-        tags=["Media System"],
+    vibin_app.include_router(
+        playlist_router(vibin, transform_media_server_urls_if_proxying)
     )
-    def device_display() -> dict:
-        return vibin.device_display
-
-    @vibin_app.get(
-        "/system/statevars",
-        summary="",
-        description="",
-        tags=["Media System"],
-        deprecated=True,
+    vibin_app.include_router(playlists_router(vibin))
+    vibin_app.include_router(
+        favorites_router(vibin, transform_media_server_urls_if_proxying)
     )
-    def state_vars() -> dict:
-        return vibin.state_vars
-
-    @vibin_app.post("/transport/pause", summary="", description="", tags=["Transport"])
-    def transport_pause():
-        try:
-            vibin.pause()
-            return success
-        except VibinError as e:
-            raise HTTPException(status_code=500, detail=f"{e}")
-
-    @vibin_app.post("/transport/play", summary="", description="", tags=["Transport"])
-    def transport_play():
-        try:
-            vibin.play()
-            return success
-        except VibinError as e:
-            raise HTTPException(status_code=500, detail=f"{e}")
-
-    @vibin_app.post("/transport/next", summary="", description="", tags=["Transport"])
-    def transport_next():
-        try:
-            vibin.next_track()
-            return success
-        except VibinError as e:
-            raise HTTPException(status_code=500, detail=f"{e}")
-
-    @vibin_app.post(
-        "/transport/previous", summary="", description="", tags=["Transport"]
+    vibin_app.include_router(
+        presets_router(vibin, transform_media_server_urls_if_proxying)
     )
-    def transport_previous():
-        vibin.previous_track()
-
-    # TODO: Consider whether repeat and shuffle should be toggles or not.
-    @vibin_app.post("/transport/repeat", summary="", description="", tags=["Transport"])
-    def transport_repeat():
-        vibin.repeat("toggle")
-
-    @vibin_app.post(
-        "/transport/shuffle", summary="", description="", tags=["Transport"]
-    )
-    def transport_shuffle():
-        vibin.shuffle("toggle")
-
-    @vibin_app.post("/transport/seek", summary="", description="", tags=["Transport"])
-    def transport_seek(target: SeekTarget):
-        vibin.seek(target)
-
-    @vibin_app.get(
-        "/transport/position", summary="", description="", tags=["Transport"]
-    )
-    def transport_position():
-        return {"position": vibin.transport_position()}
-
-    @vibin_app.post(
-        "/transport/play/{media_id}", summary="", description="", tags=["Transport"]
-    )
-    def transport_play_media_id(media_id: str):
-        vibin.play_id(media_id)
-
-    @vibin_app.get(
-        "/transport/active_controls", summary="", description="", tags=["Transport"]
-    )
-    def transport_active_controls():
-        return {"active_controls": vibin.transport_active_controls()}
-
-    @vibin_app.get(
-        "/transport/play_state", summary="", description="", tags=["Transport"]
-    )
-    def transport_play_state():
-        return vibin.play_state
-
-    @vibin_app.get(
-        "/browse/path/{media_path:path}", summary="", description="", tags=["Browse"]
-    )
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def path_contents(media_path) -> List | Track:
-        try:
-            return vibin.media.get_path_contents(Path(media_path))
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get(
-        "/browse/children/{parent_id}", summary="", description="", tags=["Browse"]
-    )
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def browse(parent_id: str):
-        return vibin.browse_media(parent_id)
-
-    @vibin_app.get("/browse/metadata/{id}", summary="", description="", tags=["Browse"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def browse(id: str):
-        return xmltodict.parse(vibin.media.get_metadata(id))
-
-    @vibin_app.get("/albums", summary="", description="", tags=["Albums"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def albums() -> List[Album]:
-        try:
-            return vibin.media.albums
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get("/albums/new", summary="", description="", tags=["Albums"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def albums_new() -> List[Album]:
-        try:
-            return vibin.media.new_albums
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get("/albums/{album_id}", summary="", description="", tags=["Albums"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def album_by_id(album_id: str) -> Album:
-        try:
-            return vibin.media.album(album_id)
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get(
-        "/albums/{album_id}/tracks", summary="", description="", tags=["Albums"]
-    )
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def album_tracks(album_id: str) -> List[Track]:
-        return vibin.media.album_tracks(album_id)
-
-    @vibin_app.get(
-        "/albums/{album_id}/links", summary="", description="", tags=["Albums"]
-    )
-    @requires_media
-    def album_links(album_id: str, all_types: bool = False):
-        return vibin.media_links(album_id, all_types)
-
-    @vibin_app.get("/artists", summary="", description="", tags=["Artists"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def artists() -> List[Artist]:
-        try:
-            return vibin.media.artists
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get("/artists/{artist_id}", summary="", description="", tags=["Artists"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def artist_by_id(artist_id: str):
-        try:
-            return vibin.media.artist(artist_id)
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get("/tracks", summary="", description="", tags=["Tracks"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def tracks() -> List[Track]:
-        try:
-            return vibin.media.tracks
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get("/tracks/lyrics", summary="", description="", tags=["Tracks"])
-    def track_lyrics(artist: str, title: str, update_cache: Optional[bool] = False):
-        lyrics = vibin.lyrics_for_track(
-            artist=artist, title=title, update_cache=update_cache
-        )
-
-        if lyrics is None:
-            raise HTTPException(status_code=404, detail="Lyrics not found")
-
-        return lyrics
-
-    @vibin_app.post(
-        "/tracks/lyrics/validate", summary="", description="", tags=["Tracks"]
-    )
-    def track_lyrics_validate(artist: str, title: str, is_valid: bool):
-        lyrics = track_lyrics(artist=artist, title=title)
-        vibin.lyrics_valid(lyrics_id=lyrics["id"], is_valid=is_valid)
-
-        return track_lyrics(artist=artist, title=title)
-
-    @vibin_app.post(
-        "/tracks/lyrics/search", summary="", description="", tags=["Tracks"]
-    )
-    def track_lyrics_search(lyrics_query: LyricsQuery):
-        results = vibin.lyrics_search(lyrics_query.query)
-
-        return {
-            "query": lyrics_query.query,
-            "matches": results,
-        }
-
-    @vibin_app.get("/tracks/links", summary="", description="", tags=["Tracks"])
-    def track_links(
-        artist: Optional[str],
-        album: Optional[str],
-        title: Optional[str],
-        all_types: bool = False,
-    ):
-        return vibin.media_links(
-            artist=artist, album=album, title=title, include_all=all_types
-        )
-
-    @vibin_app.get("/tracks/{track_id}", summary="", description="", tags=["Tracks"])
-    @transform_media_server_urls_if_proxying
-    @requires_media
-    def track_by_id(track_id: str) -> Track:
-        try:
-            return vibin.media.track(track_id)
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.get(
-        "/tracks/{track_id}/lyrics", summary="", description="", tags=["Tracks"]
-    )
-    def track_lyrics_by_track_id(track_id: str, update_cache: Optional[bool] = False):
-        lyrics = vibin.lyrics_for_track(track_id=track_id, update_cache=update_cache)
-
-        if lyrics is None:
-            raise HTTPException(status_code=404, detail="Lyrics not found")
-
-        return lyrics
-
-    @vibin_app.post(
-        "/tracks/{track_id}/lyrics/validate",
-        summary="",
-        description="",
-        tags=["Tracks"],
-    )
-    def track_lyrics_by_track_id_validate(track_id: str, is_valid: bool):
-        lyrics = track_lyrics_by_track_id(track_id)
-        vibin.lyrics_valid(lyrics_id=lyrics.lyrics_id, is_valid=is_valid)
-
-        return track_lyrics_by_track_id(track_id)
-
-    @vibin_app.get(
-        "/tracks/{track_id}/waveform.png", summary="", description="", tags=["Tracks"]
-    )
-    def track_waveform_png(
-        track_id: str,
-        width: int = 800,
-        height: int = 250,
-    ):
-        try:
-            waveform = vibin.waveform_for_track(
-                track_id, data_format="png", width=width, height=height
-            )
-
-            return Response(content=waveform, media_type="image/png")
-        except VibinMissingDependencyError as e:
-            # TODO: Where possible, have errors reference docs for possible
-            #   actions the caller can take to resolve the issue.
-            logger.warning(f"Cannot generate waveform due to missing dependency: {e}")
-
-            raise HTTPException(
-                status_code=404,
-                detail=f"Cannot generate waveform due to missing dependency: {e}",
-            )
-
-    @vibin_app.get(
-        "/tracks/{track_id}/waveform", summary="", description="", tags=["Tracks"]
-    )
-    def track_waveform(
-        track_id: str,
-        width: int = 800,
-        height: int = 250,
-        accept: Union[str, None] = Header(default="application/json"),
-    ):
-        # TODO: This waveform_format / media_type / "accept" header stuff
-        #   feels too convoluted.
-        waveform_format = "json"
-        media_type = "application/json"
-
-        if accept == "application/octet-stream":
-            waveform_format = "dat"
-            media_type = "application/octet-stream"
-        elif accept == "image/png":
-            waveform_format = "png"
-            media_type = "image/png"
-
-        try:
-            if waveform_format == "png":
-                waveform = vibin.waveform_for_track(
-                    track_id, data_format=waveform_format, width=width, height=height
-                )
-            else:
-                waveform = vibin.waveform_for_track(
-                    track_id, data_format=waveform_format
-                )
-
-            return Response(
-                content=json.dumps(waveform) if waveform_format == "json" else waveform,
-                media_type=media_type,
-            )
-        except VibinMissingDependencyError as e:
-            # TODO: Where possible, have errors reference docs for possible
-            #   actions the caller can take to resolve the issue.
-            raise HTTPException(
-                status_code=404,
-                detail=f"Cannot generate waveform due to missing dependency: {e}",
-            )
-
-    @vibin_app.get(
-        "/tracks/{track_id}/rms", summary="", description="", tags=["Tracks"]
-    )
-    def track_rms(track_id: str):
-        waveform = vibin.waveform_for_track(track_id, data_format="json")
-
-        samples = waveform["data"]
-        squared_samples = [sample**2 for sample in samples]
-        squared_sum = sum(squared_samples)
-
-        mean = squared_sum / len(samples)
-        rms = math.sqrt(mean)
-        peak = max((abs(sample) for sample in samples))
-        rms_to_peak_ratio = rms / peak
-
-        return {
-            "rms": rms,
-            "peak": peak,
-            "rms_to_peak": rms_to_peak_ratio,
-        }
-
-    @vibin_app.get(
-        "/tracks/{track_id}/links", summary="", description="", tags=["Tracks"]
-    )
-    def track_links_by_track_id(track_id: str, all_types: bool = False):
-        return vibin.media_links(media_id=track_id, include_all=all_types)
-
-    @vibin_app.get("/playlist", summary="", description="", tags=["Active Playlist"])
-    @transform_media_server_urls_if_proxying
-    def playlist():
-        return vibin.streamer.playlist()
-
-    @vibin_app.post(
-        "/playlist/modify", summary="", description="", tags=["Active Playlist"]
-    )
-    def playlist_modify_multiple_entries(payload: PlaylistModifyPayload):
-        if payload.action != "REPLACE":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported action: {payload.action}. Supported actions: REPLACE.",
-            )
-
-        return vibin.play_ids(payload.media_ids, max_count=payload.max_count)
-
-    @vibin_app.post(
-        "/playlist/modify/{media_id}",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_modify_single_entry(
-        media_id: str,
-        action: str = "REPLACE",
-        insert_index: Optional[int] = None,
-    ):
-        return vibin.modify_playlist(media_id, action, insert_index)
-
-    @vibin_app.post(
-        "/playlist/play/id/{playlist_entry_id}",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_play_id(playlist_entry_id: int):
-        return vibin.streamer.play_playlist_id(playlist_entry_id)
-
-    @vibin_app.post(
-        "/playlist/play/index/{index}",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_play_index(index: int):
-        return vibin.streamer.play_playlist_index(index)
-
-    @vibin_app.post(
-        "/playlist/play/favorites/albums",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_play_favorite_albums(max_count: int = 10):
-        return vibin.play_favorite_albums(max_count=max_count)
-
-    @vibin_app.post(
-        "/playlist/play/favorites/tracks",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_play_favorite_tracks(max_count: int = 100):
-        return vibin.play_favorite_tracks(max_count=max_count)
-
-    @vibin_app.post(
-        "/playlist/clear", summary="", description="", tags=["Active Playlist"]
-    )
-    def playlist_clear():
-        return vibin.streamer.playlist_clear()
-
-    @vibin_app.post(
-        "/playlist/delete/{playlist_entry_id}",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_delete_entry(playlist_entry_id: int):
-        return vibin.streamer.playlist_delete_entry(playlist_entry_id)
-
-    @vibin_app.post(
-        "/playlist/move/{playlist_entry_id}",
-        summary="",
-        description="",
-        tags=["Active Playlist"],
-    )
-    def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
-        return vibin.streamer.playlist_move_entry(
-            playlist_entry_id, from_index, to_index
-        )
-
-    @vibin_app.get("/playlists", summary="", description="", tags=["Stored Playlists"])
-    def playlists() -> list[StoredPlaylist]:
-        return vibin.playlists()
-
-    @vibin_app.get(
-        "/playlists/{playlist_id}",
-        summary="",
-        description="",
-        tags=["Stored Playlists"],
-    )
-    def playlists_id(playlist_id: str) -> StoredPlaylist:
-        playlist = vibin.get_playlist(playlist_id)
-
-        if playlist is None:
-            raise HTTPException(
-                status_code=404, detail=f"Playlist not found: {playlist_id}"
-            )
-
-        return playlist
-
-    @vibin_app.put(
-        "/playlists/{playlist_id}",
-        summary="",
-        description="",
-        tags=["Stored Playlists"],
-    )
-    def playlists_id_update(
-        playlist_id: str, name: Optional[str] = None
-    ) -> StoredPlaylist:
-        metadata = {"name": name} if name else None
-
-        try:
-            return vibin.update_playlist_metadata(
-                playlist_id=playlist_id, metadata=metadata
-            )
-        except VibinNotFoundError:
-            raise HTTPException(
-                status_code=404, detail=f"Playlist not found: {playlist_id}"
-            )
-
-    @vibin_app.delete(
-        "/playlists/{playlist_id}",
-        status_code=204,
-        summary="",
-        description="",
-        tags=["Stored Playlists"],
-    )
-    def playlists_id_delete(playlist_id: str):
-        try:
-            vibin.delete_playlist(playlist_id=playlist_id)
-        except VibinNotFoundError:
-            raise HTTPException(
-                status_code=404, detail=f"Playlist not found: {playlist_id}"
-            )
-
-    @vibin_app.post(
-        "/playlists/{playlist_id}/make_current",
-        summary="",
-        description="",
-        tags=["Stored Playlists"],
-    )
-    def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
-        # TODO: Is it possible to configure FastAPI to always treat
-        #   VibinNotFoundError as a 404 and VibinDeviceError as a 503?
-        try:
-            return vibin.set_current_playlist(playlist_id)
-        except VibinNotFoundError:
-            raise HTTPException(
-                status_code=404, detail=f"Playlist not found: {playlist_id}"
-            )
-        except VibinDeviceError as e:
-            raise HTTPException(status_code=503, detail=f"Downstream device error: {e}")
-
-    @vibin_app.post(
-        "/playlists/current/store",
-        summary="",
-        description="",
-        tags=["Stored Playlists"],
-    )
-    def playlists_current_store(
-        name: Optional[str] = None, replace: Optional[bool] = True
-    ):
-        metadata = {"name": name} if name else None
-
-        return vibin.store_current_playlist(metadata=metadata, replace=replace)
-
-    @vibin_app.get("/favorites", summary="", description="", tags=["Favorites"])
-    @transform_media_server_urls_if_proxying
-    def favorites():
-        return {
-            "favorites": vibin.favorites(),
-        }
-
-    @vibin_app.get("/favorites/albums", summary="", description="", tags=["Favorites"])
-    @transform_media_server_urls_if_proxying
-    def favorites_albums():
-        favorites = vibin.favorites(requested_types=["album"])
-
-        return {
-            "favorites": favorites,
-        }
-
-    @vibin_app.get("/favorites/tracks", summary="", description="", tags=["Favorites"])
-    @transform_media_server_urls_if_proxying
-    def favorites_tracks():
-        favorites = vibin.favorites(requested_types=["track"])
-
-        return {
-            "favorites": favorites,
-        }
-
-    @vibin_app.post("/favorites", summary="", description="", tags=["Favorites"])
-    def favorites_create(favorite: Favorite):
-        try:
-            return vibin.store_favorite(favorite.type, favorite.media_id)
-        except VibinNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-
-    @vibin_app.delete(
-        "/favorites/{media_id}", summary="", description="", tags=["Favorites"]
-    )
-    def favorites_delete(media_id):
-        vibin.delete_favorite(media_id)
-
-    @vibin_app.get("/presets", summary="", description="", tags=["Presets"])
-    @transform_media_server_urls_if_proxying
-    def presets() -> dict:
-        return vibin.presets
-
-    @vibin_app.post(
-        "/presets/{preset_id}/play", summary="", description="", tags=["Presets"]
-    )
-    def preset_play(preset_id: int):
-        return vibin.streamer.play_preset_id(preset_id)
 
     @vibin_app.post("/subscribe", include_in_schema=False)
     def transport_play_media_id():
@@ -1027,6 +356,15 @@ def server_start(
     async def listen(service: str, request: starlette.requests.Request) -> None:
         body = await request.body()
         vibin.upnp_event(service, body.decode("utf-8"))
+
+    # vibin_app.add_websocket_route("/ws", wtf)
+
+    # vibin_app.add_websocket_route("/ws", WebSocketTicks)
+    # vibin_app.add_websocket_route("/ws", wtf)
+    # vibin_app.add_api_websocket_route("/ws", wtf)
+    # vibin_app.add_api_websocket_route("/ws", vibin_websocket_server)
+
+    # vibin_app.add_api_websocket_route("/ws", websocket_endpoint_three)
 
     @vibin_app.websocket_route("/ws")
     class WebSocketTicks(WebSocketEndpoint):
@@ -1117,14 +455,14 @@ def server_start(
 
             await websocket.send_text(
                 self.build_message(
-                    json.dumps(server_status()), "VibinStatus", websocket
+                    json.dumps(server_status().dict()), "VibinStatus", websocket
                 )
             )
 
             # TODO: Allow the server to send a message to all connected
             #   websockets. Perhaps just make _websocket_message_handler more
             #   publicly accessible.
-            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status()))
+            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status().dict()))
 
         async def on_disconnect(self, websocket: WebSocket, close_code: int) -> None:
             self.sender_task.cancel()
@@ -1135,7 +473,7 @@ def server_start(
             except KeyError:
                 pass
 
-            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status()))
+            vibin._websocket_message_handler("VibinStatus", json.dumps(server_status().dict()))
 
             logger.info(
                 f"WebSocket connection closed [{close_code}] for client "
