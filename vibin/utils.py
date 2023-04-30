@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import tempfile
 import zipfile
 
@@ -20,6 +21,22 @@ from .logger import logger
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
 HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
+
+
+def get_local_ip():
+    # https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    try:
+        # doesn't even have to be reachable
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+
+    return ip
 
 
 def is_hmmss(input: str) -> bool:

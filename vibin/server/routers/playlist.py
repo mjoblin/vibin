@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from vibin import Vibin
 from vibin.models import PlaylistModifyPayload
+from vibin.server.dependencies import transform_media_server_urls_if_proxying
 
 
 def playlist_router(vibin: Vibin, transform_media_server_urls_if_proxying):

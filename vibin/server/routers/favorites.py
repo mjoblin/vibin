@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from vibin import Vibin, VibinNotFoundError
 from vibin.models import Favorite
+from vibin.server.dependencies import transform_media_server_urls_if_proxying
 
 
 def favorites_router(vibin: Vibin, transform_media_server_urls_if_proxying):

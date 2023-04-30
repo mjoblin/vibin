@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from vibin import Vibin
+from vibin.server.dependencies import transform_media_server_urls_if_proxying
 
 
 def presets_router(vibin: Vibin, transform_media_server_urls_if_proxying):

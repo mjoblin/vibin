@@ -7,6 +7,10 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from vibin import Vibin, VibinMissingDependencyError, VibinNotFoundError
 from vibin.logger import logger
 from vibin.models import LyricsQuery, Track
+from vibin.server.dependencies import (
+    requires_media,
+    transform_media_server_urls_if_proxying,
+)
 
 
 def tracks_router(vibin: Vibin, requires_media, transform_media_server_urls_if_proxying):

@@ -4,6 +4,10 @@ from fastapi import APIRouter, HTTPException
 
 from vibin import Vibin, VibinNotFoundError
 from vibin.models import Artist
+from vibin.server.dependencies import (
+    requires_media,
+    transform_media_server_urls_if_proxying,
+)
 
 
 def artists_router(

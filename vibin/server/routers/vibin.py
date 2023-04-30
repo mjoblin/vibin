@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from vibin import Vibin
 from vibin.models import ServerStatus, VibinSettings
+from vibin.server.dependencies import requires_media
 
 
 def vibin_router(vibin: Vibin, requires_media, server_status):

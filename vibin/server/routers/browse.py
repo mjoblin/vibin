@@ -6,7 +6,10 @@ import xmltodict
 
 from vibin import Vibin, VibinNotFoundError
 from vibin.models import Track
-
+from vibin.server.dependencies import (
+    requires_media,
+    transform_media_server_urls_if_proxying,
+)
 
 def browse_router(
     vibin: Vibin, requires_media, transform_media_server_urls_if_proxying
