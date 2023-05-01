@@ -7,7 +7,7 @@ import httpx
 
 from vibin import Vibin, VibinError
 from vibin.logger import logger
-from vibin.models import ServerStatus
+from vibin.models import ServerStatus, WebSocketClientDetails
 from vibin.utils import replace_media_server_urls_with_proxy
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
@@ -17,6 +17,7 @@ _vibin = None
 _is_proxy_for_media_server = False
 _media_server_proxy_target = None
 _media_server_proxy_client = None
+_ui_static_root = None
 
 
 def get_vibin_instance(
@@ -25,11 +26,13 @@ def get_vibin_instance(
     discovery_timeout=5,
     subscribe_callback_base="",
     proxy_media_server=False,
+    ui_static_root=None,
 ) -> Vibin:
     global _vibin
     global _is_proxy_for_media_server
     global _media_server_proxy_target
     global _media_server_proxy_client
+    global _ui_static_root
 
     if _vibin is not None:
         return _vibin
@@ -37,6 +40,7 @@ def get_vibin_instance(
     logger.info("Creating Vibin instance")
 
     _is_proxy_for_media_server = proxy_media_server
+    _ui_static_root = ui_static_root
 
     try:
         _vibin = Vibin(
@@ -54,10 +58,25 @@ def get_vibin_instance(
                     base_url=_media_server_proxy_target
                 )
 
-        return _vibin
     except VibinError as e:
         logger.error(f"Vibin server start unsuccessful: {e}")
         raise
+
+    if _is_proxy_for_media_server:
+        # If proxying the media server has been requested but there's no media
+        # server associated with the vibin instance, then do not proceed.
+        if _vibin.media is not None:
+            logger.info(
+                f"Proxying art at /proxy (target: {get_media_server_proxy_target()})"
+            )
+        else:
+            error = "Unable to proxy art; media server not located"
+            logger.error(error)
+            _vibin.shutdown()
+
+            raise VibinError(error)
+
+    return _vibin
 
 
 def is_proxy_for_media_server():
@@ -70,6 +89,10 @@ def get_media_server_proxy_target():
 
 def get_media_server_proxy_client():
     return _media_server_proxy_client
+
+
+def get_ui_static_root():
+    return _ui_static_root
 
 
 def transform_media_server_urls_if_proxying(func):
@@ -105,7 +128,9 @@ _system_platform = platform.platform()
 _system_version = platform.version()
 
 
-def server_status() -> ServerStatus:
+def server_status(
+    websocket_clients: list[WebSocketClientDetails] | None = None,
+) -> ServerStatus:
     global _start_time
     global _system_node
     global _system_platform
@@ -116,5 +141,5 @@ def server_status() -> ServerStatus:
         system_node=_system_node,
         system_platform=_system_platform,
         system_version=_system_version,
-        clients=[],  # WebSocket clients get injected by the WebSocket Manager
+        clients=websocket_clients if websocket_clients is not None else [],
     )

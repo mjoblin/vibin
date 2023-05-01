@@ -157,10 +157,7 @@ class ConnectionManager:
     ) -> None:
         await websocket.send_text(self.build_message(message, type, websocket))
 
-    def get_status(self):
-        status = server_status()
-
-        # Inject WebSocket client information into the system status.
+    def client_details(self) -> list[WebSocketClientDetails]:
         clients: list[WebSocketClientDetails] = []
 
         for websocket_info in self.active_connections.values():
@@ -175,9 +172,10 @@ class ConnectionManager:
                 )
             )
 
-        status.clients = clients
+        return clients
 
-        return status
+    def get_status(self):
+        return server_status(websocket_clients=self.client_details())
 
     def shutdown(self):
         self.sender_task.cancel()
