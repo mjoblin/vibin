@@ -10,10 +10,14 @@ from vibin.server.dependencies import (
     transform_media_server_urls_if_proxying,
 )
 
+# -----------------------------------------------------------------------------
+# The /albums route.
+# -----------------------------------------------------------------------------
+
 albums_router = APIRouter()
 
 
-@albums_router.get("/albums", summary="", description="", tags=["Albums"])
+@albums_router.get("/albums", summary="Retrieve all Album details", tags=["Albums"])
 @transform_media_server_urls_if_proxying
 @requires_media
 def albums() -> List[Album]:
@@ -23,7 +27,7 @@ def albums() -> List[Album]:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@albums_router.get("/albums/new", summary="", description="", tags=["Albums"])
+@albums_router.get("/albums/new", summary="Retrieve new Album details", tags=["Albums"])
 @transform_media_server_urls_if_proxying
 @requires_media
 def albums_new() -> List[Album]:
@@ -33,7 +37,11 @@ def albums_new() -> List[Album]:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@albums_router.get("/albums/{album_id}", summary="", description="", tags=["Albums"])
+@albums_router.get(
+    "/albums/{album_id}",
+    summary="Retrieve details on a single Album",
+    tags=["Albums"],
+)
 @transform_media_server_urls_if_proxying
 @requires_media
 def album_by_id(album_id: str) -> Album:
@@ -44,7 +52,9 @@ def album_by_id(album_id: str) -> Album:
 
 
 @albums_router.get(
-    "/albums/{album_id}/tracks", summary="", description="", tags=["Albums"]
+    "/albums/{album_id}/tracks",
+    summary="Retrieve all Track details for an Album",
+    tags=["Albums"],
 )
 @transform_media_server_urls_if_proxying
 @requires_media
@@ -53,7 +63,9 @@ def album_tracks(album_id: str) -> List[Track]:
 
 
 @albums_router.get(
-    "/albums/{album_id}/links", summary="", description="", tags=["Albums"]
+    "/albums/{album_id}/links",
+    summary="Retrieve all links for an Album",
+    tags=["Albums"],
 )
 @requires_media
 def album_links(album_id: str, all_types: bool = False):

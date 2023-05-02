@@ -1,16 +1,26 @@
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 
 from vibin import VibinDeviceError, VibinNotFoundError
 from vibin.models import StoredPlaylist
 from vibin.server.dependencies import get_vibin_instance
 
+# -----------------------------------------------------------------------------
+# The /playlists route.
+#
+# TODO: Consider renaming to /storedplaylists to more clearly distinguish from
+#  /playlist
+# -----------------------------------------------------------------------------
+
 stored_playlists_router = APIRouter()
 
 
 @stored_playlists_router.get(
-    "/playlists", summary="", description="", tags=["Stored Playlists"]
+    "/playlists",
+    summary="Retrieve details on all Stored Playlists",
+    tags=["Stored Playlists"],
 )
 def playlists() -> list[StoredPlaylist]:
     return get_vibin_instance().playlists()
@@ -18,8 +28,7 @@ def playlists() -> list[StoredPlaylist]:
 
 @stored_playlists_router.get(
     "/playlists/{playlist_id}",
-    summary="",
-    description="",
+    summary="Retrieve details on a single Stored Playlist",
     tags=["Stored Playlists"],
 )
 def playlists_id(playlist_id: str) -> StoredPlaylist:
@@ -35,8 +44,7 @@ def playlists_id(playlist_id: str) -> StoredPlaylist:
 
 @stored_playlists_router.put(
     "/playlists/{playlist_id}",
-    summary="",
-    description="",
+    summary="Update a Stored Playlist",
     tags=["Stored Playlists"],
 )
 def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredPlaylist:
@@ -55,9 +63,9 @@ def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredP
 @stored_playlists_router.delete(
     "/playlists/{playlist_id}",
     status_code=204,
-    summary="",
-    description="",
+    summary="Delete a Stored Playlist",
     tags=["Stored Playlists"],
+    response_class=Response,
 )
 def playlists_id_delete(playlist_id: str):
     try:
@@ -70,8 +78,11 @@ def playlists_id_delete(playlist_id: str):
 
 @stored_playlists_router.post(
     "/playlists/{playlist_id}/make_current",
-    summary="",
-    description="",
+    summary="Activate a Stored Playlist",
+    description=(
+        "Activating a Stored Playlist means replacing the Streamer's active "
+        + "Playlist with the contents of the Stored Playlist."
+    ),
     tags=["Stored Playlists"],
 )
 def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
@@ -89,11 +100,12 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
 
 @stored_playlists_router.post(
     "/playlists/current/store",
-    summary="",
-    description="",
+    summary="Store the Streamer's active Playlist as a new Stored Playlist",
     tags=["Stored Playlists"],
 )
-def playlists_current_store(name: Optional[str] = None, replace: Optional[bool] = True):
+def playlists_current_store(
+    name: Optional[str] = None, replace: Optional[bool] = True
+) -> StoredPlaylist:
     metadata = {"name": name} if name else None
 
     return get_vibin_instance().store_current_playlist(

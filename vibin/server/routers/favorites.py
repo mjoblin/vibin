@@ -1,16 +1,22 @@
 from fastapi import APIRouter, HTTPException
 
-from vibin import Vibin, VibinNotFoundError
+from vibin import VibinNotFoundError
 from vibin.models import Favorite
 from vibin.server.dependencies import (
     get_vibin_instance,
     transform_media_server_urls_if_proxying,
 )
 
+# -----------------------------------------------------------------------------
+# The /favorites route.
+# -----------------------------------------------------------------------------
+
 favorites_router = APIRouter()
 
 
-@favorites_router.get("/favorites", summary="", description="", tags=["Favorites"])
+@favorites_router.get(
+    "/favorites", summary="Retrieve all Favorites", tags=["Favorites"]
+)
 @transform_media_server_urls_if_proxying
 def favorites():
     return {
@@ -19,7 +25,9 @@ def favorites():
 
 
 @favorites_router.get(
-    "/favorites/albums", summary="", description="", tags=["Favorites"]
+    "/favorites/albums",
+    summary="Retrieve all Album Favorites",
+    tags=["Favorites"],
 )
 @transform_media_server_urls_if_proxying
 def favorites_albums():
@@ -31,7 +39,9 @@ def favorites_albums():
 
 
 @favorites_router.get(
-    "/favorites/tracks", summary="", description="", tags=["Favorites"]
+    "/favorites/tracks",
+    summary="Retrieve all Track Favorites",
+    tags=["Favorites"],
 )
 @transform_media_server_urls_if_proxying
 def favorites_tracks():
@@ -42,7 +52,11 @@ def favorites_tracks():
     }
 
 
-@favorites_router.post("/favorites", summary="", description="", tags=["Favorites"])
+@favorites_router.post(
+    "/favorites",
+    summary="Favorite an Album or Track",
+    tags=["Favorites"],
+)
 def favorites_create(favorite: Favorite):
     try:
         return get_vibin_instance().store_favorite(favorite.type, favorite.media_id)
@@ -51,7 +65,9 @@ def favorites_create(favorite: Favorite):
 
 
 @favorites_router.delete(
-    "/favorites/{media_id}", summary="", description="", tags=["Favorites"]
+    "/favorites/{media_id}",
+    summary="Unfavorite an Album or Track",
+    tags=["Favorites"],
 )
 def favorites_delete(media_id):
     get_vibin_instance().delete_favorite(media_id)

@@ -24,8 +24,8 @@ import xmltodict
 
 from ..logger import logger
 from vibin import VibinDeviceError
-from vibin.types_foo import ServiceSubscriptions, Subscription
 from vibin.mediasources import MediaSource
+from vibin.models import ServiceSubscriptions, Subscription, TransportPlayState
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
 
@@ -117,7 +117,7 @@ class CXNv2(Streamer):
             "current_playback_details": None,
         }
 
-        self._play_state = {}
+        self._play_state: TransportPlayState = TransportPlayState()
         self._device_display = {}
         self._cached_playlist = []
 
@@ -770,7 +770,9 @@ class CXNv2(Streamer):
                         update_dict = json.loads(update)
 
                         if update_dict["path"] == "/zone/play_state":
-                            self._play_state = update_dict
+                            self._play_state = TransportPlayState(
+                                **update_dict["params"]["data"]
+                            )
 
                             # When the CXNv2 comes out of standby mode, its
                             # play_state update message does not include the
@@ -788,30 +790,30 @@ class CXNv2(Streamer):
                             #   missing values?
 
                             try:
-                                play_state_data = self._play_state["params"]["data"]
-                                play_state_metadata = play_state_data["metadata"]
-                                play_state_queue_index = play_state_data["queue_index"]
-                                play_state_title = play_state_metadata["title"]
-                                queue_entry = self._cached_playlist[
-                                    play_state_queue_index
-                                ]
+                                play_state_metadata = self._play_state.metadata
+                                play_state_title = play_state_metadata.title
 
-                                if (
-                                    play_state_data["state"] == "pause"
-                                    and queue_entry["title"] == play_state_title
-                                ):
-                                    if "album" not in play_state_metadata:
-                                        play_state_metadata["album"] = queue_entry[
-                                            "album"
-                                        ]
-                                    if "artist" not in play_state_metadata:
-                                        play_state_metadata["artist"] = queue_entry[
-                                            "artist"
-                                        ]
-                                    if "duration" not in play_state_metadata:
-                                        play_state_metadata[
-                                            "duration"
-                                        ] = utils.hmmss_to_secs(queue_entry["duration"])
+                                play_state_queue_index = self._play_state.queue_index
+
+                                if play_state_queue_index is not None:
+                                    queue_entry = self._cached_playlist[play_state_queue_index]
+
+                                    if (
+                                        self._play_state.state == "pause"
+                                        and queue_entry["title"] == play_state_title
+                                    ):
+                                        if play_state_metadata.album is None:
+                                            play_state_metadata.album = queue_entry[
+                                                "album"
+                                            ]
+                                        if play_state_metadata.artist is None:
+                                            play_state_metadata.artist = queue_entry[
+                                                "artist"
+                                            ]
+                                        if play_state_metadata.duration is None:
+                                            play_state_metadata.duration = utils.hmmss_to_secs(
+                                                queue_entry["duration"]
+                                            )
                             except (IndexError, KeyError) as e:
                                 pass
 
@@ -885,24 +887,7 @@ class CXNv2(Streamer):
         asyncio.run(async_websocket_manager())
 
     def _send_play_state_update(self):
-        # NOTE: This manually injects the track and album media IDs into the
-        # PlayState payload. The idea is that these IDs are part of the
-        # "currently-playing" information, but the CXNv2 doesn't appear to
-        # include this information itself, so it's injected here to meet what
-        # might become the future payload contract for the PlayState type
-        # coming from anything implementing Streamer.
-
-        try:
-            self._play_state["params"]["data"]["metadata"][
-                "current_track_media_id"
-            ] = self._last_seen_track_id
-            self._play_state["params"]["data"]["metadata"][
-                "current_album_media_id"
-            ] = self._last_seen_album_id
-        except KeyError:
-            pass
-
-        self._updates_handler("PlayState", json.dumps(self._play_state))
+        self._updates_handler("PlayState", json.dumps(self.play_state.dict()))
 
     def _send_device_display_update(self):
         self._updates_handler("DeviceDisplay", json.dumps(self._device_display))
@@ -1018,10 +1003,24 @@ class CXNv2(Streamer):
         return self._vibin_vars
 
     @property
-    def play_state(self):
+    def play_state(self) -> TransportPlayState:
         # TODO: This is a raw CXNv2 WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
+
+        # NOTE: This manually injects the track and album media IDs into the
+        # play state details. The idea is that these IDs are part of the
+        # "currently-playing" information, but the CXNv2 doesn't appear to
+        # include this information itself, so it's injected here to meet what
+        # might become the future payload contract for the play state type
+        # coming from anything implementing Streamer.
+
+        try:
+            self._play_state.metadata.current_track_media_id = self._last_seen_track_id
+            self._play_state.metadata.current_album_media_id = self._last_seen_album_id
+        except KeyError:
+            pass
+
         return self._play_state
 
     @property

@@ -5,6 +5,10 @@ from fastapi.responses import FileResponse
 
 from vibin.server.dependencies import get_ui_static_root
 
+# -----------------------------------------------------------------------------
+# The /ui route for serving the UI's static files.
+# -----------------------------------------------------------------------------
+
 ui_static_router = APIRouter()
 
 

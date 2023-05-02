@@ -18,6 +18,10 @@ from vibin.utils import replace_media_server_urls_with_proxy
 # https://github.com/tiangolo/fastapi/issues/81
 
 
+# -----------------------------------------------------------------------------
+# The /ws WebSocket server route.
+# -----------------------------------------------------------------------------
+
 websocket_server_router = APIRouter()
 
 
@@ -98,7 +102,9 @@ class ConnectionManager:
             message["payload"] = vibin.system_state
         elif messageType == "StateVars":
             message["payload"] = data_as_dict
-        elif messageType == "PlayState" or messageType == "Position":
+        elif messageType == "PlayState":
+            message["payload"] = data_as_dict
+        elif messageType == "Position":
             try:
                 message["payload"] = data_as_dict["params"]["data"]
             except KeyError:
@@ -205,7 +211,7 @@ async def websocket_endpoint(websocket: WebSocket):
     )
 
     await websocket_connection_manager.single_client_send(
-        websocket, "PlayState", json.dumps(vibin.play_state)
+        websocket, "PlayState", json.dumps(vibin.play_state.dict())
     )
 
     await websocket_connection_manager.single_client_send(

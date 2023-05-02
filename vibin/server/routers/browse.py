@@ -12,11 +12,18 @@ from vibin.server.dependencies import (
     transform_media_server_urls_if_proxying,
 )
 
+# -----------------------------------------------------------------------------
+# The /browse route.
+# -----------------------------------------------------------------------------
+
 browse_router = APIRouter()
 
 
 @browse_router.get(
-    "/browse/path/{media_path:path}", summary="", description="", tags=["Browse"]
+    "/browse/path/{media_path:path}",
+    summary="Retrieve the contents of a path on the Media Server",
+    description="The `media_path` can be nested, e.g. `Albums/[All Albums]`.",
+    tags=["Browse"],
 )
 @transform_media_server_urls_if_proxying
 @requires_media
@@ -28,7 +35,9 @@ def path_contents(media_path) -> List | Track:
 
 
 @browse_router.get(
-    "/browse/children/{parent_id}", summary="", description="", tags=["Browse"]
+    "/browse/children/{parent_id}",
+    summary="Retrieve the children of the given Parent ID on the Media Server",
+    tags=["Browse"],
 )
 @transform_media_server_urls_if_proxying
 @requires_media
@@ -36,7 +45,11 @@ def browse(parent_id: str):
     return get_vibin_instance().browse_media(parent_id)
 
 
-@browse_router.get("/browse/metadata/{id}", summary="", description="", tags=["Browse"])
+@browse_router.get(
+    "/browse/metadata/{id}",
+    summary="Retrieve the Media Server's metadata for the given Media ID",
+    tags=["Browse"],
+)
 @transform_media_server_urls_if_proxying
 @requires_media
 def browse(id: str):

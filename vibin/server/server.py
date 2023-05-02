@@ -3,13 +3,19 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import starlette.requests
 import uvicorn
 
 from vibin import VibinError
 from vibin.constants import VIBIN_PORT
+from vibin.logger import logger
+from vibin.server.dependencies import (
+    get_vibin_instance,
+    get_media_server_proxy_client,
+    UPNP_EVENTS_BASE_ROUTE,
+)
 from vibin.server.routers import (
     albums_router,
     artists_router,
@@ -27,13 +33,7 @@ from vibin.server.routers import (
     websocket_connection_manager,
     websocket_server_router,
 )
-from vibin.logger import logger
 from vibin.utils import get_local_ip
-from .dependencies import (
-    get_vibin_instance,
-    get_media_server_proxy_client,
-    UPNP_EVENTS_BASE_ROUTE,
-)
 
 
 def server_start(
@@ -113,23 +113,23 @@ def server_start(
             "description": "Interact with devices in the media system as a whole (Streamer and Media Source)",
         },
         {"name": "Transport", "description": "Interact with the Streamer transport"},
-        {"name": "Browse", "description": "Browse media on the Media Server"},
-        {"name": "Tracks", "description": "Interact with Tracks"},
-        {"name": "Albums", "description": "Interact with Albums"},
         {"name": "Artists", "description": "Interact with Artists"},
+        {"name": "Albums", "description": "Interact with Albums"},
+        {"name": "Tracks", "description": "Interact with Tracks"},
         {
             "name": "Active Playlist",
-            "description": "Interact with the current active streamer Playlist",
+            "description": "Interact with the Streamer's active Playlist",
         },
         {"name": "Stored Playlists", "description": "Interact with Stored Playlists"},
         {"name": "Favorites", "description": "Interact with Favorites"},
         {"name": "Presets", "description": "Interact with Presets"},
+        {"name": "Browse", "description": "Browse media on the Media Server"},
     ]
 
     # Create the vibin FastAPI application.
     vibin_app = FastAPI(
         title="vibin",
-        description="REST API for the vibin backend.",
+        description="REST API for the vibin backend. A WebSocket server is also available at `/ws`.",
         # version=__version__,  # TODO: Get version from pyproject.toml
         openapi_tags=tags_metadata,
         lifespan=api_lifespan,
@@ -168,8 +168,8 @@ def server_start(
         logger.info(f"Not serving Web UI")
 
     # Redirect the root route to the UI static file router.
-    @vibin_app.router.get("/", include_in_schema=False)
-    def redirect_root_to_ui():
+    @vibin_app.get("/", include_in_schema=False)
+    def redirect_root_to_ui() -> Response:
         return RedirectResponse("/ui", status_code=303)
 
     vibin_app.include_router(ui_static_router)

@@ -5,7 +5,7 @@ import typing
 import upnpclient
 
 from vibin.mediasources import MediaSource
-from vibin.types_foo import ServiceSubscriptions
+from vibin.models import ServiceSubscriptions, TransportPlayState
 
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
@@ -185,7 +185,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def play_state(self):
+    def play_state(self) -> TransportPlayState:
         pass
 
     @abstractmethod

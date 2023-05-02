@@ -1,22 +1,18 @@
-import json
-import math
-from typing import List, Optional, Union
-
-from fastapi import APIRouter, Header, HTTPException, Response
+from fastapi import APIRouter, HTTPException
 import httpx
 from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-from vibin import Vibin, VibinMissingDependencyError, VibinNotFoundError
 from vibin.logger import logger
-from vibin.models import LyricsQuery, Track
 from vibin.server.dependencies import (
     get_media_server_proxy_client,
     is_proxy_for_media_server,
-    requires_media,
-    transform_media_server_urls_if_proxying,
 )
+
+# -----------------------------------------------------------------------------
+# The /proxy route for proxying the UPnP Media Server (e.g. album art urls).
+# -----------------------------------------------------------------------------
 
 media_server_proxy_router = APIRouter()
 

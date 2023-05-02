@@ -1,16 +1,23 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 
 from vibin import VibinError
 from vibin.server.dependencies import get_vibin_instance, success
+
+# -----------------------------------------------------------------------------
+# The /system route.
+# -----------------------------------------------------------------------------
 
 system_router = APIRouter()
 
 
 @system_router.post(
     "/system/streamer/power_toggle",
-    summary="",
-    description="",
+    summary="Toggle the Streamer's power",
     tags=["Media System"],
+    response_class=Response,
 )
 def system_power_toggle():
     try:
@@ -21,7 +28,10 @@ def system_power_toggle():
 
 
 @system_router.post(
-    "/system/streamer/source", summary="", description="", tags=["Media System"]
+    "/system/streamer/source",
+    summary="Set the Streamer's Media Source",
+    tags=["Media System"],
+    response_class=Response,
 )
 def system_source(source: str):
     try:
@@ -33,8 +43,7 @@ def system_source(source: str):
 
 @system_router.get(
     "/system/streamer/device_display",
-    summary="",
-    description="",
+    summary="Retrieve the Streamer's current display",
     tags=["Media System"],
 )
 def device_display() -> dict:
@@ -43,10 +52,9 @@ def device_display() -> dict:
 
 @system_router.get(
     "/system/statevars",
-    summary="",
-    description="",
+    summary="Retrieve the system's state variables",
     tags=["Media System"],
     deprecated=True,
 )
-def state_vars() -> dict:
+def state_vars() -> dict[str, Any]:
     return get_vibin_instance().state_vars
