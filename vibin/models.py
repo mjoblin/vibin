@@ -121,3 +121,18 @@ class PlaylistModifyPayload(BaseModel):
     action: str
     max_count: Optional[int]
     media_ids: list[MediaId]
+
+
+class WebSocketClientDetails(BaseModel):
+    id: str
+    when_connected: float
+    ip: str
+    port: int
+
+
+class ServerStatus(BaseModel):
+    start_time: float
+    system_node: str
+    system_platform: str
+    system_version: str
+    clients: list[WebSocketClientDetails]
