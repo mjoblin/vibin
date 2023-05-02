@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, HttpUrl
+import upnpclient
 
 
 # TODO: Add a Container class?
@@ -117,8 +118,13 @@ class StoredPlaylistStatus:
     is_activating_new_playlist: bool = False
 
 
+PlaylistModifyAction = Literal[
+    "REPLACE", "PLAY_NOW", "PLAY_NEXT", "PLAY_FROM_HERE", "APPEND"
+]
+
+
 class PlaylistModifyPayload(BaseModel):
-    action: str
+    action: PlaylistModifyAction
     max_count: Optional[int]
     media_ids: list[MediaId]
 
@@ -136,3 +142,83 @@ class ServerStatus(BaseModel):
     system_platform: str
     system_version: str
     clients: list[WebSocketClientDetails]
+
+
+class TransportPlayheadPosition(BaseModel):
+    position: int
+
+
+TransportControl = Literal[
+    "next",
+    "pause",
+    "play",
+    "previous",
+    "repeat",
+    "seek",
+    "shuffle",
+    "stop",
+]
+
+
+class TransportActiveControls(BaseModel):
+    active_controls: list[TransportControl]
+
+
+TransportPlayStatus = Literal[
+    "buffering",
+    "connecting",
+    "no_signal",
+    "not_ready",
+    "pause",
+    "play",
+    "ready",
+    "stop",
+]
+
+TransportRepeatState = Literal["off", "all"]
+
+TransportShuffleState = Literal["off", "all"]
+
+
+class TransportPlayStateMetadata(BaseModel):
+    class_field: str | None = Field(alias="class")
+    source: str | None
+    name: str | None
+    playback_source: str | None
+    track_number: int | None
+    duration: int | None
+    album: str | None
+    artist: str | None
+    title: str | None
+    art_url: HttpUrl | None
+    sample_format: str | None
+    mqa: str | None
+    codec: str | None
+    lossless: bool | None
+    sample_rate: int | None
+    bit_depth: int | None
+    encoding: str | None
+    current_track_media_id: str | None
+    current_album_media_id: str | None
+
+
+class TransportPlayState(BaseModel):
+    state: TransportPlayStatus | None
+    position: int | None
+    presettable: bool | None
+    queue_index: int | None
+    queue_length: int | None
+    queue_id: int | None
+    mode_repeat: TransportRepeatState | None
+    mode_shuffle: TransportShuffleState | None
+    metadata: TransportPlayStateMetadata | None
+
+
+@dataclass
+class Subscription:
+    id: str
+    timeout: int | None
+    next_renewal: int | None
+
+
+ServiceSubscriptions = dict[upnpclient.Service, Subscription]

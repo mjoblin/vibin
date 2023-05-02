@@ -49,6 +49,7 @@ from vibin.models import (
     StoredPlaylist,
     StoredPlaylistStatus,
     Track,
+    TransportPlayState,
     VibinSettings,
 )
 import vibin.streamers as streamers
@@ -622,7 +623,7 @@ class Vibin:
         }
 
     @property
-    def play_state(self):
+    def play_state(self) -> TransportPlayState:
         return self.streamer.play_state
 
     @property
