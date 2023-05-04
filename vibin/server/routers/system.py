@@ -5,7 +5,7 @@ from fastapi.responses import Response
 
 from vibin import VibinError
 from vibin.models import StreamerDeviceDisplay
-from vibin.server.dependencies import get_vibin_instance, success
+from vibin.server.dependencies import get_vibin_instance
 
 # -----------------------------------------------------------------------------
 # The /system route.
@@ -23,7 +23,6 @@ system_router = APIRouter()
 def system_power_toggle():
     try:
         get_vibin_instance().streamer.power_toggle()
-        return success
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
 
@@ -37,7 +36,6 @@ def system_power_toggle():
 def system_source(source: str):
     try:
         get_vibin_instance().streamer.set_source(source)
-        return success
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
 
