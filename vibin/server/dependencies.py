@@ -11,7 +11,6 @@ from vibin.models import ServerStatus, WebSocketClientDetails
 from vibin.utils import replace_media_server_urls_with_proxy
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
-success = {"result": "success"}
 
 _vibin = None
 _is_proxy_for_media_server = False

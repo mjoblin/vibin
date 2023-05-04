@@ -84,8 +84,8 @@ information.
 The logging output will show links to the UI and the REST API documentation. For example, if the
 server is running on `192.168.1.100` then the following URLs will be available:
 
-* `http://192.168.1.100:7669/ui`: The Web user interface ([vibinui]).
-* `http://192.168.1.100:7669/docs`: The REST API documentation.
+* `http://192.168.1.100:8080/ui`: The Web user interface ([vibinui]).
+* `http://192.168.1.100:8080/docs`: The REST API documentation.
 
 > `vibin serve` will run until told to stop (e.g. using Ctrl-C). When the server stops running, the
 > UI will no longer function.
@@ -201,7 +201,7 @@ vibin serve --help
 ### REST API
 
 `vibin` exposes a REST API. When `vibin serve` is running, the REST API documentation can be found
-at `http://hostname:7669/docs`. The API documentation is interactive.
+at `http://hostname:8080/docs`. The API documentation is interactive.
 
 ### WebSocket server
 
