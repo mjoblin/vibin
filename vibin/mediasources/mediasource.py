@@ -3,7 +3,7 @@ import typing
 
 import upnpclient
 
-from vibin.models import Album, Artist, Track
+from vibin.models import Album, Artist, ServiceSubscriptions, Track
 
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
@@ -15,7 +15,9 @@ class MediaSource(metaclass=ABCMeta):
     model_name = "VibinMediaSource"
 
     @abstractmethod
-    def __init__(self, device: upnpclient.Device):
+    def __init__(
+        self, device: upnpclient.Device, subscribe_callback_base: str | None = None
+    ):
         pass
 
     @property
@@ -51,6 +53,11 @@ class MediaSource(metaclass=ABCMeta):
     @property
     @abstractmethod
     def system_state(self):
+        pass
+
+    @property
+    @abstractmethod
+    def subscriptions(self) -> ServiceSubscriptions:
         pass
 
     @property

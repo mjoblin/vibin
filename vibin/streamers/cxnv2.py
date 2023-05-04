@@ -7,16 +7,16 @@ import math
 import pathlib
 import re
 import sys
-import threading
 import time
 from typing import Any, Callable, List, NewType, Optional
 from urllib.parse import urlparse
-import xml.etree.ElementTree as ET  # TODO: Replace with lxml
+import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
 from lxml import etree
 import requests
 from requests.exceptions import HTTPError
+import untangle
 import upnpclient
 from upnpclient.marshal import marshal_value
 import websockets
@@ -25,7 +25,13 @@ import xmltodict
 from ..logger import logger
 from vibin import VibinDeviceError
 from vibin.mediasources import MediaSource
-from vibin.models import ServiceSubscriptions, Subscription, TransportPlayState
+from vibin.models import (
+    ServiceSubscriptions,
+    StreamerDeviceDisplay,
+    Subscription,
+    TransportPlayState,
+    WebSocketMessageHandler,
+)
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
 
@@ -65,23 +71,26 @@ from .. import utils
 # }
 
 
-class StoppableThread(threading.Thread):
-    def __init__(self, *args, **kwargs):
-        super(StoppableThread, self).__init__(*args, **kwargs)
-        self.stop_event = threading.Event()
+# class StoppableThread(threading.Thread):
+#     def __init__(self, *args, **kwargs):
+#         super(StoppableThread, self).__init__(*args, **kwargs)
+#         self.stop_event = threading.Event()
+#
+#     def stop(self):
+#         self.stop_event.set()
+#
+#     def stopped(self):
+#         return self.stop_event.is_set()
 
-    def stop(self):
-        self.stop_event.set()
 
-    def stopped(self):
-        return self.stop_event.is_set()
+UPnPServiceName = NewType("UPnPServiceName", str)
+UPnPPropertyName = NewType("StateVarName", str)
 
+StateVars = dict[UPnPServiceName, dict[UPnPPropertyName, Any]]
 
-ServiceName = NewType("ServiceName", str)  # TODO: Is NewType right?
-
-StateVarName = NewType("StateVarName", str)
-StateVars = dict[ServiceName, dict[StateVarName, Any]]
-StateVarHandlers = dict[StateVarName, Callable[[ServiceName, etree.Element], Any]]
+UPnPPropertyChangeHandlers = dict[
+    (UPnPServiceName, UPnPPropertyName), Callable[[UPnPServiceName, etree.Element], Any]
+]
 
 
 class CXNv2(Streamer):
@@ -90,8 +99,8 @@ class CXNv2(Streamer):
     def __init__(
         self,
         device: upnpclient.Device,
-        subscribe_callback_base: Optional[str],
-        updates_handler=None,
+        subscribe_callback_base: str | None = None,
+        updates_handler: WebSocketMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         self._device = device
@@ -118,16 +127,23 @@ class CXNv2(Streamer):
         }
 
         self._play_state: TransportPlayState = TransportPlayState()
-        self._device_display = {}
+        self._device_display_raw = {}
         self._cached_playlist = []
 
-        # TODO: Add support for service name not just var name.
-        self._state_var_handlers: StateVarHandlers = {
-            StateVarName("LastChange"): self._last_change_event_handler,
-            StateVarName("IdArray"): self._id_array_event_handler,
-            StateVarName(
-                "CurrentPlaylistTrackID"
-            ): self._current_playlist_track_id_event_handler,
+        # Set up UPnP event handlers.
+        self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
+            (
+                UPnPServiceName("AVTransport"),
+                UPnPPropertyName("LastChange"),
+            ): self._upnp_last_change_event_handler,
+            (
+                UPnPServiceName("PlaylistExtension"),
+                UPnPPropertyName("IdArray"),
+            ): self._upnp_playlist_id_array_event_handler,
+            (
+                UPnPServiceName("UuVolControl"),
+                UPnPPropertyName("CurrentPlaylistTrackID"),
+            ): self._upnp_current_playlist_track_id_event_handler,
         }
 
         self._disconnected = False
@@ -225,7 +241,7 @@ class CXNv2(Streamer):
             pass
 
         if self._updates_handler:
-            self._websocket_thread = StoppableThread(
+            self._websocket_thread = utils.StoppableThread(
                 target=self._handle_websocket_to_streamer
             )
             self._websocket_thread.start()
@@ -819,7 +835,7 @@ class CXNv2(Streamer):
 
                             self._send_play_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
-                            self._updates_handler("Position", update)
+                            self._updates_handler("Position", update_dict["params"]["data"])
                         elif update_dict["path"] == "/zone/now_playing":
                             # TODO: now_playing is driving 3 chunks of data.
                             #   Figure out how to generalize this to not be
@@ -827,10 +843,8 @@ class CXNv2(Streamer):
 
                             self._updates_handler(
                                 "ActiveTransportControls",
-                                json.dumps(
-                                    self._transform_active_controls(
-                                        update_dict["params"]["data"]["controls"]
-                                    )
+                                self._transform_active_controls(
+                                    update_dict["params"]["data"]["controls"]
                                 ),
                             )
 
@@ -855,29 +869,22 @@ class CXNv2(Streamer):
                             try:
                                 display_info = update_dict["params"]["data"]["display"]
 
-                                if DeepDiff(display_info, self._device_display) != {}:
-                                    self._device_display = display_info
-                                    self._updates_handler(
-                                        "DeviceDisplay",
-                                        json.dumps(self._device_display),
-                                    )
+                                if DeepDiff(display_info, self._device_display_raw) != {}:
+                                    self._device_display_raw = display_info
+                                    self._updates_handler("DeviceDisplay", self.device_display)
                             except KeyError:
                                 pass
                         elif update_dict["path"] == "/presets/list":
-                            self._updates_handler(
-                                "Presets", json.dumps(update_dict["params"]["data"])
-                            )
+                            self._updates_handler("Presets", update_dict["params"]["data"])
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
                             self._system_state["power"] = (
                                 "on" if power == "ON" else "off"
                             )
-                            self._updates_handler(
-                                "System", json.dumps(self._system_state)
-                            )
+                            self._updates_handler("System", self._system_state)
                         else:
                             logger.warning(f"Unknown message: {update}")
-                            self._updates_handler("Unknown", update)
+                            # self._updates_handler("Unknown", update)
                     except (KeyError, json.decoder.JSONDecodeError) as e:
                         # TODO: This currently quietly ignores unexpected
                         #   payload formats or missing keys. Consider adding
@@ -887,13 +894,10 @@ class CXNv2(Streamer):
         asyncio.run(async_websocket_manager())
 
     def _send_play_state_update(self):
-        self._updates_handler("PlayState", json.dumps(self.play_state.dict()))
+        self._updates_handler("PlayState", self.play_state)
 
     def _send_device_display_update(self):
-        self._updates_handler("DeviceDisplay", json.dumps(self._device_display))
-
-    def _send_stored_playlists_update(self):
-        self._updates_handler("StoredPlaylists", json.dumps(self._stored_playlists))
+        self._updates_handler("DeviceDisplay", self.device_display)
 
     def _renew_subscriptions(self):
         renewal_buffer = 10
@@ -961,7 +965,7 @@ class CXNv2(Streamer):
                 finally:
                     self._subscription_renewal_thread = None
 
-            self._subscription_renewal_thread = StoppableThread(
+            self._subscription_renewal_thread = utils.StoppableThread(
                 target=self._renew_subscriptions
             )
 
@@ -1024,11 +1028,11 @@ class CXNv2(Streamer):
         return self._play_state
 
     @property
-    def device_display(self):
+    def device_display(self) -> StreamerDeviceDisplay:
         # TODO: This is a raw CXNv2 WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
-        return self._device_display
+        return StreamerDeviceDisplay(**self._device_display_raw)
 
     @property
     def presets(self):
@@ -1042,12 +1046,12 @@ class CXNv2(Streamer):
             f"http://{self._device_hostname}/smoip/zone/recall_preset?preset={preset_id}"
         )
 
-    def _last_change_event_handler(
+    def _upnp_last_change_event_handler(
         self,
-        service_name: ServiceName,
-        element: etree.Element,
+        service_name: UPnPServiceName,
+        property_value: str,
     ):
-        nested_element = etree.fromstring(element.text)
+        nested_element = etree.fromstring(property_value)
         instance_element = nested_element.find(
             "InstanceID", namespaces=nested_element.nsmap
         )
@@ -1059,9 +1063,7 @@ class CXNv2(Streamer):
 
             try:
                 _, marshaled_value = marshal_value(
-                    self._device[service_name].statevars[param_name.localname][
-                        "datatype"
-                    ],
+                    self._device[service_name].statevars[param_name.localname]["datatype"],
                     parameter.get("val"),
                 )
 
@@ -1072,47 +1074,46 @@ class CXNv2(Streamer):
 
         return result
 
-    def _id_array_event_handler(
-        self, service_name: ServiceName, element: etree.Element
+    def _upnp_playlist_id_array_event_handler(
+        self, service_name: UPnPServiceName, property_value: str
     ):
-        if service_name == "PlaylistExtension":
-            id_array = element.text
+        if property_value != self._playlist_id_array:
+            self._playlist_id_array = property_value
+            self._set_current_playlist()
 
-            if id_array != self._playlist_id_array:
-                self._playlist_id_array = id_array
-                self._set_current_playlist()
-
-    def _current_playlist_track_id_event_handler(
-        self, service_name: ServiceName, element: etree.Element
+    def _upnp_current_playlist_track_id_event_handler(
+        self, service_name: UPnPServiceName, property_value: str
     ):
-        self._set_current_playlist_track_index(int(element.text))
+        self._set_current_playlist_track_index(int(property_value))
 
     def set_state_var(
         self,
-        service_name: ServiceName,
-        state_var_name: StateVarName,
-        state_var_element: etree.Element,
+        service_name: UPnPServiceName,
+        property_name: UPnPPropertyName,
+        property_value_xml: str,
     ):
         if service_name not in self._state_vars:
             self._state_vars[service_name] = {}
 
-        if state_var_handler := self._state_var_handlers.get(state_var_name):
-            self._state_vars[service_name][state_var_name] = state_var_handler(
-                service_name, state_var_element
+        if state_var_handler := self._upnp_property_change_handlers.get(
+            (service_name, property_name)
+        ):
+            self._state_vars[service_name][property_name] = state_var_handler(
+                service_name, property_value_xml
             )
         else:
             _, marshaled_value = marshal_value(
-                self._device[service_name].statevars[state_var_name]["datatype"],
-                state_var_element.text,
+                self._device[service_name].statevars[property_name]["datatype"],
+                property_value_xml,
             )
 
-            self._state_vars[service_name][state_var_name] = marshaled_value
+            self._state_vars[service_name][property_name] = marshaled_value
 
         # For each state var which contains XML text (i.e. any field name ending
         # in "XML"), we attempt to create a JSON equivalent.
-        if state_var_name.endswith("XML"):
-            json_var_name = f"{state_var_name[0:-3]}JSON"
-            xml = state_var_element.text
+        if property_name.endswith("XML"):
+            json_var_name = f"{property_name[0:-3]}JSON"
+            xml = property_value_xml
 
             if xml:
                 # TODO: This is not scalable (but html.escape also escapes tags)
@@ -1123,7 +1124,7 @@ class CXNv2(Streamer):
                 except xml.parsers.expat.ExpatError as e:
                     logger.error(
                         f"Could not convert XML to JSON for "
-                        + f"{service_name}:{state_var_name}: {e}"
+                        + f"{service_name}:{property_name}: {e}"
                     )
 
     def set_vibin_state_vars(self):
@@ -1220,15 +1221,22 @@ class CXNv2(Streamer):
             # No streamed filename found in the playback details
             pass
 
-    def on_event(self, service_name: ServiceName, event: str):
+    def on_upnp_event(self, service_name: UPnPServiceName, event: str):
         logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")
-        # print(f"{self.name} received {service_name} event:\n\n{event}\n")
 
         property_set = etree.fromstring(event)
 
+        # TODO: Migrate to untangle
+        # parsed = untangle.parse(event)
+        # parsed.e_propertyset.children[0].LastChange.cdata
+
         for property in property_set:
-            state_var_element = property[0]
-            state_var_name = state_var_element.tag
-            self.set_state_var(service_name, state_var_name, state_var_element)
+            property_element = property[0]
+
+            self.set_state_var(
+                service_name=service_name,
+                property_name=property_element.tag,
+                property_value_xml=property_element.text
+            )
 
         self.set_vibin_state_vars()

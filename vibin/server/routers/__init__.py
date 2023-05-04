@@ -10,5 +10,6 @@ from .system import system_router
 from .tracks import tracks_router
 from .transport import transport_router
 from .ui_static import ui_static_router
+from .upnp_events import upnp_events_router
 from .vibin import vibin_router
-from .websocket_server import websocket_connection_manager, websocket_server_router
+from .websocket_server import ws_connection_manager, websocket_server_router

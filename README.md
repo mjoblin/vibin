@@ -16,6 +16,10 @@
 
 `vibin` sits between the Vibin UI (`vibinui`) and the music streamer, NAS, etc.
 
+## Developers
+
+See the [Developers README] for more information.
+
 ![Vibin Overview]
 
 ## Installation
@@ -245,6 +249,7 @@ The following message types are sent by `vibin`:
 [audiowaveform]: https://github.com/bbc/audiowaveform#installation
 [audiowaveform installation instructions]: https://github.com/bbc/audiowaveform#installation
 [vibinui]: https://github.com/mjoblin/vibinui
+[Developers README]: README_DEV.md
 
 [//]: # "--- Images ------------------------------------------------------------------------------"
 

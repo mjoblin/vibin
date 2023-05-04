@@ -5,7 +5,12 @@ import typing
 import upnpclient
 
 from vibin.mediasources import MediaSource
-from vibin.models import ServiceSubscriptions, TransportPlayState
+from vibin.models import (
+    StreamerDeviceDisplay,
+    ServiceSubscriptions,
+    TransportPlayState,
+    WebSocketMessageHandler,
+)
 
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
@@ -34,8 +39,8 @@ class Streamer(metaclass=ABCMeta):
     def __init__(
         self,
         device: upnpclient.Device,
-        subscribe_callback_base: typing.Optional[str],
-        updates_handler=None,
+        subscribe_callback_base: str | None = None,
+        updates_handler: WebSocketMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         pass
@@ -72,7 +77,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def on_event(self, service_name: str, event: str):
+    def on_upnp_event(self, service_name: str, event: str):
         pass
 
     @abstractmethod
@@ -189,7 +194,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def device_display(self):
+    def device_display(self) -> StreamerDeviceDisplay:
         pass
 
     @property

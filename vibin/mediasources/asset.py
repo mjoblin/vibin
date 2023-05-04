@@ -9,13 +9,15 @@ import untangle
 
 from vibin import VibinNotFoundError
 from vibin.mediasources import MediaSource
-from vibin.models import Album, Artist, Track
+from vibin.models import Album, Artist, ServiceSubscriptions, Track
 
 
 class Asset(MediaSource):
     model_name = "Asset UPnP Server"
 
-    def __init__(self, device: upnpclient.Device):
+    def __init__(
+        self, device: upnpclient.Device, subscribe_callback_base: str | None = None
+    ):
         self._device = device
 
         self._all_albums_path = None
@@ -73,6 +75,10 @@ class Asset(MediaSource):
         return {
             "name": self._device.friendly_name,
         }
+
+    @property
+    def subscriptions(self) -> ServiceSubscriptions:
+        return {}
 
     @property
     def udn(self):

@@ -5,7 +5,6 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-import starlette.requests
 import uvicorn
 
 from vibin import VibinError
@@ -29,8 +28,9 @@ from vibin.server.routers import (
     tracks_router,
     transport_router,
     ui_static_router,
+    upnp_events_router,
     vibin_router,
-    websocket_connection_manager,
+    ws_connection_manager,
     websocket_server_router,
 )
 from vibin.utils import get_local_ip
@@ -98,7 +98,7 @@ def server_start(
             await media_server_proxy_client.aclose()
 
         logger.info("Shutting down WebSocket connection manager")
-        websocket_connection_manager.shutdown()
+        ws_connection_manager.shutdown()
 
         logger.info("Vibin server successfully shut down")
 
@@ -191,32 +191,13 @@ def server_start(
     vibin_app.include_router(vibin_router)
 
     # -------------------------------------------------------------------------
-    # Add the non-REST-API routers (media server proxy, and WebSocket server).
+    # Add the non-REST-API routers (media server proxy, WebSocket server, and
+    # UPnP events callback).
     # -------------------------------------------------------------------------
 
     vibin_app.include_router(media_server_proxy_router)
     vibin_app.include_router(websocket_server_router)
-
-    # -------------------------------------------------------------------------
-    # Forward UPnP service events to the Vibin instance for handling.
-    #
-    # The Vibin instance manages a Streamer instance. The Streamer instance has
-    # a subscribe() method, which subscribes to all UPnP events related to
-    # Streamer-related UPnP services like AVTransport and UuVolControl. Those
-    # events are received by this "/upnpevents/{service}" endpoint (e.g.
-    # "/upnpevents/AVTransport").
-    # -------------------------------------------------------------------------
-
-    @vibin_app.api_route(
-        UPNP_EVENTS_BASE_ROUTE + "/{service}",
-        methods=["NOTIFY"],
-        summary="",
-        description="",
-        tags=[""],
-    )
-    async def listen(service: str, request: starlette.requests.Request) -> None:
-        body = await request.body()
-        vibin.upnp_event(service, body.decode("utf-8"))
+    vibin_app.include_router(upnp_events_router)
 
     # -------------------------------------------------------------------------
     # Start the FastAPI application via uvicorn.

@@ -3,16 +3,40 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from vibin.models import ServerStatus, VibinSettings
 from vibin.server.dependencies import get_vibin_instance, requires_media, server_status
-from vibin.server.routers.websocket_server import websocket_connection_manager
+from vibin.server.routers.websocket_server import ws_connection_manager
+
 
 # -----------------------------------------------------------------------------
 # The /vibin route.
 # -----------------------------------------------------------------------------
 
+# Models
+
+
+class VibinServerSummary(BaseModel):
+    summary: str
+
+
+# Endpoints
+
 vibin_router = APIRouter()
+
+
+@vibin_router.get(
+    "/vibin/summary",
+    summary="Retrieve the current Vibin server summary",
+    description=(
+        "The server summary is a simple string describing some high-level "
+        + "information about the server."
+    ),
+    tags=["Vibin Server"],
+)
+def vibin_summary() -> VibinServerSummary:
+    return VibinServerSummary(summary=str(get_vibin_instance()))
 
 
 @vibin_router.get(
@@ -22,7 +46,7 @@ vibin_router = APIRouter()
 )
 def vibin_status() -> ServerStatus:
     return server_status(
-        websocket_clients=websocket_connection_manager.client_details()
+        websocket_clients=ws_connection_manager.client_details()
     )
 
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from vibin import VibinError
+from vibin.models import StreamerDeviceDisplay
 from vibin.server.dependencies import get_vibin_instance, success
 
 # -----------------------------------------------------------------------------
@@ -46,8 +47,8 @@ def system_source(source: str):
     summary="Retrieve the Streamer's current display",
     tags=["Media System"],
 )
-def device_display() -> dict:
-    return get_vibin_instance().device_display
+def device_display() -> StreamerDeviceDisplay:
+    return get_vibin_instance().streamer.device_display
 
 
 @system_router.get(

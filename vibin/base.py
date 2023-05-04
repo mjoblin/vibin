@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import requests
 from tinydb import TinyDB, Query
@@ -46,11 +46,16 @@ from vibin.models import (
     Links,
     Lyrics,
     Preset,
+    ServiceSubscriptions,
     StoredPlaylist,
     StoredPlaylistStatus,
     Track,
     TransportPlayState,
+    UPnPDeviceType,
     VibinSettings,
+    WebSocketMessage,
+    WebSocketMessageHandler,
+    WebSocketMessageType,
 )
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
@@ -75,11 +80,10 @@ def requires_media(return_val=None):
 class Vibin:
     def __init__(
         self,
-        streamer: Optional[str] = None,
+        streamer: str | None = None,
         media: Union[str, bool, None] = None,
         discovery_timeout: int = 5,
-        subscribe_callback_base: Optional[str] = None,
-        on_streamer_websocket_update=None,
+        subscribe_callback_base: str | None = None,
     ):
         logger.info("Initializing Vibin")
 
@@ -88,7 +92,7 @@ class Vibin:
         self._on_state_vars_update_handlers: List[Callable[[str], None]] = []
 
         # TODO: Improve this hacked-in support for websocket updates.
-        self._on_websocket_update_handlers: List[Callable[[str, str], None]] = []
+        self._on_websocket_update_handlers: List[WebSocketMessageHandler] = []
 
         self._last_played_id = None
 
@@ -109,14 +113,14 @@ class Vibin:
         self._current_media_server: Optional[MediaSource] = None
 
         streamer_device, media_server_device = determine_streamer_and_media_server(
-            streamer, media
+            streamer, media, discovery_timeout
         )
 
         if streamer_device is None:
             raise VibinError("Could not find streamer on the network")
 
         self._current_streamer = self._instantiate_streamer_instance(
-            streamer_device, subscribe_callback_base
+            streamer_device, f"{subscribe_callback_base}/streamer"
         )
         logger.info(f"Using streamer UPnP device: {self.streamer.name}")
 
@@ -125,7 +129,7 @@ class Vibin:
                 f"Using media server UPnP device: {media_server_device.friendly_name}"
             )
             self._current_media_server = self._instantiate_media_server_instance(
-                media_server_device
+                media_server_device, f"{subscribe_callback_base}/media"
             )
             self._current_streamer.register_media_source(self._current_media_server)
 
@@ -140,6 +144,34 @@ class Vibin:
 
         self._check_for_active_playlist_in_store()
         self.subscribe()
+
+    def __str__(self):
+        return (
+            f"Vibin: "
+            + f"streamer:'{'None' if self.streamer is None else self.streamer.name}'; "
+            + f"media server:'{'None' if self.media is None else self.media.name}'"
+        )
+
+    def get_current_state_messages(self) -> list[WebSocketMessage]:
+        return [
+            WebSocketMessage(message_type="System", message=self.system_state),
+            WebSocketMessage(message_type="StateVars", message=self.state_vars),
+            WebSocketMessage(message_type="PlayState", message=self.play_state),
+            WebSocketMessage(
+                message_type="ActiveTransportControls",
+                message=self.streamer.transport_active_controls(),
+            ),
+            WebSocketMessage(
+                message_type="DeviceDisplay", message=self.streamer.device_display
+            ),
+            WebSocketMessage(
+                message_type="Favorites", message={"favorites": self.favorites()}
+            ),
+            WebSocketMessage(message_type="Presets", message=self.presets),
+            WebSocketMessage(
+                message_type="StoredPlaylists", message=self.stored_playlist_details
+            ),
+        ]
 
     def _reset_stored_playlist_status(
         self,
@@ -292,13 +324,11 @@ class Vibin:
 
     @requires_media()
     def _send_stored_playlists_update(self):
-        self._websocket_message_handler(
-            "StoredPlaylists", json.dumps(self.stored_playlist_details)
-        )
+        self._websocket_message_handler("StoredPlaylists", self.stored_playlist_details)
 
     @requires_media()
     def _send_favorites_update(self):
-        self._websocket_message_handler("Favorites", json.dumps(self.favorites()))
+        self._websocket_message_handler("Favorites", {"favorites": self.favorites()})
 
     @requires_media()
     def media_links(
@@ -423,7 +453,7 @@ class Vibin:
                 f"Could not find Vibin implementation for streamer model '{streamer_device.model_name}'"
             )
 
-    def _instantiate_media_server_instance(self, media_server_device):
+    def _instantiate_media_server_instance(self, media_server_device, subscribe_callback_base):
         # Build a map (device model name to MediaSource subclass) of all the
         # media sources Vibin is able to handle.
         known_media_servers_by_model: dict[str, MediaSource] = {}
@@ -438,7 +468,9 @@ class Vibin:
             media_server_class = known_media_servers_by_model[
                 media_server_device.model_name
             ]
-            return media_server_class(device=media_server_device)
+            return media_server_class(
+                device=media_server_device, subscribe_callback_base=subscribe_callback_base
+            )
         except KeyError:
             raise VibinError(
                 f"Could not find Vibin implementation for media server model '{media_server_device.model_name}'"
@@ -830,26 +862,44 @@ class Vibin:
 
     # NOTE: Intended use: For an external entity to register interest in
     #   receiving websocket messages as they come in.
-    def on_websocket_update(self, handler):
+    # TODO: Rename to subscribe_to_updates() and handle way to ubsubscribe
+    def on_websocket_update(self, handler: WebSocketMessageHandler):
         self._on_websocket_update_handlers.append(handler)
 
-    def upnp_event(self, service_name: str, event: str):
+    def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
         # Extract the event.
 
-        # Pass event to the streamer.
-        if self.streamer.subscriptions:
-            subscribed_service_names = [
-                service.name for service in self.streamer.subscriptions.keys()
-            ]
+        subscriptions: ServiceSubscriptions = {}
+
+        if device == "streamer":
+            subscriptions = self.streamer.subscriptions
+        elif device == "media":
+            subscriptions = self.media.subscriptions
+
+        if not subscriptions:
+            logger.warning(
+                f"UPnP event received for device with no subscriptions: {device}"
+            )
+        else:
+            # Pass event to the device to handle.
+            subscribed_service_names = [service.name for service in subscriptions.keys()]
 
             if service_name in subscribed_service_names:
-                self.streamer.on_event(service_name, event)
+                if device == "streamer":
+                    self.streamer.on_upnp_event(service_name, event)
+                elif device == "media":
+                    self.media.on_upnp_event(service_name, event)
+            else:
+                logger.warning(
+                    f"UPnP event received for device ({device}) with no subscription handler "
+                    + f"for the {service_name} service: {device}"
+                )
 
             # Send state vars to interested recipients.
             for handler in self._on_state_vars_update_handlers:
                 handler(json.dumps(self.state_vars))
 
-    def _websocket_message_handler(self, message_type: str, data: str):
+    def _websocket_message_handler(self, message_type: WebSocketMessageType, data: Any):
         # TODO: This is passing raw CXNv2 payloads. The shape should be defined
         #   by the streamer contract and adhered to by cxnv2.py.
         for handler in self._on_websocket_update_handlers:

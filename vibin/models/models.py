@@ -1,8 +1,16 @@
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 import upnpclient
+
+
+# -----------------------------------------------------------------------------
+# This file contains models which are used by multiple consumers across the
+# application. Some models, which are used only in one location, are defined
+# in that one location instead -- such as a single router file, along with the
+# router's endpoint definitions.
+# -----------------------------------------------------------------------------
 
 
 # TODO: Add a Container class?
@@ -222,3 +230,50 @@ class Subscription:
 
 
 ServiceSubscriptions = dict[upnpclient.Service, Subscription]
+
+
+# Models
+
+
+class StreamerDeviceDisplayProgress(BaseModel):
+    position: int | None
+    duration: int | None
+
+
+class StreamerDeviceDisplay(BaseModel):
+    line1: str | None
+    line2: str | None
+    line3: str | None
+    format: str | None
+    mqa: str | None
+    playback_source: str | None
+    class_field: str | None = Field(alias="class")
+    art_file: str | None
+    art_url: str | None
+    progress: StreamerDeviceDisplayProgress | None
+    context: str | None
+
+
+WebSocketMessageType = Literal[
+    "ActiveTransportControls",
+    "DeviceDisplay",
+    "Favorites",
+    "PlayState",
+    "Position",
+    "Presets",
+    "StateVars",
+    "StoredPlaylists",
+    "System",
+    "VibinStatus",
+]
+
+
+class WebSocketMessage(BaseModel):
+    message_type: WebSocketMessageType
+    message: Any
+
+
+WebSocketMessageHandler = Callable[[WebSocketMessageType, Any], None]
+
+
+UPnPDeviceType = Literal["streamer", "media"]

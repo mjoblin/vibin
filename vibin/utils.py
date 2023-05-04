@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import tempfile
+import threading
 import zipfile
 
 from pydantic import BaseModel
@@ -21,6 +22,18 @@ from .logger import logger
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
 HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
+
+
+class StoppableThread(threading.Thread):
+    def __init__(self, *args, **kwargs):
+        super(StoppableThread, self).__init__(*args, **kwargs)
+        self.stop_event = threading.Event()
+
+    def stop(self):
+        self.stop_event.set()
+
+    def stopped(self):
+        return self.stop_event.is_set()
 
 
 def get_local_ip():
