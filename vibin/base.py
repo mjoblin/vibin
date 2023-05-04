@@ -51,11 +51,11 @@ from vibin.models import (
     StoredPlaylistStatus,
     Track,
     TransportPlayState,
+    UpdateMessage,
+    UpdateMessageHandler,
+    UpdateMessageType,
     UPnPDeviceType,
     VibinSettings,
-    WebSocketMessage,
-    WebSocketMessageHandler,
-    WebSocketMessageType,
 )
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
@@ -92,7 +92,7 @@ class Vibin:
         self._on_state_vars_update_handlers: List[Callable[[str], None]] = []
 
         # TODO: Improve this hacked-in support for websocket updates.
-        self._on_websocket_update_handlers: List[WebSocketMessageHandler] = []
+        self._on_websocket_update_handlers: List[UpdateMessageHandler] = []
 
         self._last_played_id = None
 
@@ -152,23 +152,23 @@ class Vibin:
             + f"media server:'{'None' if self.media is None else self.media.name}'"
         )
 
-    def get_current_state_messages(self) -> list[WebSocketMessage]:
+    def get_current_state_messages(self) -> list[UpdateMessage]:
         return [
-            WebSocketMessage(message_type="System", message=self.system_state),
-            WebSocketMessage(message_type="StateVars", message=self.state_vars),
-            WebSocketMessage(message_type="PlayState", message=self.play_state),
-            WebSocketMessage(
+            UpdateMessage(message_type="System", message=self.system_state),
+            UpdateMessage(message_type="StateVars", message=self.state_vars),
+            UpdateMessage(message_type="PlayState", message=self.play_state),
+            UpdateMessage(
                 message_type="ActiveTransportControls",
                 message=self.streamer.transport_active_controls(),
             ),
-            WebSocketMessage(
+            UpdateMessage(
                 message_type="DeviceDisplay", message=self.streamer.device_display
             ),
-            WebSocketMessage(
+            UpdateMessage(
                 message_type="Favorites", message={"favorites": self.favorites()}
             ),
-            WebSocketMessage(message_type="Presets", message=self.presets),
-            WebSocketMessage(
+            UpdateMessage(message_type="Presets", message=self.presets),
+            UpdateMessage(
                 message_type="StoredPlaylists", message=self.stored_playlist_details
             ),
         ]
@@ -863,7 +863,7 @@ class Vibin:
     # NOTE: Intended use: For an external entity to register interest in
     #   receiving websocket messages as they come in.
     # TODO: Rename to subscribe_to_updates() and handle way to ubsubscribe
-    def on_websocket_update(self, handler: WebSocketMessageHandler):
+    def on_websocket_update(self, handler: UpdateMessageHandler):
         self._on_websocket_update_handlers.append(handler)
 
     def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
@@ -899,7 +899,7 @@ class Vibin:
             for handler in self._on_state_vars_update_handlers:
                 handler(json.dumps(self.state_vars))
 
-    def _websocket_message_handler(self, message_type: WebSocketMessageType, data: Any):
+    def _websocket_message_handler(self, message_type: UpdateMessageType, data: Any):
         # TODO: This is passing raw CXNv2 payloads. The shape should be defined
         #   by the streamer contract and adhered to by cxnv2.py.
         for handler in self._on_websocket_update_handlers:

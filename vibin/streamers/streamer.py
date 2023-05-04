@@ -9,7 +9,7 @@ from vibin.models import (
     StreamerDeviceDisplay,
     ServiceSubscriptions,
     TransportPlayState,
-    WebSocketMessageHandler,
+    UpdateMessageHandler,
 )
 
 
@@ -40,7 +40,7 @@ class Streamer(metaclass=ABCMeta):
         self,
         device: upnpclient.Device,
         subscribe_callback_base: str | None = None,
-        updates_handler: WebSocketMessageHandler | None = None,
+        updates_handler: UpdateMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         pass
