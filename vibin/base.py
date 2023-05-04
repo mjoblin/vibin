@@ -154,22 +154,22 @@ class Vibin:
 
     def get_current_state_messages(self) -> list[UpdateMessage]:
         return [
-            UpdateMessage(message_type="System", message=self.system_state),
-            UpdateMessage(message_type="StateVars", message=self.state_vars),
-            UpdateMessage(message_type="PlayState", message=self.play_state),
+            UpdateMessage(message_type="System", payload=self.system_state),
+            UpdateMessage(message_type="StateVars", payload=self.state_vars),
+            UpdateMessage(message_type="PlayState", payload=self.play_state),
             UpdateMessage(
                 message_type="ActiveTransportControls",
-                message=self.streamer.transport_active_controls(),
+                payload=self.streamer.transport_active_controls(),
             ),
             UpdateMessage(
-                message_type="DeviceDisplay", message=self.streamer.device_display
+                message_type="DeviceDisplay", payload=self.streamer.device_display
             ),
             UpdateMessage(
-                message_type="Favorites", message={"favorites": self.favorites()}
+                message_type="Favorites", payload={"favorites": self.favorites()}
             ),
-            UpdateMessage(message_type="Presets", message=self.presets),
+            UpdateMessage(message_type="Presets", payload=self.presets),
             UpdateMessage(
-                message_type="StoredPlaylists", message=self.stored_playlist_details
+                message_type="StoredPlaylists", payload=self.stored_playlist_details
             ),
         ]
 

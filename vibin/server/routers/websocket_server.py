@@ -92,7 +92,7 @@ class ConnectionManager:
         """
         # TODO: Don't override state_vars queue for both state vars and websocket updates.
         self.message_queue.put_nowait(
-            item=UpdateMessage(message_type=message_type, message=data)
+            item=UpdateMessage(message_type=message_type, payload=data)
         )
 
     def state_vars_handler(self, data: str):
@@ -103,7 +103,7 @@ class ConnectionManager:
             StateVars concept remains after a future message-type refactor.
         """
         self.message_queue.put_nowait(
-            item=UpdateMessage(message_type="StateVars", message=data)
+            item=UpdateMessage(message_type="StateVars", payload=data)
         )
 
     def message_payload_to_str(self, message_payload: Any):
@@ -262,7 +262,8 @@ class ConnectionManager:
 
     def shutdown(self):
         """Handle a shutdown request of the WebSocket server."""
-        self.sender_task.cancel()
+        if self.sender_task:
+            self.sender_task.cancel()
 
 
 # -----------------------------------------------------------------------------
