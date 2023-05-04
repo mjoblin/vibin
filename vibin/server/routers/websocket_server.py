@@ -11,9 +11,9 @@ from vibin import VibinError
 from vibin.logger import logger
 from vibin.models import (
     ServerStatus,
+    UpdateMessage,
+    UpdateMessageType,
     WebSocketClientDetails,
-    WebSocketMessage,
-    WebSocketMessageType,
 )
 from vibin.server.dependencies import (
     get_media_server_proxy_target,
@@ -83,7 +83,7 @@ class ConnectionManager:
         """Handle a client disconnect."""
         del self.active_connections[websocket]
 
-    def websocket_update_handler(self, message_type: WebSocketMessageType, data: Any):
+    def websocket_update_handler(self, message_type: UpdateMessageType, data: Any):
         """
         Receive all WebSocket update messages from Vibin.
 
@@ -92,7 +92,7 @@ class ConnectionManager:
         """
         # TODO: Don't override state_vars queue for both state vars and websocket updates.
         self.message_queue.put_nowait(
-            item=WebSocketMessage(message_type=message_type, message=data)
+            item=UpdateMessage(message_type=message_type, payload=data)
         )
 
     def state_vars_handler(self, data: str):
@@ -103,7 +103,7 @@ class ConnectionManager:
             StateVars concept remains after a future message-type refactor.
         """
         self.message_queue.put_nowait(
-            item=WebSocketMessage(message_type="StateVars", message=data)
+            item=UpdateMessage(message_type="StateVars", payload=data)
         )
 
     def message_payload_to_str(self, message_payload: Any):
@@ -131,12 +131,12 @@ class ConnectionManager:
 
     def build_message(
         self,
-        messageType: WebSocketMessageType,
+        messageType: UpdateMessageType,
         message_payload_str: str,
         client_ws: WebSocket = None,
     ) -> str:
         """
-        Construct a WebSocketMessage to send to a single client.
+        Construct a WebSocket message to send to a single client.
 
         Each message contains:
             * id: A unique ID, specific to the message.
@@ -204,10 +204,10 @@ class ConnectionManager:
         the queue to all connected clients.
         """
         while True:
-            to_send: WebSocketMessage = await self.message_queue.get()
+            to_send: UpdateMessage = await self.message_queue.get()
 
             try:
-                message_payload_str = self.message_payload_to_str(to_send.message)
+                message_payload_str = self.message_payload_to_str(to_send.payload)
             except VibinError as e:
                 logger.warning(f"Could not send message over Websocket: {e}")
                 return
@@ -224,7 +224,7 @@ class ConnectionManager:
     async def single_client_send(
         self,
         websocket: WebSocket,
-        message_type: WebSocketMessageType,
+        message_type: UpdateMessageType,
         message_payload: Any,
     ) -> None:
         """Send a message to a single client."""
@@ -262,7 +262,8 @@ class ConnectionManager:
 
     def shutdown(self):
         """Handle a shutdown request of the WebSocket server."""
-        self.sender_task.cancel()
+        if self.sender_task:
+            self.sender_task.cancel()
 
 
 # -----------------------------------------------------------------------------
@@ -298,7 +299,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # the complete state of the system.
     for state_message in vibin.get_current_state_messages():
         await ws_connection_manager.single_client_send(
-            websocket, state_message.message_type, state_message.message
+            websocket, state_message.message_type, state_message.payload
         )
 
     # Send the current Vibin server status to the new connection *and* to all

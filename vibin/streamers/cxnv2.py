@@ -30,7 +30,7 @@ from vibin.models import (
     StreamerDeviceDisplay,
     Subscription,
     TransportPlayState,
-    WebSocketMessageHandler,
+    UpdateMessageHandler,
 )
 from vibin.streamers import SeekTarget, Streamer, TransportState
 from .. import utils
@@ -100,7 +100,7 @@ class CXNv2(Streamer):
         self,
         device: upnpclient.Device,
         subscribe_callback_base: str | None = None,
-        updates_handler: WebSocketMessageHandler | None = None,
+        updates_handler: UpdateMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         self._device = device
@@ -274,7 +274,7 @@ class CXNv2(Streamer):
         self._cancel_subscriptions()
 
         if self._subscription_renewal_thread:
-            logger.info("Stopping subscription renewal thread")
+            logger.info("Stopping UPnP subscription renewal thread")
             self._subscription_renewal_thread.stop()
             self._subscription_renewal_thread.join()
 

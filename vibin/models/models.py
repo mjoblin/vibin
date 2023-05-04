@@ -254,7 +254,7 @@ class StreamerDeviceDisplay(BaseModel):
     context: str | None
 
 
-WebSocketMessageType = Literal[
+UpdateMessageType = Literal[
     "ActiveTransportControls",
     "DeviceDisplay",
     "Favorites",
@@ -268,12 +268,12 @@ WebSocketMessageType = Literal[
 ]
 
 
-class WebSocketMessage(BaseModel):
-    message_type: WebSocketMessageType
-    message: Any
+class UpdateMessage(BaseModel):
+    message_type: UpdateMessageType
+    payload: Any
 
 
-WebSocketMessageHandler = Callable[[WebSocketMessageType, Any], None]
+UpdateMessageHandler = Callable[[UpdateMessageType, Any], None]
 
 
 UPnPDeviceType = Literal["streamer", "media"]
