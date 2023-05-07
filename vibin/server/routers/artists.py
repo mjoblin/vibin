@@ -14,10 +14,10 @@ from vibin.server.dependencies import (
 # The /artists route.
 # -----------------------------------------------------------------------------
 
-artists_router = APIRouter()
+artists_router = APIRouter(prefix="/artists")
 
 
-@artists_router.get("/artists", summary="Retrieve all Artist details", tags=["Artists"])
+@artists_router.get("", summary="Retrieve all Artist details", tags=["Artists"])
 @transform_media_server_urls_if_proxying
 @requires_media
 def artists() -> List[Artist]:
@@ -28,9 +28,7 @@ def artists() -> List[Artist]:
 
 
 @artists_router.get(
-    "/artists/{artist_id}",
-    summary="Retrieve details on a single Artist",
-    tags=["Artists"],
+    "/{artist_id}", summary="Retrieve details on a single Artist", tags=["Artists"]
 )
 @transform_media_server_urls_if_proxying
 @requires_media

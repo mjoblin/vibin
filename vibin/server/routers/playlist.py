@@ -13,11 +13,11 @@ from vibin.server.dependencies import (
 # The /playlist route.
 # -----------------------------------------------------------------------------
 
-playlist_router = APIRouter()
+playlist_router = APIRouter(prefix="/playlist")
 
 
 @playlist_router.get(
-    "/playlist",
+    "",
     summary="Retrieve details on the Streamer's active Playlist",
     tags=["Active Playlist"],
 )
@@ -27,7 +27,7 @@ def playlist():
 
 
 @playlist_router.post(
-    "/playlist/play/id/{playlist_entry_id}",
+    "/play/id/{playlist_entry_id}",
     summary="Play a Playlist Entry in the Streamer's active Playlist, by Playlist Entry ID",
     tags=["Active Playlist"],
     response_class=Response,
@@ -37,7 +37,7 @@ def playlist_play_id(playlist_entry_id: int):
 
 
 @playlist_router.post(
-    "/playlist/play/index/{index}",
+    "/play/index/{index}",
     summary="Play a Playlist Entry in the Streamer's active Playlist, by index",
     tags=["Active Playlist"],
     response_class=Response,
@@ -47,7 +47,7 @@ def playlist_play_index(index: int):
 
 
 @playlist_router.post(
-    "/playlist/play/favorites/albums",
+    "/play/favorites/albums",
     summary="Play Album favorites",
     tags=["Active Playlist"],
     response_class=Response,
@@ -57,7 +57,7 @@ def playlist_play_favorite_albums(max_count: int = 10):
 
 
 @playlist_router.post(
-    "/playlist/play/favorites/tracks",
+    "/play/favorites/tracks",
     summary="Play Track favorites",
     tags=["Active Playlist"],
     response_class=Response,
@@ -67,7 +67,7 @@ def playlist_play_favorite_tracks(max_count: int = 100):
 
 
 @playlist_router.post(
-    "/playlist/modify",
+    "/modify",
     summary="Modify the Streamer's active Playlist with multiple Media IDs",
     description=(
         "Currently, the only supported action is `REPLACE`, which replaces the "
@@ -87,7 +87,7 @@ def playlist_modify_multiple_entries(payload: PlaylistModifyPayload):
 
 
 @playlist_router.post(
-    "/playlist/modify/{media_id}",
+    "/modify/{media_id}",
     summary="Modify the Streamer's active Playlist with a single Media ID",
     tags=["Active Playlist"],
     response_class=Response,
@@ -101,7 +101,7 @@ def playlist_modify_single_entry(
 
 
 @playlist_router.post(
-    "/playlist/move/{playlist_entry_id}",
+    "/move/{playlist_entry_id}",
     summary="Move a Playlist Entry to a different position in the Streamer's active Playlist",
     tags=["Active Playlist"],
     response_class=Response,
@@ -113,7 +113,7 @@ def playlist_move_entry(playlist_entry_id: int, from_index: int, to_index: int):
 
 
 @playlist_router.post(
-    "/playlist/clear",
+    "/clear",
     summary="Clear the Streamer's active Playlist",
     tags=["Active Playlist"],
     response_class=Response,
@@ -123,7 +123,7 @@ def playlist_clear():
 
 
 @playlist_router.post(
-    "/playlist/delete/{playlist_entry_id}",
+    "/delete/{playlist_entry_id}",
     summary="Remove a Playlist Entry from the Streamer's active Playlist",
     tags=["Active Playlist"],
     response_class=Response,

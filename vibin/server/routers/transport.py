@@ -6,6 +6,7 @@ from vibin.models import (
     TransportActiveControls,
     TransportPlayheadPosition,
     TransportPlayState,
+    TransportState,
 )
 from vibin.server.dependencies import get_vibin_instance
 from vibin.streamers import SeekTarget
@@ -14,11 +15,20 @@ from vibin.streamers import SeekTarget
 # The /transport route.
 # -----------------------------------------------------------------------------
 
-transport_router = APIRouter()
+transport_router = APIRouter(prefix="/transport")
+
+
+@transport_router.get(
+    "",
+    summary="Retrieve the current Transport details",
+    tags=["Transport"],
+)
+def transport_active_controls() -> TransportState:
+    return get_vibin_instance().transport_state
 
 
 @transport_router.post(
-    "/transport/pause",
+    "/pause",
     summary="Pause the Transport",
     tags=["Transport"],
     response_class=Response,
@@ -31,7 +41,7 @@ def transport_pause():
 
 
 @transport_router.post(
-    "/transport/play",
+    "/play",
     summary="Play the Transport",
     tags=["Transport"],
     response_class=Response,
@@ -44,7 +54,7 @@ def transport_play():
 
 
 @transport_router.post(
-    "/transport/next",
+    "/next",
     summary="Next Playlist Entry",
     tags=["Transport"],
     response_class=Response,
@@ -57,7 +67,7 @@ def transport_next():
 
 
 @transport_router.post(
-    "/transport/previous",
+    "/previous",
     summary="Previous Playlist Entry",
     tags=["Transport"],
     response_class=Response,
@@ -71,7 +81,7 @@ def transport_previous():
 
 # TODO: Consider whether repeat and shuffle should be toggles or not.
 @transport_router.post(
-    "/transport/repeat",
+    "/repeat",
     summary="Toggle repeat",
     tags=["Transport"],
     response_class=Response,
@@ -84,7 +94,7 @@ def transport_repeat():
 
 
 @transport_router.post(
-    "/transport/shuffle",
+    "/shuffle",
     summary="Toggle shuffle",
     tags=["Transport"],
     response_class=Response,
@@ -97,7 +107,7 @@ def transport_shuffle():
 
 
 @transport_router.post(
-    "/transport/seek",
+    "/seek",
     summary="Seek into the current Playlist Entry",
     description=(
         "`target` can be a float, int, or string. Floats are interpreted as a normalized 0-1 "
@@ -117,7 +127,7 @@ def transport_seek(target: SeekTarget):
 
 
 @transport_router.get(
-    "/transport/position",
+    "/position",
     summary="Retrieve the current Playhead position (in whole seconds)",
     tags=["Transport"],
 )
@@ -126,7 +136,7 @@ def transport_position() -> TransportPlayheadPosition:
 
 
 @transport_router.post(
-    "/transport/play/{media_id}",
+    "/play/{media_id}",
     summary="Play media by Media ID",
     tags=["Transport"],
     response_class=Response,
@@ -139,9 +149,10 @@ def transport_play_media_id(media_id: str):
 
 
 @transport_router.get(
-    "/transport/active_controls",
+    "/active_controls",
     summary="Retrieve the list of currently-valid Transport controls",
     tags=["Transport"],
+    deprecated=True,
 )
 def transport_active_controls() -> TransportActiveControls:
     return TransportActiveControls(
@@ -150,9 +161,10 @@ def transport_active_controls() -> TransportActiveControls:
 
 
 @transport_router.get(
-    "/transport/play_state",
+    "/play_state",
     summary="Retrieve the current play state",
     tags=["Transport"],
+    deprecated=True,
 )
 def transport_play_state() -> TransportPlayState:
     return get_vibin_instance().play_state

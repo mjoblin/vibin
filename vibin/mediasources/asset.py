@@ -9,14 +9,25 @@ import untangle
 
 from vibin import VibinNotFoundError
 from vibin.mediasources import MediaSource
-from vibin.models import Album, Artist, ServiceSubscriptions, Track
+from vibin.models import (
+    Album,
+    Artist,
+    MediaServerState,
+    ServiceSubscriptions,
+    Track,
+    UpdateMessageHandler,
+    UPnPProperties,
+)
 
 
 class Asset(MediaSource):
     model_name = "Asset UPnP Server"
 
     def __init__(
-        self, device: upnpclient.Device, subscribe_callback_base: str | None = None
+        self,
+        device: upnpclient.Device,
+        subscribe_callback_base: str | None = None,
+        on_update: UpdateMessageHandler | None = None,
     ):
         self._device = device
 
@@ -24,12 +35,18 @@ class Asset(MediaSource):
         self._new_albums_path = None
         self._all_artists_path = None
 
+        self._upnp_properties: UPnPProperties = {}
+
         self._media_namespaces = {
             "didl": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
             "dc": "http://purl.org/dc/elements/1.1/",
             "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
             "dlna": "urn:schemas-dlna-org:metadata-1-0/",
         }
+
+    @property
+    def upnp_properties(self) -> UPnPProperties:
+        return self._upnp_properties
 
     @property
     def all_albums_path(self):
@@ -71,10 +88,8 @@ class Asset(MediaSource):
         return f"{parsed_location.scheme}://{parsed_location.netloc}"
 
     @property
-    def system_state(self):
-        return {
-            "name": self._device.friendly_name,
-        }
+    def system_state(self) -> MediaServerState:
+        return MediaServerState(name=self._device.friendly_name)
 
     @property
     def subscriptions(self) -> ServiceSubscriptions:

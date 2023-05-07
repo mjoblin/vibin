@@ -41,6 +41,7 @@ import vibin.mediasources as mediasources
 from vibin.mediasources import MediaSource
 from vibin.models import (
     Album,
+    CurrentlyPlaying,
     ExternalServiceLink,
     Favorite,
     Links,
@@ -49,8 +50,10 @@ from vibin.models import (
     ServiceSubscriptions,
     StoredPlaylist,
     StoredPlaylistStatus,
+    SystemState,
     Track,
     TransportPlayState,
+    TransportState,
     UpdateMessage,
     UpdateMessageHandler,
     UpdateMessageType,
@@ -87,12 +90,7 @@ class Vibin:
     ):
         logger.info("Initializing Vibin")
 
-        # Callables that want to be called (with all current state vars as
-        # stringified JSON) whenever the state vars are updated.
-        self._on_state_vars_update_handlers: List[Callable[[str], None]] = []
-
-        # TODO: Improve this hacked-in support for websocket updates.
-        self._on_websocket_update_handlers: List[UpdateMessageHandler] = []
+        self._on_update_handlers: List[UpdateMessageHandler] = []
 
         self._last_played_id = None
 
@@ -155,8 +153,10 @@ class Vibin:
     def get_current_state_messages(self) -> list[UpdateMessage]:
         return [
             UpdateMessage(message_type="System", payload=self.system_state),
-            UpdateMessage(message_type="StateVars", payload=self.state_vars),
+            UpdateMessage(message_type="UPnPProperties", payload=self.upnp_properties),
             UpdateMessage(message_type="PlayState", payload=self.play_state),
+            UpdateMessage(message_type="TransportState", payload=self.transport_state),
+            UpdateMessage(message_type="CurrentlyPlaying", payload=self.currently_playing),
             UpdateMessage(
                 message_type="ActiveTransportControls",
                 payload=self.streamer.transport_active_controls(),
@@ -324,11 +324,11 @@ class Vibin:
 
     @requires_media()
     def _send_stored_playlists_update(self):
-        self._websocket_message_handler("StoredPlaylists", self.stored_playlist_details)
+        self._send_update("StoredPlaylists", self.stored_playlist_details)
 
     @requires_media()
     def _send_favorites_update(self):
-        self._websocket_message_handler("Favorites", {"favorites": self.favorites()})
+        self._send_update("Favorites", {"favorites": self.favorites()})
 
     @requires_media()
     def media_links(
@@ -445,7 +445,7 @@ class Vibin:
             return streamer_class(
                 device=streamer_device,
                 subscribe_callback_base=subscribe_callback_base,
-                updates_handler=self._websocket_message_handler,
+                on_update=self._on_streamer_update,
                 on_playlist_modified=self._on_playlist_modified,
             )
         except KeyError:
@@ -469,7 +469,9 @@ class Vibin:
                 media_server_device.model_name
             ]
             return media_server_class(
-                device=media_server_device, subscribe_callback_base=subscribe_callback_base
+                device=media_server_device,
+                subscribe_callback_base=subscribe_callback_base,
+                on_update=self._on_media_server_update,
             )
         except KeyError:
             raise VibinError(
@@ -608,8 +610,9 @@ class Vibin:
     def transport_active_controls(self):
         return self.streamer.transport_active_controls()
 
-    def transport_state(self) -> streamers.TransportState:
-        return self.streamer.transport_state()
+    @property
+    def transport_state(self) -> TransportState:
+        return self.streamer.transport_state
 
     def transport_status(self) -> str:
         return self.streamer.transport_status()
@@ -624,8 +627,8 @@ class Vibin:
         self.streamer.subscribe()
 
     @property
-    def state_vars(self):
-        # TODO: Do a pass at redefining the shape of state_vars. It should
+    def upnp_properties(self):
+        # TODO: Do a pass at redefining the shape of upnp_properties. It should
         #   include:
         #   * Standard keys shared across all streamers/media (audience: any
         #     client which wants to be device-agnostic). This will require some
@@ -634,10 +637,12 @@ class Vibin:
         #     is OK with understanding device-specific data).
         #
         # TODO: Confusion: streamer_name/media_source_name vs. system_state()
+        # TODO: Remove data which isn't directly upnp_properties
         all_vars = {
             "streamer_name": self.streamer.name,
             "media_source_name": self.media.name if self.media else None,
-            self.streamer.name: self.streamer.state_vars,
+            "streamer": self.streamer.upnp_properties,
+            "media_server": self.media.upnp_properties if self.media else None,
             "vibin": {
                 "last_played_id": self._last_played_id,
                 self.streamer.name: self.streamer.vibin_vars,
@@ -647,16 +652,20 @@ class Vibin:
         return all_vars
 
     @property
-    def system_state(self):
+    def system_state(self) -> SystemState:
         # TODO: Confusion: streamer_name/media_source_name vs. system_state()
-        return {
-            "streamer": self.streamer.system_state,
-            "media": self.media.system_state if self.media else None,
-        }
+        return SystemState(
+            streamer=self.streamer.system_state,
+            media=self.media.system_state,
+        )
 
     @property
     def play_state(self) -> TransportPlayState:
         return self.streamer.play_state
+
+    @property
+    def currently_playing(self) -> CurrentlyPlaying:
+        return self.streamer.currently_playing
 
     @property
     def device_display(self):
@@ -670,12 +679,6 @@ class Vibin:
             "activating_stored_playlist": self._stored_playlist_status.is_activating_new_playlist,
             "stored_playlists": self._playlists.all(),
         }
-
-    # TODO: Fix handling of state_vars (UPNP) and updates (WebSocket) to be
-    #   more consistent. One option: more clearly configure handling of UPNP
-    #   subscriptions and WebSocket events from the streamer; both can be
-    #   passed back to the client on the same Vibin->Client websocket
-    #   connection, perhaps with different message type identifiers.
 
     def lyrics_for_track(
         self, update_cache=False, *, track_id=None, artist=None, title=None
@@ -857,14 +860,11 @@ class Vibin:
 
         return None
 
-    def on_state_vars_update(self, handler):
-        self._on_state_vars_update_handlers.append(handler)
-
     # NOTE: Intended use: For an external entity to register interest in
     #   receiving websocket messages as they come in.
     # TODO: Rename to subscribe_to_updates() and handle way to ubsubscribe
-    def on_websocket_update(self, handler: UpdateMessageHandler):
-        self._on_websocket_update_handlers.append(handler)
+    def on_update(self, handler: UpdateMessageHandler):
+        self._on_update_handlers.append(handler)
 
     def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
         # Extract the event.
@@ -895,14 +895,19 @@ class Vibin:
                     + f"for the {service_name} service: {device}"
                 )
 
-            # Send state vars to interested recipients.
-            for handler in self._on_state_vars_update_handlers:
-                handler(json.dumps(self.state_vars))
+            # Send updated state vars to interested recipients.
+            self._send_update("UPnPProperties", self.upnp_properties)
 
-    def _websocket_message_handler(self, message_type: UpdateMessageType, data: Any):
-        # TODO: This is passing raw CXNv2 payloads. The shape should be defined
-        #   by the streamer contract and adhered to by cxnv2.py.
-        for handler in self._on_websocket_update_handlers:
+    def _on_streamer_update(self, message_type: UpdateMessageType, data: Any):
+        # Forward streamer updates directly to all update subscribers.
+        self._send_update(message_type, data)
+
+    def _on_media_server_update(self, message_type: UpdateMessageType, data: Any):
+        # Forward media server updates directly to all update subscribers.
+        self._send_update(message_type, data)
+
+    def _send_update(self, message_type: UpdateMessageType, data: Any):
+        for handler in self._on_update_handlers:
             handler(message_type, data)
 
     def _streamer_playlist_matches_stored(self, streamer_playlist):

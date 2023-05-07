@@ -8,7 +8,7 @@ import pathlib
 import re
 import sys
 import time
-from typing import Any, Callable, List, NewType, Optional
+from typing import List, Optional
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -26,13 +26,28 @@ from ..logger import logger
 from vibin import VibinDeviceError
 from vibin.mediasources import MediaSource
 from vibin.models import (
+    ActiveTrack,
+    CurrentlyPlaying,
+    MediaFormat,
+    PlaylistEntry,
     ServiceSubscriptions,
+    MediaSource,
+    MediaSources,
+    MediaStream,
     StreamerDeviceDisplay,
+    StreamerState,
     Subscription,
+    TransportControl,
+    TransportState,
     TransportPlayState,
     UpdateMessageHandler,
+    UPnPServiceName,
+    UPnPPropertyName,
+    UPnPProperties,
+    UPnPPropertyChangeHandlers,
 )
-from vibin.streamers import SeekTarget, Streamer, TransportState
+# from vibin.streamers import SeekTarget, Streamer, TransportState
+from vibin.streamers import SeekTarget, Streamer
 from .. import utils
 
 
@@ -83,16 +98,6 @@ from .. import utils
 #         return self.stop_event.is_set()
 
 
-UPnPServiceName = NewType("UPnPServiceName", str)
-UPnPPropertyName = NewType("StateVarName", str)
-
-StateVars = dict[UPnPServiceName, dict[UPnPPropertyName, Any]]
-
-UPnPPropertyChangeHandlers = dict[
-    (UPnPServiceName, UPnPPropertyName), Callable[[UPnPServiceName, etree.Element], Any]
-]
-
-
 class CXNv2(Streamer):
     model_name = "CXNv2"
 
@@ -100,33 +105,36 @@ class CXNv2(Streamer):
         self,
         device: upnpclient.Device,
         subscribe_callback_base: str | None = None,
-        updates_handler: UpdateMessageHandler | None = None,
+        on_update: UpdateMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
-        self._updates_handler = updates_handler
+        self._on_update = on_update
         self._on_playlist_modified = on_playlist_modified
         self._ignore_playlist_updates = None
 
         self._device_hostname = urlparse(device.location).hostname
 
-        self._system_state = {
-            "name": self._device.friendly_name,
-            "power": None,
-        }
+        self._system_state: StreamerState = StreamerState(
+            name=self._device.friendly_name,
+            power=None,
+            sources=MediaSources(),
+            display=StreamerDeviceDisplay(),
+        )
 
-        self._state_vars: StateVars = {}
+        self._upnp_properties: UPnPProperties = {}
 
         self._vibin_vars = {
-            "audio_sources": [],
-            "current_audio_source": None,
             "current_playlist": None,
             "current_playlist_track_index": None,
             "current_playback_details": None,
         }
 
+        self._currently_playing: CurrentlyPlaying = CurrentlyPlaying()
+
         self._play_state: TransportPlayState = TransportPlayState()
+        self._transport_state: TransportState = TransportState()
         self._device_display_raw = {}
         self._cached_playlist = []
 
@@ -144,6 +152,10 @@ class CXNv2(Streamer):
                 UPnPServiceName("UuVolControl"),
                 UPnPPropertyName("CurrentPlaylistTrackID"),
             ): self._upnp_current_playlist_track_id_event_handler,
+            (
+                UPnPServiceName("UuVolControl"),
+                UPnPPropertyName("PlaybackXML"),
+            ): self._upnp_current_playback_event_handler,
         }
 
         self._disconnected = False
@@ -198,7 +210,9 @@ class CXNv2(Streamer):
                 f"http://{self._device_hostname}/smoip/system/sources"
             )
 
-            self._vibin_vars["audio_sources"] = response.json()["data"]["sources"]
+            self._system_state.sources.available = [
+                MediaSource(**source) for source in response.json()["data"]["sources"]
+            ]
 
             # sources = device.UuVolControl.GetAudioSourcesByNumber()
             # for source_number in sources["RetAudioSourceListValue"].split(","):
@@ -221,7 +235,7 @@ class CXNv2(Streamer):
         # # Current audio source.
         # try:
         #     current_source = device.UuVolControl.GetAudioSourceByNumber()
-        #     self._set_current_audio_source(
+        #     self._set_active_audio_source(
         #         int(current_source["RetAudioSourceValue"])
         #     )
         # except Exception:
@@ -240,7 +254,7 @@ class CXNv2(Streamer):
             # TODO
             pass
 
-        if self._updates_handler:
+        if self._on_update:
             self._websocket_thread = utils.StoppableThread(
                 target=self._handle_websocket_to_streamer
             )
@@ -249,8 +263,7 @@ class CXNv2(Streamer):
         # Keep track of last seen ("currently playing") track and album IDs.
         # This is done to facilitate injecting this information into payloads
         # which want it, but it isn't already there when sent from the streamer.
-        self._last_seen_track_id = None
-        self._last_seen_album_id = None
+        self._set_last_seen_media_ids(None, None)
 
     @property
     def device(self):
@@ -555,21 +568,9 @@ class CXNv2(Streamer):
         except (KeyError, json.decoder.JSONDecodeError) as e:
             return []
 
+    @property
     def transport_state(self) -> TransportState:
-        info = self._av_transport.GetTransportInfo(InstanceID=self._instance_id)
-        state = info["CurrentTransportState"]
-
-        state_map = {
-            "PAUSED_PLAYBACK": TransportState.PAUSED,
-            "STOPPED": TransportState.STOPPED,
-            "PLAYING": TransportState.PLAYING,
-            "TRANSITIONING": TransportState.TRANSITIONING,
-        }
-
-        try:
-            return state_map[state]
-        except KeyError:
-            return TransportState.UNKNOWN
+        return self._transport_state
 
     def transport_status(self) -> str:
         info = self._av_transport.GetTransportInfo(InstanceID=self._instance_id)
@@ -786,9 +787,31 @@ class CXNv2(Streamer):
                         update_dict = json.loads(update)
 
                         if update_dict["path"] == "/zone/play_state":
-                            self._play_state = TransportPlayState(
-                                **update_dict["params"]["data"]
-                            )
+                            self._play_state = TransportPlayState(**update_dict["params"]["data"])
+
+                            play_state = update_dict["params"]["data"]
+
+                            # Extract current transport state.
+                            try:
+                                self._transport_state.play_state = play_state["state"]
+                                self._transport_state.repeat = play_state["mode_repeat"]
+                                self._transport_state.shuffle = play_state["mode_shuffle"]
+                            except KeyError:
+                                pass
+
+                            # Extract the active track details from play_state metadata.
+                            try:
+                                self._currently_playing.active_track = ActiveTrack(**play_state["metadata"])
+                            except KeyError:
+                                pass
+
+                            # Extract the format details from play_state metadata.
+                            try:
+                                self._currently_playing.format = MediaFormat(**play_state["metadata"])
+                            except KeyError:
+                                pass
+
+                            # Extract the format details.
 
                             # When the CXNv2 comes out of standby mode, its
                             # play_state update message does not include the
@@ -834,54 +857,70 @@ class CXNv2(Streamer):
                                 pass
 
                             self._send_play_state_update()
+                            self._send_transport_state_update()
                         elif update_dict["path"] == "/zone/play_state/position":
-                            self._updates_handler("Position", update_dict["params"]["data"])
+                            self._on_update("Position", update_dict["params"]["data"])
                         elif update_dict["path"] == "/zone/now_playing":
+                            # TODO: THIS IS RECEIVED EVERY SECOND (PROGRESS)
+                            #
+                            # --> Consider consequences for updating data, when
+                            #   those updates are sent to on_update, etc.
+
                             # TODO: now_playing is driving 3 chunks of data.
                             #   Figure out how to generalize this to not be
                             #   so specific to CXNv2/StreamMagic.
 
-                            self._updates_handler(
+                            self._on_update(
                                 "ActiveTransportControls",
                                 self._transform_active_controls(
                                     update_dict["params"]["data"]["controls"]
                                 ),
                             )
 
+                            self._transport_state.active_controls = [
+                                control
+                                for control in self._transform_active_controls(
+                                    update_dict["params"]["data"]["controls"]
+                                )
+                            ]
+
+                            self._send_transport_state_update()
+
                             # TODO: Figure out what to do with current audio
-                            #   source. This call to _set_current_audio_source
+                            #   source. This call to _set_active_audio_source
                             #   will ensure the source is set for the next
                             #   StateVars message publish.
                             audio_source_id = update_dict["params"]["data"]["source"][
                                 "id"
                             ]
 
-                            self._set_current_audio_source(audio_source_id)
+                            self._set_active_audio_source(audio_source_id)
 
                             # Media IDs should only be sent to any clients when
                             # the current source is a MEDIA_PLAYER.
                             if audio_source_id != "MEDIA_PLAYER":
-                                self._last_seen_track_id = None
-                                self._last_seen_album_id = None
+                                self._set_last_seen_media_ids(None, None)
 
                             # TODO: Figure out what "display" means for other
                             #   streamer types.
                             try:
                                 display_info = update_dict["params"]["data"]["display"]
+                                self._system_state.display = StreamerDeviceDisplay(**display_info)
 
+                                # TODO: Remove the following?
                                 if DeepDiff(display_info, self._device_display_raw) != {}:
                                     self._device_display_raw = display_info
-                                    self._updates_handler("DeviceDisplay", self.device_display)
+                                    self._on_update("DeviceDisplay", self.device_display)
                             except KeyError:
                                 pass
                         elif update_dict["path"] == "/presets/list":
-                            self._updates_handler("Presets", update_dict["params"]["data"])
+                            self._on_update("Presets", update_dict["params"]["data"])
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
-                            self._system_state["power"] = (
+                            self._system_state.power = (
                                 "on" if power == "ON" else "off"
                             )
-                            self._updates_handler("System", self._system_state)
+                            self._on_update("System", self._system_state)
                         else:
                             logger.warning(f"Unknown message: {update}")
                             # self._updates_handler("Unknown", update)
@@ -894,10 +933,15 @@ class CXNv2(Streamer):
         asyncio.run(async_websocket_manager())
 
     def _send_play_state_update(self):
-        self._updates_handler("PlayState", self.play_state)
+        self._on_update("PlayState", self.play_state)
+
+        self._on_update("CurrentlyPlaying", self.currently_playing)
+
+    def _send_transport_state_update(self):
+        self._on_update("TransportState", self.transport_state)
 
     def _send_device_display_update(self):
-        self._updates_handler("DeviceDisplay", self.device_display)
+        self._on_update("DeviceDisplay", self.device_display)
 
     def _renew_subscriptions(self):
         renewal_buffer = 10
@@ -925,12 +969,6 @@ class CXNv2(Streamer):
                         # TODO: This is the renewal thread, but subscribe()
                         #   attempts to stop the thread; and can't join itself.
                         self.subscribe()
-
-    def subscription_state_vars(self):
-        return {
-            subscribed_service.name: subscribed_service.statevars
-            for subscribed_service in self._subscribed_services
-        }
 
     def subscribe(self):
         # Clean up any existing subscriptions before making new ones.
@@ -995,16 +1033,20 @@ class CXNv2(Streamer):
         self._subscriptions = {}
 
     @property
-    def system_state(self):
+    def system_state(self) -> StreamerState:
         return self._system_state
 
     @property
-    def state_vars(self) -> StateVars:
-        return self._state_vars
+    def upnp_properties(self) -> UPnPProperties:
+        return self._upnp_properties
 
     @property
     def vibin_vars(self):
         return self._vibin_vars
+
+    @property
+    def currently_playing(self) -> CurrentlyPlaying:
+        return self._currently_playing
 
     @property
     def play_state(self) -> TransportPlayState:
@@ -1022,7 +1064,7 @@ class CXNv2(Streamer):
         try:
             self._play_state.metadata.current_track_media_id = self._last_seen_track_id
             self._play_state.metadata.current_album_media_id = self._last_seen_album_id
-        except KeyError:
+        except AttributeError:
             pass
 
         return self._play_state
@@ -1086,19 +1128,32 @@ class CXNv2(Streamer):
     ):
         self._set_current_playlist_track_index(int(property_value))
 
-    def set_state_var(
+    def _upnp_current_playback_event_handler(
+        self, service_name: UPnPServiceName, property_value: str
+    ):
+        # Extract current Stream details from playback information.
+        parsed = untangle.parse(property_value)
+
+        try:
+            self._currently_playing.stream = MediaStream(
+                url=parsed.children[0].playback_details.stream.url.cdata
+            )
+        except (IndexError, AttributeError):
+            pass
+
+    def set_upnp_property(
         self,
         service_name: UPnPServiceName,
         property_name: UPnPPropertyName,
         property_value_xml: str,
     ):
-        if service_name not in self._state_vars:
-            self._state_vars[service_name] = {}
+        if service_name not in self._upnp_properties:
+            self._upnp_properties[service_name] = {}
 
-        if state_var_handler := self._upnp_property_change_handlers.get(
+        if upnp_property_handler := self._upnp_property_change_handlers.get(
             (service_name, property_name)
         ):
-            self._state_vars[service_name][property_name] = state_var_handler(
+            self._upnp_properties[service_name][property_name] = upnp_property_handler(
                 service_name, property_value_xml
             )
         else:
@@ -1107,7 +1162,7 @@ class CXNv2(Streamer):
                 property_value_xml,
             )
 
-            self._state_vars[service_name][property_name] = marshaled_value
+            self._upnp_properties[service_name][property_name] = marshaled_value
 
         # For each state var which contains XML text (i.e. any field name ending
         # in "XML"), we attempt to create a JSON equivalent.
@@ -1120,17 +1175,17 @@ class CXNv2(Streamer):
                 xml = xml.replace("&", "&amp;")
 
                 try:
-                    self._state_vars[service_name][json_var_name] = xmltodict.parse(xml)
+                    self._upnp_properties[service_name][json_var_name] = xmltodict.parse(xml)
                 except xml.parsers.expat.ExpatError as e:
                     logger.error(
                         f"Could not convert XML to JSON for "
                         + f"{service_name}:{property_name}: {e}"
                     )
 
-    def set_vibin_state_vars(self):
+    def set_vibin_upnp_properties(self):
         # THIS HAS BEEN REPLACED BY NOW_PLAYING INFO FROM SMOIP
         # try:
-        #     self._set_current_audio_source(
+        #     self._set_active_audio_source(
         #         int(self._state_vars["UuVolControl"]["AudioSourceNumber"])
         #     )
         # except KeyError:
@@ -1138,37 +1193,46 @@ class CXNv2(Streamer):
 
         try:
             self._set_current_playback_details(
-                self._state_vars["UuVolControl"]["PlaybackJSON"]["reciva"][
+                self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
                     "playback-details"
                 ]
             )
         except KeyError:
             pass
 
-    def _set_current_audio_source(self, source_id: str):
+    def _set_active_audio_source(self, source_id: str):
         try:
-            self._vibin_vars["current_audio_source"] = [
+            self._system_state.sources.active = [
                 source
-                for source in self._vibin_vars["audio_sources"]
-                if source["id"] == source_id
+                for source in self._system_state.sources.available
+                if source.id == source_id
             ][0]
         except (IndexError, KeyError):
-            self._vibin_vars["current_audio_source"] = None
+            self._system_state.sources.active = MediaSource()
             logger.warning(
-                f"Could not determine current audio source from id '{source_id}', setting to None"
+                "Could not determine active audio source from id "
+                + f"'{source_id}', setting to empty MediaSource"
             )
 
     def _set_current_playlist(self):
+        playlist = self.playlist()
+
         try:
-            self._vibin_vars["current_playlist"] = self.playlist()
+            self._vibin_vars["current_playlist"] = playlist
         except KeyError:
             pass
+
+        self._currently_playing.playlist.entries = [
+            PlaylistEntry(**entry) for entry in playlist
+        ]
 
     def _set_current_playlist_track_index(self, index: int):
         try:
             self._vibin_vars["current_playlist_track_index"] = index
         except KeyError:
             pass
+
+        self._currently_playing.playlist.current_track_index = index
 
     def _album_and_track_ids_from_file(self, file) -> (Optional[str], Optional[str]):
         filename_only = pathlib.Path(file).stem
@@ -1186,6 +1250,13 @@ class CXNv2(Streamer):
 
         return None, None
 
+    def _set_last_seen_media_ids(self, album_id, track_id):
+        self._last_seen_album_id = album_id
+        self._last_seen_track_id = track_id
+
+        self._currently_playing.album_media_id = album_id
+        self._currently_playing.track_media_id = track_id
+
     def _set_current_playback_details(self, details):
         self._vibin_vars["current_playback_details"] = details
 
@@ -1201,16 +1272,14 @@ class CXNv2(Streamer):
 
             if this_album_id and this_track_id:
                 if this_track_id != self._last_seen_track_id:
-                    self._last_seen_track_id = this_track_id
-                    self._last_seen_album_id = this_album_id
+                    self._set_last_seen_media_ids(this_album_id, this_track_id)
                 else:
                     send_update = False
             else:
                 # A streamed file was found, but the track and album ids could
                 # not be determined. Play it safe and set the IDs to None to
                 # ensure clients aren't provided incorrect/misleading ids.
-                self._last_seen_track_id = None
-                self._last_seen_album_id = None
+                self._set_last_seen_media_ids(None, None)
 
             # Force a send of a PlayState message to ensure any listening
             # clients get the new track/album id information without having
@@ -1233,10 +1302,10 @@ class CXNv2(Streamer):
         for property in property_set:
             property_element = property[0]
 
-            self.set_state_var(
+            self.set_upnp_property(
                 service_name=service_name,
                 property_name=property_element.tag,
                 property_value_xml=property_element.text
             )
 
-        self.set_vibin_state_vars()
+        self.set_vibin_upnp_properties()

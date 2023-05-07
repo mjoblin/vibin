@@ -11,17 +11,17 @@ from vibin.server.dependencies import (
 # The /presets route.
 # -----------------------------------------------------------------------------
 
-presets_router = APIRouter()
+presets_router = APIRouter(prefix="/presets")
 
 
-@presets_router.get("/presets", summary="Retrieve all Preset details", tags=["Presets"])
+@presets_router.get("", summary="Retrieve all Preset details", tags=["Presets"])
 @transform_media_server_urls_if_proxying
 def presets() -> dict:
     return get_vibin_instance().presets
 
 
 @presets_router.post(
-    "/presets/{preset_id}/play",
+    "/{preset_id}/play",
     summary="Play a Preset",
     tags=["Presets"],
     response_class=Response,

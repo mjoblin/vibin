@@ -6,10 +6,14 @@ import upnpclient
 
 from vibin.mediasources import MediaSource
 from vibin.models import (
+    CurrentlyPlaying,
     StreamerDeviceDisplay,
+    StreamerState,
     ServiceSubscriptions,
+    TransportState,
     TransportPlayState,
     UpdateMessageHandler,
+    UPnPProperties,
 )
 
 
@@ -17,12 +21,12 @@ from vibin.models import (
 # http://upnp.org/specs/av/UPnP-av-AVTransport-v3-Service.pdf
 
 
-class TransportState(Enum):
-    UNKNOWN = "UNKNOWN"
-    PLAYING = "PLAYING"
-    STOPPED = "STOPPED"
-    PAUSED = "PAUSED"
-    TRANSITIONING = "TRANSITIONING"
+# class TransportState(Enum):
+#     UNKNOWN = "UNKNOWN"
+#     PLAYING = "PLAYING"
+#     STOPPED = "STOPPED"
+#     PAUSED = "PAUSED"
+#     TRANSITIONING = "TRANSITIONING"
 
 
 # Float: 0.0 -> 1.0 (for beginning -> end of track; 0.5 is half way into track)
@@ -40,7 +44,7 @@ class Streamer(metaclass=ABCMeta):
         self,
         device: upnpclient.Device,
         subscribe_callback_base: str | None = None,
-        updates_handler: UpdateMessageHandler | None = None,
+        on_update: UpdateMessageHandler | None = None,
         on_playlist_modified=None,
     ):
         pass
@@ -178,15 +182,19 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def system_state(self):
+    def system_state(self) -> StreamerState:
         pass
 
     @abstractmethod
-    def state_vars(self):
+    def upnp_properties(self) -> UPnPProperties:
         pass
 
     @abstractmethod
     def vibin_vars(self):
+        pass
+
+    @abstractmethod
+    def currently_playing(self) -> CurrentlyPlaying:
         pass
 
     @abstractmethod

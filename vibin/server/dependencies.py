@@ -7,7 +7,7 @@ import httpx
 
 from vibin import Vibin, VibinError
 from vibin.logger import logger
-from vibin.models import ServerStatus, WebSocketClientDetails
+from vibin.models import VibinStatus, WebSocketClientDetails
 from vibin.utils import replace_media_server_urls_with_proxy
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
@@ -129,13 +129,13 @@ _system_version = platform.version()
 
 def server_status(
     websocket_clients: list[WebSocketClientDetails] | None = None,
-) -> ServerStatus:
+) -> VibinStatus:
     global _start_time
     global _system_node
     global _system_platform
     global _system_version
 
-    return ServerStatus(
+    return VibinStatus(
         start_time=_start_time,
         system_node=_system_node,
         system_platform=_system_platform,

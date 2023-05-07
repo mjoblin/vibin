@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from vibin import VibinError
 from vibin.logger import logger
 from vibin.models import (
-    ServerStatus,
+    VibinStatus,
     UpdateMessage,
     UpdateMessageType,
     WebSocketClientDetails,
@@ -30,7 +30,7 @@ from vibin.utils import replace_media_server_urls_with_proxy
 # The /ws WebSocket server route.
 # -----------------------------------------------------------------------------
 
-websocket_server_router = APIRouter()
+websocket_server_router = APIRouter(include_in_schema=False)
 
 
 class ConnectionManager:
@@ -54,7 +54,7 @@ class ConnectionManager:
         await websocket.accept()
 
         if not self.registered_listener_with_vibin:
-            # Register the WebSocket server's message handler with the main
+            # Register the WebSocket server's vibin-update handler with the main
             # Vibin instance if that hasn't been done already. This should only
             # happen once upon the first client connection.
             #
@@ -63,13 +63,13 @@ class ConnectionManager:
             # once the first client connection is received, everything is
             # ready for this step to take place.
 
-            # TODO: Clean up using "state_vars_handler" for both state_vars
-            #   (UPnP) updates and websocket updates.
             vibin = get_vibin_instance()
-            vibin.on_state_vars_update(self.state_vars_handler)
-            vibin.on_websocket_update(self.websocket_update_handler)
+            vibin.on_update(self.vibin_update_handler)
 
+            # Start the coroutine for auto-broadcasting all vibin updates to
+            # all connected clients.
             self.sender_task = asyncio.create_task(self.auto_broadcast())
+
             self.registered_listener_with_vibin = True
 
         # Add the new connection's details to the list of active connections.
@@ -83,7 +83,7 @@ class ConnectionManager:
         """Handle a client disconnect."""
         del self.active_connections[websocket]
 
-    def websocket_update_handler(self, message_type: UpdateMessageType, data: Any):
+    def vibin_update_handler(self, message_type: UpdateMessageType, data: Any):
         """
         Receive all WebSocket update messages from Vibin.
 
@@ -93,17 +93,6 @@ class ConnectionManager:
         # TODO: Don't override state_vars queue for both state vars and websocket updates.
         self.message_queue.put_nowait(
             item=UpdateMessage(message_type=message_type, payload=data)
-        )
-
-    def state_vars_handler(self, data: str):
-        """
-        Receive all StateVars update messages from Vibin.
-
-        TODO: Merge this with websocket_update_handler(), *if* the old
-            StateVars concept remains after a future message-type refactor.
-        """
-        self.message_queue.put_nowait(
-            item=UpdateMessage(message_type="StateVars", payload=data)
         )
 
     def message_payload_to_str(self, message_payload: Any):
@@ -118,7 +107,8 @@ class ConnectionManager:
         if isinstance(message_payload, str):
             return message_payload
         elif isinstance(message_payload, BaseModel):
-            return json.dumps(message_payload.dict())
+            # TODO: Consider "message_payload.json()" instead
+            return json.dumps(message_payload.dict(by_alias=True))
         else:
             try:
                 return json.dumps(message_payload)
@@ -126,7 +116,7 @@ class ConnectionManager:
                 pass
 
         raise VibinError(
-            f"Could not convert message of type '{type(message_payload)}' to string"
+            f"Could not convert message payload of type '{type(message_payload)}' to string"
         )
 
     def build_message(
@@ -168,7 +158,7 @@ class ConnectionManager:
             #
             # TODO UPDATE: We now ignore the incoming data and just emit a
             #   full system_state payload.
-            message["payload"] = get_vibin_instance().system_state
+            message["payload"] = get_vibin_instance().system_state.dict(by_alias=True)
         else:
             try:
                 message["payload"] = json.loads(message_payload_str)
@@ -188,7 +178,7 @@ class ConnectionManager:
             "Favorites",
             "PlayState",
             "Presets",
-            "StateVars",
+            "UPnPProperties",
         ]:
             message = replace_media_server_urls_with_proxy(
                 message, get_media_server_proxy_target()
@@ -256,7 +246,7 @@ class ConnectionManager:
 
         return clients
 
-    def get_status(self) -> ServerStatus:
+    def get_status(self) -> VibinStatus:
         """Return the current Vibin server status."""
         return server_status(websocket_clients=self.client_details())
 
@@ -309,7 +299,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_connection_manager.single_client_send(
         websocket, "VibinStatus", vibin_status
     )
-    ws_connection_manager.websocket_update_handler("VibinStatus", vibin_status)
+    ws_connection_manager.vibin_update_handler("VibinStatus", vibin_status)
 
     try:
         while True:
@@ -330,6 +320,6 @@ async def websocket_endpoint(websocket: WebSocket):
         # that one of the other clients (the one in this scope) has
         # disconnected.
         vibin_status = ws_connection_manager.get_status()
-        ws_connection_manager.websocket_update_handler("VibinStatus", vibin_status)
+        ws_connection_manager.vibin_update_handler("VibinStatus", vibin_status)
 
         logger.info(f"WebSocket connection closed for client {client_ip}:{client_port}")
