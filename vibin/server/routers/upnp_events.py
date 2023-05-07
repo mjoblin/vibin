@@ -24,14 +24,10 @@ from vibin.server.dependencies import get_vibin_instance, UPNP_EVENTS_BASE_ROUTE
 #           -> vibin.{device}.on_upnp_event()
 # -----------------------------------------------------------------------------
 
-upnp_events_router = APIRouter()
+upnp_events_router = APIRouter(prefix=UPNP_EVENTS_BASE_ROUTE, include_in_schema=False)
 
 
-@upnp_events_router.api_route(
-    UPNP_EVENTS_BASE_ROUTE + "/{device}/{service}",
-    methods=["NOTIFY"],
-    include_in_schema=False,
-)
+@upnp_events_router.api_route("/{device}/{service}", methods=["NOTIFY"])
 async def upnp_event_subscription_callback(
     device: UPnPDeviceType,
     service: str,

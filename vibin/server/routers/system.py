@@ -4,18 +4,34 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from vibin import VibinError
-from vibin.models import StreamerDeviceDisplay
+from vibin.models import CurrentlyPlaying, StreamerDeviceDisplay, SystemState
 from vibin.server.dependencies import get_vibin_instance
 
 # -----------------------------------------------------------------------------
 # The /system route.
 # -----------------------------------------------------------------------------
 
-system_router = APIRouter()
+system_router = APIRouter(prefix="/system")
+
+
+@system_router.get(
+    "", summary="Retrieve the system's state details", tags=["Media System"]
+)
+def state_vars() -> SystemState:
+    return get_vibin_instance().system_state
+
+
+@system_router.get(
+    "/streamer/currently_playing",
+    summary="Retrieve details on what is currently playing",
+    tags=["Media System"],
+)
+def state_vars() -> CurrentlyPlaying:
+    return get_vibin_instance().currently_playing
 
 
 @system_router.post(
-    "/system/streamer/power_toggle",
+    "/streamer/power_toggle",
     summary="Toggle the Streamer's power",
     tags=["Media System"],
     response_class=Response,
@@ -28,7 +44,7 @@ def system_power_toggle():
 
 
 @system_router.post(
-    "/system/streamer/source",
+    "/streamer/source",
     summary="Set the Streamer's Media Source",
     tags=["Media System"],
     response_class=Response,
@@ -41,7 +57,7 @@ def system_source(source: str):
 
 
 @system_router.get(
-    "/system/streamer/device_display",
+    "/streamer/device_display",
     summary="Retrieve the Streamer's current display",
     tags=["Media System"],
 )
@@ -50,10 +66,10 @@ def device_display() -> StreamerDeviceDisplay:
 
 
 @system_router.get(
-    "/system/statevars",
+    "/statevars",
     summary="Retrieve the system's state variables",
     tags=["Media System"],
     deprecated=True,
 )
 def state_vars() -> dict[str, Any]:
-    return get_vibin_instance().state_vars
+    return get_vibin_instance().upnp_properties

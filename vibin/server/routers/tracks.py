@@ -17,10 +17,10 @@ from vibin.server.dependencies import (
 # The /tracks route.
 # -----------------------------------------------------------------------------
 
-tracks_router = APIRouter()
+tracks_router = APIRouter(prefix="/tracks")
 
 
-@tracks_router.get("/tracks", summary="Retrieve all Track details", tags=["Tracks"])
+@tracks_router.get("", summary="Retrieve all Track details", tags=["Tracks"])
 @transform_media_server_urls_if_proxying
 @requires_media
 def tracks() -> List[Track]:
@@ -31,9 +31,7 @@ def tracks() -> List[Track]:
 
 
 @tracks_router.get(
-    "/tracks/{track_id}",
-    summary="Retrieve details on a single Track",
-    tags=["Tracks"],
+    "/{track_id}", summary="Retrieve details on a single Track", tags=["Tracks"]
 )
 @transform_media_server_urls_if_proxying
 @requires_media
@@ -45,9 +43,7 @@ def track_by_id(track_id: str) -> Track:
 
 
 @tracks_router.get(
-    "/tracks/{track_id}/lyrics",
-    summary="Retrieve lyrics for a Track",
-    tags=["Tracks"],
+    "/{track_id}/lyrics", summary="Retrieve lyrics for a Track", tags=["Tracks"]
 )
 def track_lyrics_by_track_id(track_id: str, update_cache: Optional[bool] = False):
     lyrics = get_vibin_instance().lyrics_for_track(
@@ -61,7 +57,7 @@ def track_lyrics_by_track_id(track_id: str, update_cache: Optional[bool] = False
 
 
 @tracks_router.post(
-    "/tracks/{track_id}/lyrics/validate",
+    "/{track_id}/lyrics/validate",
     summary="Mark a Track's lyrics as valid or invalid",
     tags=["Tracks"],
 )
@@ -73,7 +69,7 @@ def track_lyrics_by_track_id_validate(track_id: str, is_valid: bool):
 
 
 @tracks_router.get(
-    "/tracks/lyrics",
+    "/lyrics",
     summary="Retrieve lyrics for a Track, by Artist and Title",
     description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
     tags=["Tracks"],
@@ -90,7 +86,7 @@ def track_lyrics(artist: str, title: str, update_cache: Optional[bool] = False):
 
 
 @tracks_router.post(
-    "/tracks/lyrics/validate",
+    "/lyrics/validate",
     summary="Mark lyrics as valid or invalid, by Artist and Title",
     description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
     tags=["Tracks"],
@@ -103,9 +99,7 @@ def track_lyrics_validate(artist: str, title: str, is_valid: bool):
 
 
 @tracks_router.post(
-    "/tracks/lyrics/search",
-    summary="Search all Track lyrics",
-    tags=["Tracks"],
+    "/lyrics/search", summary="Search all Track lyrics", tags=["Tracks"]
 )
 def track_lyrics_search(lyrics_query: LyricsQuery):
     results = get_vibin_instance().lyrics_search(lyrics_query.query)
@@ -117,16 +111,14 @@ def track_lyrics_search(lyrics_query: LyricsQuery):
 
 
 @tracks_router.get(
-    "/tracks/{track_id}/links",
-    summary="Retrieve links for a Track",
-    tags=["Tracks"],
+    "/{track_id}/links", summary="Retrieve links for a Track", tags=["Tracks"]
 )
 def track_links_by_track_id(track_id: str, all_types: bool = False):
     return get_vibin_instance().media_links(media_id=track_id, include_all=all_types)
 
 
 @tracks_router.get(
-    "/tracks/links",
+    "/links",
     summary="Retrieve links for a Track by Artist, Album, and Title",
     tags=["Tracks"],
 )
@@ -142,7 +134,7 @@ def track_links(
 
 
 @tracks_router.get(
-    "/tracks/{track_id}/waveform.png",
+    "/{track_id}/waveform.png",
     summary="Retrieve a waveform image (PNG) for a Track",
     tags=["Tracks"],
 )
@@ -169,7 +161,7 @@ def track_waveform_png(
 
 
 @tracks_router.get(
-    "/tracks/{track_id}/waveform",
+    "/{track_id}/waveform",
     summary="Retrieve waveform data (JSON) for a Track",
     tags=["Tracks"],
 )
@@ -215,7 +207,7 @@ def track_waveform(
 
 
 @tracks_router.get(
-    "/tracks/{track_id}/rms",
+    "/{track_id}/rms",
     summary="Retrieve RMS (Root Mean Square) for a Track",
     tags=["Tracks"],
 )

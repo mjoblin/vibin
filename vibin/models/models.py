@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, NewType, Optional
+from lxml import etree
 
 from pydantic import BaseModel, Field, HttpUrl
 import upnpclient
@@ -144,7 +145,7 @@ class WebSocketClientDetails(BaseModel):
     port: int
 
 
-class ServerStatus(BaseModel):
+class VibinStatus(BaseModel):
     start_time: float
     system_node: str
     system_platform: str
@@ -255,17 +256,39 @@ class StreamerDeviceDisplay(BaseModel):
 
 
 UpdateMessageType = Literal[
-    "ActiveTransportControls",
-    "DeviceDisplay",
+    "ActiveTransportControls",  # TODO: Deprecate
+    "CurrentlyPlaying",
+    "DeviceDisplay",  # TODO: Deprecate
     "Favorites",
-    "PlayState",
+    "PlayState",  # TODO: Deprecate
     "Position",
     "Presets",
-    "StateVars",
     "StoredPlaylists",
     "System",
+    "TransportState",
+    "UPnPProperties",
     "VibinStatus",
 ]
+
+
+class PlaylistEntry(BaseModel):
+    album: str | None
+    albumArtURI: str | None
+    artist: str | None
+    duration: str | None
+    genre: str | None
+    id: int | None
+    index: int | None
+    originalTrackNumber: str | None
+    title: str | None
+    uri: str | None
+    albumMediaId: str | None
+    trackMediaId: str | None
+
+
+class Playlist(BaseModel):
+    current_track_index: int | None
+    entries: list[PlaylistEntry] = []
 
 
 class UpdateMessage(BaseModel):
@@ -273,7 +296,120 @@ class UpdateMessage(BaseModel):
     payload: Any
 
 
+class MediaFormat(BaseModel):
+    sample_format: str | None
+    mqa: str | None
+    codec: str | None
+    lossless: bool | None
+    sample_rate: int | None
+    bit_depth: int | None
+    encoding: str | None
+
+
+class MediaStream(BaseModel):
+    url: str | None
+
+
+class ActiveTrack(BaseModel):
+    title: str | None
+    artist: str | None
+    album: str | None
+    art_url: str | None
+    duration: int | None
+
+
+class CurrentlyPlaying(BaseModel):
+    album_media_id: str | None
+    track_media_id: str | None
+    active_track: ActiveTrack = ActiveTrack()
+    playlist: Playlist = Playlist()
+    format: MediaFormat = MediaFormat()
+    stream: MediaStream = MediaStream()
+
+
 UpdateMessageHandler = Callable[[UpdateMessageType, Any], None]
 
-
 UPnPDeviceType = Literal["streamer", "media"]
+
+UPnPServiceName = NewType("UPnPServiceName", str)
+
+UPnPPropertyName = NewType("UPnPPropertyName", str)
+
+UPnPProperties = dict[UPnPServiceName, dict[UPnPPropertyName, Any]]
+
+UPnPPropertyChangeHandlers = dict[
+    (UPnPServiceName, UPnPPropertyName), Callable[[UPnPServiceName, etree.Element], Any]
+]
+
+
+PlayStatus = Literal[
+    "buffering",
+    "connecting",
+    "no_signal",
+    "not_ready",
+    "pause",
+    "play",
+    "ready",
+    "stop",
+]
+
+TransportAction = Literal[
+    "next",
+    "pause",
+    "play",
+    "previous",
+    "repeat",
+    "seek",
+    "shuffle",
+    "stop",
+]
+
+RepeatState = Literal["off", "all"]
+
+ShuffleState = Literal["off", "all"]
+
+
+class TransportState(BaseModel):
+    play_state: PlayStatus | None
+    active_controls: list[TransportAction] = []
+    repeat: RepeatState | None
+    shuffle: ShuffleState | None
+
+
+class MediaSource(BaseModel):
+    id: str | None
+    name: str | None
+    default_name: str | None
+    class_field: str | None = Field(alias="class")
+    nameable: bool | None
+    ui_selectable: bool | None
+    description: str | None
+    description_locale: str | None
+    preferred_order: int | None
+
+
+class MediaSources(BaseModel):
+    available: list[MediaSource] = []
+    active: MediaSource | None
+
+
+PowerState = Literal["on", "off"]
+
+
+class UPnPDeviceState(BaseModel):
+    name: str
+
+
+class StreamerState(UPnPDeviceState):
+    power: PowerState | None
+    sources: MediaSources | None = MediaSources()
+    display: StreamerDeviceDisplay | None = StreamerDeviceDisplay()
+
+
+class MediaServerState(UPnPDeviceState):
+    pass
+
+
+class SystemState(BaseModel):
+    streamer: StreamerState
+    media: MediaServerState

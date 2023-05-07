@@ -16,11 +16,11 @@ from vibin.server.dependencies import (
 # The /browse route.
 # -----------------------------------------------------------------------------
 
-browse_router = APIRouter()
+browse_router = APIRouter(prefix="/browse")
 
 
 @browse_router.get(
-    "/browse/path/{media_path:path}",
+    "/path/{media_path:path}",
     summary="Retrieve the contents of a path on the Media Server",
     description="The `media_path` can be nested, e.g. `Albums/[All Albums]`.",
     tags=["Browse"],
@@ -35,7 +35,7 @@ def path_contents(media_path) -> List | Track:
 
 
 @browse_router.get(
-    "/browse/children/{parent_id}",
+    "/children/{parent_id}",
     summary="Retrieve the children of the given Parent ID on the Media Server",
     tags=["Browse"],
 )
@@ -46,7 +46,7 @@ def browse(parent_id: str):
 
 
 @browse_router.get(
-    "/browse/metadata/{id}",
+    "/metadata/{id}",
     summary="Retrieve the Media Server's metadata for the given Media ID",
     tags=["Browse"],
 )

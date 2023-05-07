@@ -14,20 +14,18 @@ from vibin.server.dependencies import get_vibin_instance
 #  /playlist
 # -----------------------------------------------------------------------------
 
-stored_playlists_router = APIRouter()
+stored_playlists_router = APIRouter(prefix="/playlists")
 
 
 @stored_playlists_router.get(
-    "/playlists",
-    summary="Retrieve details on all Stored Playlists",
-    tags=["Stored Playlists"],
+    "", summary="Retrieve details on all Stored Playlists", tags=["Stored Playlists"]
 )
 def playlists() -> list[StoredPlaylist]:
     return get_vibin_instance().playlists()
 
 
 @stored_playlists_router.get(
-    "/playlists/{playlist_id}",
+    "/{playlist_id}",
     summary="Retrieve details on a single Stored Playlist",
     tags=["Stored Playlists"],
 )
@@ -43,9 +41,7 @@ def playlists_id(playlist_id: str) -> StoredPlaylist:
 
 
 @stored_playlists_router.put(
-    "/playlists/{playlist_id}",
-    summary="Update a Stored Playlist",
-    tags=["Stored Playlists"],
+    "/{playlist_id}", summary="Update a Stored Playlist", tags=["Stored Playlists"]
 )
 def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredPlaylist:
     metadata = {"name": name} if name else None
@@ -61,7 +57,7 @@ def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredP
 
 
 @stored_playlists_router.delete(
-    "/playlists/{playlist_id}",
+    "/{playlist_id}",
     status_code=204,
     summary="Delete a Stored Playlist",
     tags=["Stored Playlists"],
@@ -77,7 +73,7 @@ def playlists_id_delete(playlist_id: str):
 
 
 @stored_playlists_router.post(
-    "/playlists/{playlist_id}/make_current",
+    "/{playlist_id}/make_current",
     summary="Activate a Stored Playlist",
     description=(
         "Activating a Stored Playlist means replacing the Streamer's active "
@@ -99,7 +95,7 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
 
 
 @stored_playlists_router.post(
-    "/playlists/current/store",
+    "/current/store",
     summary="Store the Streamer's active Playlist as a new Stored Playlist",
     tags=["Stored Playlists"],
 )

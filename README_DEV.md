@@ -4,6 +4,7 @@
 
 * [Click] (for the command line interface)
 * [FastAPI] (for the REST API, WebSocket server, and proxies)
+* [Pydantic] (for data models)
 * [TinyDB] (for local persistence)
 * [uPnPclient] (for communicating with UPnP devices)
 * [untangle] (for XML parsing)
@@ -117,6 +118,7 @@ aspirational dev dependency.
 [vibinui]: https://github.com/mjoblin/vibinui
 [Click]: https://click.palletsprojects.com
 [FastAPI]: https://fastapi.tiangolo.com/
+[Pydantic]: https://pydantic.dev
 [TinyDB]: https://github.com/msiemens/tinydb
 [uPnPclient]: https://github.com/flyte/upnpclient
 [untangle]: https://untangle.readthedocs.io/

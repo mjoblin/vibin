@@ -14,10 +14,10 @@ from vibin.server.dependencies import (
 # The /proxy route for proxying the UPnP Media Server (e.g. album art urls).
 # -----------------------------------------------------------------------------
 
-media_server_proxy_router = APIRouter()
+media_server_proxy_router = APIRouter(prefix="/proxy", include_in_schema=False)
 
 
-@media_server_proxy_router.get("/proxy/{path:path}", include_in_schema=False)
+@media_server_proxy_router.get("/{path:path}")
 async def art_proxy(request: Request):
     if not is_proxy_for_media_server():
         raise HTTPException(

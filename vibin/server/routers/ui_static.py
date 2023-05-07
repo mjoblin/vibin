@@ -9,10 +9,10 @@ from vibin.server.dependencies import get_ui_static_root
 # The /ui route for serving the UI's static files.
 # -----------------------------------------------------------------------------
 
-ui_static_router = APIRouter()
+ui_static_router = APIRouter(prefix="/ui")
 
 
-@ui_static_router.get("/ui", include_in_schema=False)
+@ui_static_router.get("", include_in_schema=False)
 def serve_ui_root_index_html():
     ui_static_root = get_ui_static_root()
 
@@ -25,7 +25,7 @@ def serve_ui_root_index_html():
     return FileResponse(path=Path(ui_static_root, "index.html"))
 
 
-@ui_static_router.get("/ui/{resource}", include_in_schema=False)
+@ui_static_router.get("/{resource}", include_in_schema=False)
 def serve_ui_index_html(resource: str):
     ui_static_root = get_ui_static_root()
 
