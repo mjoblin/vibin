@@ -1,6 +1,5 @@
 import json
 import math
-from typing import List, Optional, Union
 
 from fastapi import APIRouter, Header, HTTPException, Response
 
@@ -23,7 +22,7 @@ tracks_router = APIRouter(prefix="/tracks")
 @tracks_router.get("", summary="Retrieve all Track details", tags=["Tracks"])
 @transform_media_server_urls_if_proxying
 @requires_media
-def tracks() -> List[Track]:
+def tracks() -> list[Track]:
     try:
         return get_vibin_instance().media.tracks
     except VibinNotFoundError as e:
@@ -45,7 +44,7 @@ def track_by_id(track_id: str) -> Track:
 @tracks_router.get(
     "/{track_id}/lyrics", summary="Retrieve lyrics for a Track", tags=["Tracks"]
 )
-def track_lyrics_by_track_id(track_id: str, update_cache: Optional[bool] = False):
+def track_lyrics_by_track_id(track_id: str, update_cache: bool | None = False):
     lyrics = get_vibin_instance().lyrics_for_track(
         track_id=track_id, update_cache=update_cache
     )
@@ -74,7 +73,7 @@ def track_lyrics_by_track_id_validate(track_id: str, is_valid: bool):
     description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
     tags=["Tracks"],
 )
-def track_lyrics(artist: str, title: str, update_cache: Optional[bool] = False):
+def track_lyrics(artist: str, title: str, update_cache: bool | None = False):
     lyrics = get_vibin_instance().lyrics_for_track(
         artist=artist, title=title, update_cache=update_cache
     )
@@ -123,9 +122,9 @@ def track_links_by_track_id(track_id: str, all_types: bool = False):
     tags=["Tracks"],
 )
 def track_links(
-    artist: Optional[str],
-    album: Optional[str],
-    title: Optional[str],
+    artist: str | None = None,
+    album: str | None = None,
+    title: str | None = None,
     all_types: bool = False,
 ):
     return get_vibin_instance().media_links(
@@ -169,7 +168,7 @@ def track_waveform(
     track_id: str,
     width: int = 800,
     height: int = 250,
-    accept: Union[str, None] = Header(default="application/json"),
+    accept: str | None = Header(default="application/json"),
 ):
     # TODO: This waveform_format / media_type / "accept" header stuff
     #   feels too convoluted.

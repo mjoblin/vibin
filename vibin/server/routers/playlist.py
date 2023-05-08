@@ -3,7 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from vibin.models import PlaylistModifyAction, PlaylistModifyPayload
+from vibin.models import Playlist, PlaylistModifyPayload
+from vibin.types import PlaylistModifyAction
 from vibin.server.dependencies import (
     get_vibin_instance,
     transform_media_server_urls_if_proxying,
@@ -22,8 +23,8 @@ playlist_router = APIRouter(prefix="/playlist")
     tags=["Active Playlist"],
 )
 @transform_media_server_urls_if_proxying
-def playlist():
-    return get_vibin_instance().streamer.playlist()
+def playlist() -> Playlist:
+    return get_vibin_instance().streamer.playlist
 
 
 @playlist_router.post(

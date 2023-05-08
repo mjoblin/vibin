@@ -1,5 +1,3 @@
-from typing import List
-
 from fastapi import APIRouter, HTTPException
 
 from vibin import VibinNotFoundError
@@ -20,7 +18,7 @@ artists_router = APIRouter(prefix="/artists")
 @artists_router.get("", summary="Retrieve all Artist details", tags=["Artists"])
 @transform_media_server_urls_if_proxying
 @requires_media
-def artists() -> List[Artist]:
+def artists() -> list[Artist]:
     try:
         return get_vibin_instance().media.artists
     except VibinNotFoundError as e:
@@ -32,7 +30,7 @@ def artists() -> List[Artist]:
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def artist_by_id(artist_id: str):
+def artist_by_id(artist_id: str) -> Artist:
     try:
         return get_vibin_instance().media.artist(artist_id)
     except VibinNotFoundError as e:

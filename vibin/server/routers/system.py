@@ -4,7 +4,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from vibin import VibinError
-from vibin.models import CurrentlyPlaying, StreamerDeviceDisplay, SystemState
+from vibin.models import (
+    CurrentlyPlaying,
+    StreamerDeviceDisplay,
+    SystemState,
+    SystemUPnPProperties,
+)
 from vibin.server.dependencies import get_vibin_instance
 
 # -----------------------------------------------------------------------------
@@ -66,10 +71,17 @@ def device_display() -> StreamerDeviceDisplay:
 
 
 @system_router.get(
-    "/statevars",
-    summary="Retrieve the system's state variables",
+    "/upnp_properties",
+    summary="Retrieve the system's UPnP properties",
+    description=(
+        "**This information is not intended for general client use**, but is "
+        + "made available for debugging or as a last-resort fallback. The "
+        + "response payload contains low-level UPnP property information "
+        + "associated with any UPnP subscriptions which might be active for "
+        + "the Streamer and Media Server. Any commonly-useful information for "
+        + "clients should be available at other endpoints."
+    ),
     tags=["Media System"],
-    deprecated=True,
 )
-def state_vars() -> dict[str, Any]:
+def state_vars() -> SystemUPnPProperties:
     return get_vibin_instance().upnp_properties

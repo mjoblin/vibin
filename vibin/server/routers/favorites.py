@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from vibin import VibinNotFoundError
-from vibin.models import Favorite
+from vibin.models import Favorite, Favorites
 from vibin.server.dependencies import (
     get_vibin_instance,
     transform_media_server_urls_if_proxying,
@@ -16,10 +16,8 @@ favorites_router = APIRouter(prefix="/favorites")
 
 @favorites_router.get("", summary="Retrieve all Favorites", tags=["Favorites"])
 @transform_media_server_urls_if_proxying
-def favorites():
-    return {
-        "favorites": get_vibin_instance().favorites(),
-    }
+def favorites() -> Favorites:
+    return Favorites(favorites=get_vibin_instance().favorites())
 
 
 @favorites_router.get(
@@ -27,11 +25,9 @@ def favorites():
 )
 @transform_media_server_urls_if_proxying
 def favorites_albums():
-    favorites = get_vibin_instance().favorites(requested_types=["album"])
+    favorite_albums = get_vibin_instance().favorites(requested_types=["album"])
 
-    return {
-        "favorites": favorites,
-    }
+    return Favorites(favorites=favorite_albums)
 
 
 @favorites_router.get(
@@ -39,11 +35,9 @@ def favorites_albums():
 )
 @transform_media_server_urls_if_proxying
 def favorites_tracks():
-    favorites = get_vibin_instance().favorites(requested_types=["track"])
+    favorite_tracks = get_vibin_instance().favorites(requested_types=["track"])
 
-    return {
-        "favorites": favorites,
-    }
+    return Favorites(favorites=favorite_tracks)
 
 
 @favorites_router.post("", summary="Favorite an Album or Track", tags=["Favorites"])
