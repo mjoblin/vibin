@@ -30,23 +30,26 @@ from vibin.models import (
     CurrentlyPlaying,
     MediaFormat,
     PlaylistEntry,
-    ServiceSubscriptions,
+    Playlist,
+    Presets,
     MediaSource,
     MediaSources,
     MediaStream,
+    UPnPServiceSubscriptions,
     StreamerDeviceDisplay,
     StreamerState,
-    Subscription,
-    TransportControl,
+    UPnPSubscription,
     TransportState,
     TransportPlayState,
-    UpdateMessageHandler,
+)
+from vibin.types import (
     UPnPServiceName,
+    UpdateMessageHandler,
     UPnPPropertyName,
     UPnPProperties,
     UPnPPropertyChangeHandlers,
 )
-# from vibin.streamers import SeekTarget, Streamer, TransportState
+
 from vibin.streamers import SeekTarget, Streamer
 from .. import utils
 
@@ -136,7 +139,7 @@ class CXNv2(Streamer):
         self._play_state: TransportPlayState = TransportPlayState()
         self._transport_state: TransportState = TransportState()
         self._device_display_raw = {}
-        self._cached_playlist = []
+        self._cached_playlist_entries: list[PlaylistEntry] = []
 
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
@@ -162,8 +165,8 @@ class CXNv2(Streamer):
         self._media_device: Optional[MediaSource] = None
         self._instance_id = 0  # CXNv2 implements a static AVTransport instance
         self._navigator_id = None
-        self._subscriptions: ServiceSubscriptions = {}
-        self._subscription_renewal_thread = None
+        self._upnp_subscriptions: UPnPServiceSubscriptions = {}
+        self._upnp_subscription_renewal_thread = None
         self._websocket_thread = None
         self._websocket_timeout = 1
 
@@ -244,7 +247,7 @@ class CXNv2(Streamer):
 
         # Current playlist.
         self._playlist_id_array = None
-        self._set_current_playlist()
+        self._set_current_playlist_entries()
 
         # Current playlist track index.
         try:
@@ -286,10 +289,10 @@ class CXNv2(Streamer):
         # Clean up any UPnP subscriptions.
         self._cancel_subscriptions()
 
-        if self._subscription_renewal_thread:
+        if self._upnp_subscription_renewal_thread:
             logger.info("Stopping UPnP subscription renewal thread")
-            self._subscription_renewal_thread.stop()
-            self._subscription_renewal_thread.join()
+            self._upnp_subscription_renewal_thread.stop()
+            self._upnp_subscription_renewal_thread.join()
 
         if self._websocket_thread:
             logger.info("Stopping streamer WebSocket thread")
@@ -306,8 +309,8 @@ class CXNv2(Streamer):
         return self._device.friendly_name
 
     @property
-    def subscriptions(self) -> ServiceSubscriptions:
-        return self._subscriptions
+    def subscriptions(self) -> UPnPServiceSubscriptions:
+        return self._upnp_subscriptions
 
     def power_toggle(self):
         requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
@@ -577,7 +580,11 @@ class CXNv2(Streamer):
 
         return info["CurrentTransportStatus"]
 
-    def _playlist_array(self) -> List[int]:
+    @property
+    def playlist(self) -> Playlist:
+        return self._currently_playing.playlist
+
+    def _retrieve_playlist_array(self) -> list[int]:
         try:
             response = self._device.PlaylistExtension.IdArray()
             playlist_encoded = response["aIdArray"]
@@ -587,14 +594,14 @@ class CXNv2(Streamer):
             if sys.byteorder == "little":
                 playlist_array.byteswap()
 
+            # TODO: list(playlist_array) ?
             return playlist_array
         except Exception:
             # TODO
             return []
 
-    # TODO: Define PlaylistEntry and Playlist types
-    def playlist(self):
-        playlist_entry_ids = self._playlist_array()
+    def _retrieve_playlist_entries(self) -> list[PlaylistEntry]:
+        playlist_entry_ids = self._retrieve_playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
             aIdList=",".join([str(id) for id in playlist_entry_ids])
@@ -654,9 +661,12 @@ class CXNv2(Streamer):
                 pass
 
         cached_playlist_media_ids = [
-            entry["trackMediaId"] for entry in self._cached_playlist
+            entry.trackMediaId for entry in self._cached_playlist_entries
         ]
         active_playlist_media_ids = [entry["trackMediaId"] for entry in results]
+
+        # Coerce the playlist into a list of PlaylistEntry objects
+        results_as_entries = [PlaylistEntry(**result) for result in results]
 
         if cached_playlist_media_ids != active_playlist_media_ids:
             # NOTE: All changes to the active playlist should be detected here,
@@ -664,9 +674,9 @@ class CXNv2(Streamer):
             #   app like the StreamMagic iOS app, etc).
             self._on_playlist_modified(results)
 
-        self._cached_playlist = results
+        self._cached_playlist_entries = results_as_entries
 
-        return results
+        return results_as_entries
 
     def _handle_websocket_to_streamer(self):
         async def async_websocket_manager():
@@ -835,23 +845,19 @@ class CXNv2(Streamer):
                                 play_state_queue_index = self._play_state.queue_index
 
                                 if play_state_queue_index is not None:
-                                    queue_entry = self._cached_playlist[play_state_queue_index]
+                                    queue_entry = self._cached_playlist_entries[play_state_queue_index]
 
                                     if (
                                         self._play_state.state == "pause"
-                                        and queue_entry["title"] == play_state_title
+                                        and queue_entry.title == play_state_title
                                     ):
                                         if play_state_metadata.album is None:
-                                            play_state_metadata.album = queue_entry[
-                                                "album"
-                                            ]
+                                            play_state_metadata.album = queue_entry.album
                                         if play_state_metadata.artist is None:
-                                            play_state_metadata.artist = queue_entry[
-                                                "artist"
-                                            ]
+                                            play_state_metadata.artist = queue_entry.artist
                                         if play_state_metadata.duration is None:
                                             play_state_metadata.duration = utils.hmmss_to_secs(
-                                                queue_entry["duration"]
+                                                queue_entry.duration
                                             )
                             except (IndexError, KeyError) as e:
                                 pass
@@ -946,10 +952,10 @@ class CXNv2(Streamer):
     def _renew_subscriptions(self):
         renewal_buffer = 10
 
-        while not self._subscription_renewal_thread.stop_event.is_set():
+        while not self._upnp_subscription_renewal_thread.stop_event.is_set():
             time.sleep(1)
 
-            for service, subscription in self._subscriptions.items():
+            for service, subscription in self._upnp_subscriptions.items():
                 now = int(time.time())
 
                 if (subscription.timeout is not None) and (
@@ -981,7 +987,7 @@ class CXNv2(Streamer):
                     callback_url=(f"{self._subscribe_callback_base}/{service.name}")
                 )
 
-                self._subscriptions[service] = Subscription(
+                self._upnp_subscriptions[service] = UPnPSubscription(
                     id=subscription_id,
                     timeout=timeout,
                     next_renewal=(now + timeout) if timeout else None,
@@ -992,28 +998,28 @@ class CXNv2(Streamer):
                     + f"timeout {timeout}"
                 )
 
-            if self._subscription_renewal_thread:
+            if self._upnp_subscription_renewal_thread:
                 logger.warning("Stopping UPnP subscription renewal thread")
 
                 try:
-                    self._subscription_renewal_thread.stop()
-                    self._subscription_renewal_thread.join()
+                    self._upnp_subscription_renewal_thread.stop()
+                    self._upnp_subscription_renewal_thread.join()
                 except RuntimeError as e:
                     logger.warning(f"Cannot stop UPnP subscription renewal thread: {e}")
                 finally:
-                    self._subscription_renewal_thread = None
+                    self._upnp_subscription_renewal_thread = None
 
-            self._subscription_renewal_thread = utils.StoppableThread(
+            self._upnp_subscription_renewal_thread = utils.StoppableThread(
                 target=self._renew_subscriptions
             )
 
             # TODO: This seems to be invoked multiple times
             logger.info("Starting UPnP subscription renewal thread")
-            self._subscription_renewal_thread.start()
+            self._upnp_subscription_renewal_thread.start()
 
     def _cancel_subscriptions(self):
         # Clean up any UPnP subscriptions.
-        for service, subscription in self._subscriptions.items():
+        for service, subscription in self._upnp_subscriptions.items():
             try:
                 logger.info(f"Canceling UPnP subscription for {service.name}")
                 service.cancel_subscription(subscription.id)
@@ -1030,7 +1036,7 @@ class CXNv2(Streamer):
                 else:
                     raise
 
-        self._subscriptions = {}
+        self._upnp_subscriptions = {}
 
     @property
     def system_state(self) -> StreamerState:
@@ -1077,11 +1083,11 @@ class CXNv2(Streamer):
         return StreamerDeviceDisplay(**self._device_display_raw)
 
     @property
-    def presets(self):
+    def presets(self) -> Presets:
         # TODO: Change to local cache data, as received from websocket.
         response = requests.get(f"http://{self._device_hostname}/smoip/presets/list")
 
-        return response.json()["data"]
+        return Presets(**response.json()["data"])
 
     def play_preset_id(self, preset_id: int):
         response = requests.get(
@@ -1121,7 +1127,7 @@ class CXNv2(Streamer):
     ):
         if property_value != self._playlist_id_array:
             self._playlist_id_array = property_value
-            self._set_current_playlist()
+            self._set_current_playlist_entries()
 
     def _upnp_current_playlist_track_id_event_handler(
         self, service_name: UPnPServiceName, property_value: str
@@ -1214,17 +1220,16 @@ class CXNv2(Streamer):
                 + f"'{source_id}', setting to empty MediaSource"
             )
 
-    def _set_current_playlist(self):
-        playlist = self.playlist()
+    def _set_current_playlist_entries(self):
+        playlist_entries = self._retrieve_playlist_entries()
 
+        # TODO: Remove _vibin_vars once the UI has migrated off of them
         try:
-            self._vibin_vars["current_playlist"] = playlist
+            self._vibin_vars["current_playlist"] = [entry.dict() for entry in playlist_entries]
         except KeyError:
             pass
 
-        self._currently_playing.playlist.entries = [
-            PlaylistEntry(**entry) for entry in playlist
-        ]
+        self._currently_playing.playlist.entries = playlist_entries
 
     def _set_current_playlist_track_index(self, index: int):
         try:

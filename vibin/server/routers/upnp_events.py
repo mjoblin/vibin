@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from starlette.requests import Request
 
-from vibin.models import UPnPDeviceType
+from vibin.types import UPnPDeviceType
 from vibin.server.dependencies import get_vibin_instance, UPNP_EVENTS_BASE_ROUTE
 
 # -----------------------------------------------------------------------------

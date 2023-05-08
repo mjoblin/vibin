@@ -1,6 +1,6 @@
+import logging
 from functools import lru_cache
 from pathlib import Path
-import typing
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -12,12 +12,12 @@ from vibin.mediasources import MediaSource
 from vibin.models import (
     Album,
     Artist,
+    MediaFolder,
     MediaServerState,
-    ServiceSubscriptions,
+    UPnPServiceSubscriptions,
     Track,
-    UpdateMessageHandler,
-    UPnPProperties,
 )
+from vibin.types import UpdateMessageHandler, UPnPProperties
 
 
 class Asset(MediaSource):
@@ -92,7 +92,7 @@ class Asset(MediaSource):
         return MediaServerState(name=self._device.friendly_name)
 
     @property
-    def subscriptions(self) -> ServiceSubscriptions:
+    def subscriptions(self) -> UPnPServiceSubscriptions:
         return {}
 
     @property
@@ -105,7 +105,12 @@ class Asset(MediaSource):
         self._artists.cache_clear()
         self._tracks.cache_clear()
 
-    def get_path_contents(self, path):
+    def get_path_contents(
+        self, path
+    ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
+        # TODO: This isn't really producing expected results. It attempts to
+        #   convert (for example) a container.album into an Album, which isn't
+        #   strictly accurate.
         parent_id = "0"
 
         for path_part in path.parts:
@@ -145,18 +150,18 @@ class Asset(MediaSource):
         return None
 
     @lru_cache
-    def _albums(self) -> typing.List[Album]:
+    def _albums(self) -> list[Album]:
         if self.all_albums_path is None:
             return []
 
         return self.get_path_contents(Path(self.all_albums_path))
 
     @property
-    def albums(self) -> typing.List[Album]:
+    def albums(self) -> list[Album]:
         return self._albums()
 
     @lru_cache
-    def _new_albums(self) -> typing.List[Album]:
+    def _new_albums(self) -> list[Album]:
         # NOTE: This could just:
         #
         #   return self.get_path_contents(Path(self.new_albums_path))
@@ -186,21 +191,21 @@ class Asset(MediaSource):
         return [album_from_all(new_album) for new_album in new_albums]
 
     @property
-    def new_albums(self) -> typing.List[Album]:
+    def new_albums(self) -> list[Album]:
         return self._new_albums()
 
-    def album_tracks(self, album_id) -> typing.List[Track]:
+    def album_tracks(self, album_id) -> list[Track]:
         album_tracks_xml = self._get_children_xml(album_id)
         parsed_metadata = untangle.parse(album_tracks_xml)
 
         return [self._track_from_item(item) for item in parsed_metadata.DIDL_Lite.item]
 
     @lru_cache
-    def _artists(self) -> typing.List[Artist]:
+    def _artists(self) -> list[Artist]:
         return self.get_path_contents(Path(self.all_artists_path))
 
     @property
-    def artists(self) -> typing.List[Artist]:
+    def artists(self) -> list[Artist]:
         return self._artists()
 
     def artist(self, artist_id: str) -> Artist:
@@ -210,7 +215,7 @@ class Asset(MediaSource):
             raise VibinNotFoundError(f"Could not find Artist with id '{artist_id}'")
 
     @lru_cache
-    def _tracks(self) -> typing.List[Track]:
+    def _tracks(self) -> list[Track]:
         tracks: list[Track] = []
 
         for album in self.albums:
@@ -219,38 +224,41 @@ class Asset(MediaSource):
         return tracks
 
     @property
-    def tracks(self) -> typing.List[Track]:
+    def tracks(self) -> list[Track]:
         return self._tracks()
 
-    def _folder_from_container(self, container):
-        return {
-            "creator": container.dc_creator.cdata,
-            "title": container.dc_title.cdata,
-            "album_art_uri": container.upnp_albumArtURI.cdata,
-            "artist": container.upnp_artist.cdata,
-            "class": container.upnp_class.cdata,
-            "genre": container.upnp_genre.cdata,
-        }
-
-    def _album_from_container(self, container) -> Album:
-        return Album(
-            container["id"],
-            container["parentID"],
-            container.dc_title.cdata,
-            container.dc_creator.cdata,
-            container.dc_date.cdata,
-            container.upnp_artist.cdata,
-            container.upnp_genre.cdata,
-            container.upnp_albumArtURI.cdata,
+    @staticmethod
+    def _folder_from_container(container) -> MediaFolder:
+        return MediaFolder(
+            creator=container.dc_creator.cdata,
+            title=container.dc_title.cdata,
+            album_art_uri=container.upnp_albumArtURI.cdata,
+            artist=container.upnp_artist.cdata,
+            class_field=container.upnp_class.cdata,
+            genre=container.upnp_genre.cdata,
         )
 
-    def _artist_from_container(self, container) -> Artist:
+    @staticmethod
+    def _album_from_container(container) -> Album:
+        return Album(
+            id=container["id"],
+            parentId=container["parentID"],
+            title=container.dc_title.cdata,
+            creator=container.dc_creator.cdata,
+            date=container.dc_date.cdata,
+            artist=container.upnp_artist.cdata,
+            genre=container.upnp_genre.cdata,
+            album_art_uri=container.upnp_albumArtURI.cdata,
+        )
+
+    @staticmethod
+    def _artist_from_container(container) -> Artist:
         return Artist(
-            container["id"],
-            container["parentID"],
-            container.dc_title.cdata,
-            container.upnp_genre.cdata,
-            container.upnp_albumArtURI.cdata,
+            id=container["id"],
+            parentId=container["parentID"],
+            title=container.dc_title.cdata,
+            genre=container.upnp_genre.cdata,
+            album_art_uri=container.upnp_albumArtURI.cdata,
         )
 
     def _album_from_metadata(self, metadata) -> Album:
@@ -277,7 +285,8 @@ class Asset(MediaSource):
 
         return self._artist_from_container(parsed_metadata.DIDL_Lite.container)
 
-    def _track_from_item(self, item) -> Track:
+    @staticmethod
+    def _track_from_item(item) -> Track:
         # Determine artist name. A single item can have multiple artists, each
         # with a different role ("AlbumArtist", "Composer", etc. The default
         # artist seems to have no role defined. The Track class currently only
@@ -301,17 +310,17 @@ class Asset(MediaSource):
                 pass
 
         return Track(
-            item["id"],
-            item["parentID"],
-            item.dc_title.cdata,
-            item.dc_creator.cdata,
-            item.dc_date.cdata,
-            artist,
-            item.upnp_album.cdata,
-            item.res[0]["duration"],
-            item.upnp_genre.cdata,
-            item.upnp_albumArtURI.cdata,
-            item.upnp_originalTrackNumber.cdata,
+            id=item["id"],
+            parentId=item["parentID"],
+            title=item.dc_title.cdata,
+            creator=item.dc_creator.cdata,
+            date=item.dc_date.cdata,
+            artist=artist,
+            album=item.upnp_album.cdata,
+            duration=item.res[0]["duration"],
+            genre=item.upnp_genre.cdata,
+            album_art_uri=item.upnp_albumArtURI.cdata,
+            original_track_number=item.upnp_originalTrackNumber.cdata,
         )
 
     def _track_from_metadata(self, metadata) -> Track:

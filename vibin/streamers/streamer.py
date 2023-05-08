@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from enum import Enum
 import typing
 
 import upnpclient
@@ -7,15 +6,15 @@ import upnpclient
 from vibin.mediasources import MediaSource
 from vibin.models import (
     CurrentlyPlaying,
+    Playlist,
+    Presets,
+    UPnPServiceSubscriptions,
     StreamerDeviceDisplay,
     StreamerState,
-    ServiceSubscriptions,
     TransportState,
     TransportPlayState,
-    UpdateMessageHandler,
-    UPnPProperties,
 )
-
+from vibin.types import UpdateMessageHandler, UPnPProperties
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
 # http://upnp.org/specs/av/UPnP-av-AVTransport-v3-Service.pdf
@@ -69,7 +68,7 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def subscriptions(self) -> ServiceSubscriptions:
+    def subscriptions(self) -> UPnPServiceSubscriptions:
         pass
 
     @abstractmethod
@@ -85,7 +84,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist(self):
+    def playlist(self) -> Playlist:
         pass
 
     @abstractmethod
@@ -207,7 +206,7 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def presets(self):
+    def presets(self) -> Presets:
         pass
 
     @abstractmethod

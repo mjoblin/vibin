@@ -12,9 +12,9 @@ from vibin.logger import logger
 from vibin.models import (
     VibinStatus,
     UpdateMessage,
-    UpdateMessageType,
     WebSocketClientDetails,
 )
+from vibin.types import UpdateMessageType
 from vibin.server.dependencies import (
     get_media_server_proxy_target,
     get_vibin_instance,

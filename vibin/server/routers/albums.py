@@ -1,5 +1,3 @@
-from typing import List
-
 from fastapi import APIRouter, HTTPException
 
 from vibin import VibinNotFoundError
@@ -20,7 +18,7 @@ albums_router = APIRouter(prefix="/albums")
 @albums_router.get("", summary="Retrieve all Album details", tags=["Albums"])
 @transform_media_server_urls_if_proxying
 @requires_media
-def albums() -> List[Album]:
+def albums() -> list[Album]:
     try:
         return get_vibin_instance().media.albums
     except VibinNotFoundError as e:
@@ -30,7 +28,7 @@ def albums() -> List[Album]:
 @albums_router.get("/new", summary="Retrieve new Album details", tags=["Albums"])
 @transform_media_server_urls_if_proxying
 @requires_media
-def albums_new() -> List[Album]:
+def albums_new() -> list[Album]:
     try:
         return get_vibin_instance().media.new_albums
     except VibinNotFoundError as e:
@@ -56,7 +54,7 @@ def album_by_id(album_id: str) -> Album:
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def album_tracks(album_id: str) -> List[Track]:
+def album_tracks(album_id: str) -> list[Track]:
     return get_vibin_instance().media.album_tracks(album_id)
 
 

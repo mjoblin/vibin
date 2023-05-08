@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-import typing
 
 import upnpclient
 
@@ -7,11 +6,10 @@ from vibin.models import (
     Album,
     Artist,
     MediaServerState,
-    ServiceSubscriptions,
+    UPnPServiceSubscriptions,
     Track,
-    UpdateMessageHandler,
-    UPnPProperties,
 )
+from vibin.types import UpdateMessageHandler, UPnPProperties
 
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
@@ -33,7 +31,7 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def name(self):
+    def name(self) -> str:
         pass
 
     @property
@@ -72,7 +70,7 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def subscriptions(self) -> ServiceSubscriptions:
+    def subscriptions(self) -> UPnPServiceSubscriptions:
         pass
 
     @property
@@ -90,21 +88,21 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def albums(self) -> typing.List[Album]:
+    def albums(self) -> list[Album]:
         pass
 
     @property
     @abstractmethod
-    def new_albums(self) -> typing.List[Album]:
+    def new_albums(self) -> list[Album]:
         pass
 
     @abstractmethod
-    def album_tracks(self, album_id) -> typing.List[Track]:
+    def album_tracks(self, album_id) -> list[Track]:
         pass
 
     @property
     @abstractmethod
-    def artists(self) -> typing.List[Album]:
+    def artists(self) -> list[Album]:
         pass
 
     @abstractmethod
@@ -113,7 +111,7 @@ class MediaSource(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def tracks(self) -> typing.List[Track]:
+    def tracks(self) -> list[Track]:
         pass
 
     @abstractmethod

@@ -1,11 +1,10 @@
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, HTTPException
 import xmltodict
 
 from vibin import VibinNotFoundError
-from vibin.models import Track
+from vibin.models import Album, Artist, MediaFolder, Track
 from vibin.server.dependencies import (
     get_vibin_instance,
     requires_media,
@@ -22,14 +21,18 @@ browse_router = APIRouter(prefix="/browse")
 @browse_router.get(
     "/path/{media_path:path}",
     summary="Retrieve the contents of a path on the Media Server",
-    description="The `media_path` can be nested, e.g. `Albums/[All Albums]`.",
+    description="The `media_path` can be nested, e.g. `Album/[All Albums]`.",
     tags=["Browse"],
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def path_contents(media_path) -> List | Track:
+def path_contents(
+    media_path,
+) -> list[MediaFolder | Artist | Album | Track] | Track | None:
     try:
-        return get_vibin_instance().media.get_path_contents(Path(media_path))
+        return get_vibin_instance().media.get_path_contents(
+            Path(media_path.removeprefix("/"))
+        )
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

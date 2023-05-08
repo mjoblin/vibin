@@ -62,8 +62,6 @@ The project structure is broadly laid out as follows:
 ├── mediasources/                         MediaSource and its implementations (Asset)
 │   ├── asset.py
 │   └── mediasource.py
-├── models/                               Application models
-│   └── models.py
 ├── server/                               The REST API, WebSocket server, and proxies (FastAPI)
 │   ├── dependencies.py                   Dependencies relied on by various routers
 │   ├── routers/                          API routers
@@ -87,6 +85,8 @@ The project structure is broadly laid out as follows:
 ├── streamers/                         Streamer and its implementations (CXNv2)
 │   ├── cxnv2.py
 │   └── streamer.py
+├── models.py                          Application models
+├── types.py                           Application types
 └── utils.py                           General utilities
 ```
 

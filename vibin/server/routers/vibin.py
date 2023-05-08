@@ -3,7 +3,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
 
 from vibin.models import VibinStatus, VibinSettings
 from vibin.server.dependencies import get_vibin_instance, requires_media, server_status
@@ -13,15 +12,6 @@ from vibin.server.routers.websocket_server import ws_connection_manager
 # -----------------------------------------------------------------------------
 # The /vibin route.
 # -----------------------------------------------------------------------------
-
-# Models
-
-
-class VibinServerSummary(BaseModel):
-    summary: str
-
-
-# Endpoints
 
 vibin_router = APIRouter(prefix="/vibin")
 

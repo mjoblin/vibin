@@ -1,5 +1,4 @@
 import concurrent.futures
-import dataclasses
 from dataclasses import asdict
 import uuid
 import functools
@@ -44,10 +43,11 @@ from vibin.models import (
     CurrentlyPlaying,
     ExternalServiceLink,
     Favorite,
+    Favorites,
     Links,
     Lyrics,
-    Preset,
-    ServiceSubscriptions,
+    Presets,
+    UPnPServiceSubscriptions,
     StoredPlaylist,
     StoredPlaylistStatus,
     SystemState,
@@ -55,11 +55,9 @@ from vibin.models import (
     TransportPlayState,
     TransportState,
     UpdateMessage,
-    UpdateMessageHandler,
-    UpdateMessageType,
-    UPnPDeviceType,
     VibinSettings,
 )
+from .types import UpdateMessageHandler, UPnPDeviceType, UpdateMessageType
 import vibin.streamers as streamers
 from vibin.streamers import Streamer
 from .device_resolution import determine_streamer_and_media_server
@@ -157,19 +155,13 @@ class Vibin:
             UpdateMessage(message_type="PlayState", payload=self.play_state),
             UpdateMessage(message_type="TransportState", payload=self.transport_state),
             UpdateMessage(message_type="CurrentlyPlaying", payload=self.currently_playing),
+            UpdateMessage(message_type="DeviceDisplay", payload=self.streamer.device_display),
+            UpdateMessage(message_type="Favorites", payload=Favorites(favorites=self.favorites())),
+            UpdateMessage(message_type="Presets", payload=self.presets),
+            UpdateMessage(message_type="StoredPlaylists", payload=self.stored_playlist_details),
             UpdateMessage(
                 message_type="ActiveTransportControls",
                 payload=self.streamer.transport_active_controls(),
-            ),
-            UpdateMessage(
-                message_type="DeviceDisplay", payload=self.streamer.device_display
-            ),
-            UpdateMessage(
-                message_type="Favorites", payload={"favorites": self.favorites()}
-            ),
-            UpdateMessage(message_type="Presets", payload=self.presets),
-            UpdateMessage(
-                message_type="StoredPlaylists", payload=self.stored_playlist_details
             ),
         ]
 
@@ -216,7 +208,7 @@ class Vibin:
     def _check_for_active_playlist_in_store(self):
         # See if the current streamer playlist matches a stored playlist
         # streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
-        streamer_playlist = self.streamer.playlist()
+        streamer_playlist = self.streamer.playlist.entries
 
         if len(streamer_playlist) <= 0:
             # self._active_stored_playlist_id = None
@@ -228,7 +220,7 @@ class Vibin:
         # streamer playlist (same media ids in the same order). If there's more
         # than one, then pick the one most recently updated.
         active_playlist_media_ids = [
-            entry["trackMediaId"] for entry in streamer_playlist
+            entry.trackMediaId for entry in streamer_playlist
         ]
 
         stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._playlists.all()]
@@ -296,11 +288,11 @@ class Vibin:
     #   defined concepts for title, artist, album, track artist vs. album
     #   artist, composer, etc).
     @requires_media()
-    def _artist_from_track_media_info(self, track):
+    def _artist_name_from_track_media_info(self, track_info) -> str:
         artist = None
 
         try:
-            didl_item = track["DIDL-Lite"]["item"]
+            didl_item = track_info["DIDL-Lite"]["item"]
 
             # Default to dc:creator
             artist = didl_item["dc:creator"]
@@ -328,7 +320,7 @@ class Vibin:
 
     @requires_media()
     def _send_favorites_update(self):
-        self._send_update("Favorites", {"favorites": self.favorites()})
+        self._send_update("Favorites", Favorites(favorites=self.favorites()))
 
     @requires_media()
     def media_links(
@@ -368,7 +360,7 @@ class Vibin:
                     album = didl["container"]["dc:title"]
                 elif "item" in didl:
                     # Track
-                    artist = self._artist_from_track_media_info(media_info)
+                    artist = self._artist_name_from_track_media_info(media_info)
                     album = didl["item"]["upnp:album"]
                     title = didl["item"]["dc:title"]
                 else:
@@ -628,6 +620,12 @@ class Vibin:
 
     @property
     def upnp_properties(self):
+    # def upnp_properties(self) -> SystemUPnPProperties:
+        # return SystemUPnPProperties(
+        #     streamer=self.streamer.upnp_properties,
+        #     media_server=self.media.upnp_properties,
+        # )
+
         # TODO: Do a pass at redefining the shape of upnp_properties. It should
         #   include:
         #   * Standard keys shared across all streamers/media (audience: any
@@ -638,6 +636,9 @@ class Vibin:
         #
         # TODO: Confusion: streamer_name/media_source_name vs. system_state()
         # TODO: Remove data which isn't directly upnp_properties
+        #
+        # TODO: Remove everything except streamer and media_server once migrated
+        #   to other messages. Then use SystemUPnPProperties type.
         all_vars = {
             "streamer_name": self.streamer.name,
             "media_source_name": self.media.name if self.media else None,
@@ -659,6 +660,7 @@ class Vibin:
             media=self.media.system_state,
         )
 
+    # TODO: Deprecate in favor of transport_state
     @property
     def play_state(self) -> TransportPlayState:
         return self.streamer.play_state
@@ -869,7 +871,7 @@ class Vibin:
     def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
         # Extract the event.
 
-        subscriptions: ServiceSubscriptions = {}
+        subscriptions: UPnPServiceSubscriptions = {}
 
         if device == "streamer":
             subscriptions = self.streamer.subscriptions
@@ -1118,24 +1120,20 @@ class Vibin:
             raise VibinError(f"Could not update Playlist Id: {playlist_id}")
 
     @requires_media(return_val=[])
-    def favorites(
-        self, requested_types: Optional[list[str]] = None
-    ) -> list[dict[str, Album | Track]]:
-        media_hydrators = {
+    def favorites(self, requested_types: Optional[list[str]] = None) -> list[Favorite]:
+        media_hydrators: dict[str, Callable[[str], Album | Track]] = {
             "album": self.media.album,
             # "artist": self.media.artist,
             "track": self.media.track,
         }
 
         return [
-            {
-                "type": favorite["type"],
-                "media_id": favorite["media_id"],
-                "when_favorited": favorite["when_favorited"],
-                "media": dataclasses.asdict(
-                    media_hydrators[favorite["type"]](favorite["media_id"])
-                ),
-            }
+            Favorite(
+                type=favorite["type"],
+                media_id=favorite["media_id"],
+                when_favorited=favorite["when_favorited"],
+                media=media_hydrators[favorite["type"]](favorite["media_id"]),
+            )
             for favorite in self._favorites.all()
             if requested_types is None or favorite["type"] in requested_types
         ]
@@ -1191,7 +1189,7 @@ class Vibin:
         self._send_favorites_update()
 
     @property
-    def presets(self):
+    def presets(self) -> Presets:
         return self.streamer.presets
 
     def db_get(self):
