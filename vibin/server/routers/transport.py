@@ -9,7 +9,7 @@ from vibin.models import (
     TransportState,
 )
 from vibin.server.dependencies import get_vibin_instance
-from vibin.streamers import SeekTarget
+from vibin.types import SeekTarget
 
 # -----------------------------------------------------------------------------
 # The /transport route.

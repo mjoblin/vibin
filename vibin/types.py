@@ -2,6 +2,15 @@ from typing import NewType, Callable, Any, Literal
 
 from lxml import etree
 
+# -----------------------------------------------------------------------------
+# Application types
+#
+# NOTE: Although Vibin wants to be fairly streamer and media server agnostic,
+#   some of these types leak the types found in the StreamMagic and Asset
+#   implementations. If other streamers or media servers were to be supported
+#   then that would likely require a refactoring of many of these types.
+# -----------------------------------------------------------------------------
+
 MediaId = str  # Local media server id (Album, Track, Artist)
 
 PowerState = Literal["on", "off"]
@@ -33,7 +42,7 @@ UpdateMessageHandler = Callable[[UpdateMessageType, Any], None]
 
 # UPnP ------------------------------------------------------------------------
 
-UPnPDeviceType = Literal["streamer", "media"]
+UPnPDeviceType = Literal["streamer", "media_server"]
 
 UPnPServiceName = NewType("UPnPServiceName", str)
 
@@ -86,3 +95,8 @@ TransportPlayStatus = Literal[
 TransportRepeatState = Literal["off", "all"]
 
 TransportShuffleState = Literal["off", "all"]
+
+# Float: 0.0 -> 1.0 (for beginning -> end of track; 0.5 is half way into track)
+# Int: Number of seconds into the track
+# Str: h:mm:ss into the track
+SeekTarget = float | int | str

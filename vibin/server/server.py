@@ -40,7 +40,9 @@ def server_start(
     host="0.0.0.0",
     port=VIBIN_PORT,
     streamer=None,
-    media=None,
+    streamer_type=None,
+    media_server=None,
+    media_server_type=None,
     discovery_timeout=5,
     vibinui=None,
     proxy_media_server=False,
@@ -70,8 +72,10 @@ def server_start(
     # module.
     try:
         vibin = get_vibin_instance(
-            media=media,
             streamer=streamer,
+            streamer_type=streamer_type,
+            media_server=media_server,
+            media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
             subscribe_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
             proxy_media_server=proxy_media_server,

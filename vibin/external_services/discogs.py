@@ -1,9 +1,5 @@
-from functools import lru_cache
-from typing import Optional
-
 import discogs_client
 
-from vibin import VibinError
 from vibin.external_services import ExternalService
 from vibin.models import ExternalServiceLink
 
@@ -26,9 +22,9 @@ class Discogs(ExternalService):
 
     def links(
         self,
-        artist: Optional[str] = None,
-        album: Optional[str] = None,
-        track: Optional[str] = None,
+        artist: str | None = None,
+        album: str | None = None,
+        track: str | None = None,
         link_type: str = "All",
     ) -> list[ExternalServiceLink]:
         links = []

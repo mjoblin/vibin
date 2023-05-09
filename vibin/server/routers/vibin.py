@@ -36,7 +36,7 @@ def vibin_status() -> VibinStatus:
 )
 @requires_media
 def vibin_clear_media_caches() -> None:
-    get_vibin_instance().media.clear_caches()
+    get_vibin_instance().media_server.clear_caches()
 
 
 @vibin_router.get(

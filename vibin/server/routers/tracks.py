@@ -24,7 +24,7 @@ tracks_router = APIRouter(prefix="/tracks")
 @requires_media
 def tracks() -> list[Track]:
     try:
-        return get_vibin_instance().media.tracks
+        return get_vibin_instance().media_server.tracks
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -36,7 +36,7 @@ def tracks() -> list[Track]:
 @requires_media
 def track_by_id(track_id: str) -> Track:
     try:
-        return get_vibin_instance().media.track(track_id)
+        return get_vibin_instance().media_server.track(track_id)
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

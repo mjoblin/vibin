@@ -12,7 +12,7 @@ from vibin.utils import replace_media_server_urls_with_proxy
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
 
-_vibin = None
+_vibin: Vibin | None = None
 _is_proxy_for_media_server = False
 _media_server_proxy_target = None
 _media_server_proxy_client = None
@@ -21,7 +21,9 @@ _ui_static_root = None
 
 def get_vibin_instance(
     streamer=None,
-    media=None,
+    streamer_type=None,
+    media_server=None,
+    media_server_type=None,
     discovery_timeout=5,
     subscribe_callback_base="",
     proxy_media_server=False,
@@ -44,13 +46,15 @@ def get_vibin_instance(
     try:
         _vibin = Vibin(
             streamer=streamer,
-            media=media,
+            streamer_type=streamer_type,
+            media_server=media_server,
+            media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
             subscribe_callback_base=subscribe_callback_base,
         )
 
-        if _vibin.media is not None:
-            _media_server_proxy_target = _vibin.media.url_prefix
+        if _vibin.media_server is not None:
+            _media_server_proxy_target = _vibin.media_server.url_prefix
 
             if _is_proxy_for_media_server:
                 _media_server_proxy_client = httpx.AsyncClient(
@@ -64,7 +68,7 @@ def get_vibin_instance(
     if _is_proxy_for_media_server:
         # If proxying the media server has been requested but there's no media
         # server associated with the vibin instance, then do not proceed.
-        if _vibin.media is not None:
+        if _vibin.media_server is not None:
             logger.info(
                 f"Proxying art at /proxy (target: {get_media_server_proxy_target()})"
             )
@@ -110,7 +114,7 @@ def transform_media_server_urls_if_proxying(func):
 def requires_media(func):
     @functools.wraps(func)
     def wrapper_requires_media(*args, **kwargs):
-        if _vibin is None or _vibin.media is None:
+        if _vibin is None or _vibin.media_server is None:
             raise HTTPException(
                 status_code=404,
                 detail="Feature unavailable (no local media server registered with Vibin)",

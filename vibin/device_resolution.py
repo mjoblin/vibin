@@ -1,5 +1,4 @@
 import json
-from typing import Optional, Union
 from urllib.parse import urlparse
 
 import requests
@@ -35,8 +34,8 @@ def _discover_upnp_devices(timeout: int):
 
 
 def _determine_streamer_device(
-    streamer_input: Optional[str], discovery_timeout: int
-) -> Optional[upnpclient.Device]:
+    streamer_input: str | None, discovery_timeout: int
+) -> upnpclient.Device | None:
     """
     Attempt to find a streamer on the network.
 
@@ -162,10 +161,10 @@ def _determine_streamer_device(
 
 
 def _determine_media_server_device(
-    media_server_input: Optional[str],
+    media_server_input: str | None,
     discovery_timeout: int,
     streamer_device: upnpclient.Device,
-) -> Optional[upnpclient.Device]:
+) -> upnpclient.Device | None:
     """
     Attempt to find a media server on the network.
 
@@ -272,10 +271,10 @@ def _determine_media_server_device(
 
 
 def determine_streamer_and_media_server(
-    streamer_input: Optional[str],
-    media_server_input: Union[str, bool, None],
+    streamer_input: str | None,
+    media_server_input: str | bool | None,
     discovery_timeout: int = 5,
-) -> (upnpclient.Device, Optional[upnpclient.Device]):
+) -> (upnpclient.Device, upnpclient.Device | None):
     """
     Attempt to locate a streamer and (optionally) a media server on the network.
     """
