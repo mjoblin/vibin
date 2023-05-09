@@ -3,7 +3,7 @@ from .artists import artists_router
 from .browse import browse_router
 from .favorites import favorites_router
 from .media_server_proxy import media_server_proxy_router
-from .playlist import playlist_router
+from .active_playlist import playlist_router
 from .presets import presets_router
 from .stored_playlists import stored_playlists_router
 from .system import system_router

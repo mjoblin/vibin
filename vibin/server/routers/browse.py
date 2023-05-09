@@ -39,7 +39,7 @@ def path_contents(
 
 @browse_router.get(
     "/children/{parent_id}",
-    summary="Retrieve the children of the given Parent ID on the Media Server",
+    summary="Retrieve the children of a Parent ID",
     tags=["Browse"],
 )
 @transform_media_server_urls_if_proxying
@@ -49,9 +49,7 @@ def browse(parent_id: str):
 
 
 @browse_router.get(
-    "/metadata/{id}",
-    summary="Retrieve the Media Server's metadata for the given Media ID",
-    tags=["Browse"],
+    "/metadata/{id}", summary="Retrieve metadata for a Media ID", tags=["Browse"]
 )
 @transform_media_server_urls_if_proxying
 @requires_media

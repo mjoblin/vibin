@@ -29,8 +29,8 @@ from vibin.models import (
     ActiveTrack,
     CurrentlyPlaying,
     MediaFormat,
-    PlaylistEntry,
-    Playlist,
+    ActivePlaylistEntry,
+    ActivePlaylist,
     Presets,
     MediaSource,
     MediaSources,
@@ -139,7 +139,7 @@ class CXNv2(Streamer):
         self._play_state: TransportPlayState = TransportPlayState()
         self._transport_state: TransportState = TransportState()
         self._device_display_raw = {}
-        self._cached_playlist_entries: list[PlaylistEntry] = []
+        self._cached_playlist_entries: list[ActivePlaylistEntry] = []
 
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
@@ -354,7 +354,7 @@ class CXNv2(Streamer):
 
     def play_playlist_id(self, playlist_id: int):
         try:
-            playlist_index = self._playlist_array().index(playlist_id)
+            playlist_index = self._retrieve_active_playlist_array().index(playlist_id)
             self.play_playlist_index(playlist_index)
         except ValueError:
             pass
@@ -581,10 +581,10 @@ class CXNv2(Streamer):
         return info["CurrentTransportStatus"]
 
     @property
-    def playlist(self) -> Playlist:
+    def playlist(self) -> ActivePlaylist:
         return self._currently_playing.playlist
 
-    def _retrieve_playlist_array(self) -> list[int]:
+    def _retrieve_active_playlist_array(self) -> list[int]:
         try:
             response = self._device.PlaylistExtension.IdArray()
             playlist_encoded = response["aIdArray"]
@@ -594,14 +594,13 @@ class CXNv2(Streamer):
             if sys.byteorder == "little":
                 playlist_array.byteswap()
 
-            # TODO: list(playlist_array) ?
-            return playlist_array
+            return list(playlist_array)
         except Exception:
             # TODO
             return []
 
-    def _retrieve_playlist_entries(self) -> list[PlaylistEntry]:
-        playlist_entry_ids = self._retrieve_playlist_array()
+    def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
+        playlist_entry_ids = self._retrieve_active_playlist_array()
 
         response = self._device.PlaylistExtension.ReadList(
             aIdList=",".join([str(id) for id in playlist_entry_ids])
@@ -666,7 +665,7 @@ class CXNv2(Streamer):
         active_playlist_media_ids = [entry["trackMediaId"] for entry in results]
 
         # Coerce the playlist into a list of PlaylistEntry objects
-        results_as_entries = [PlaylistEntry(**result) for result in results]
+        results_as_entries = [ActivePlaylistEntry(**result) for result in results]
 
         if cached_playlist_media_ids != active_playlist_media_ids:
             # NOTE: All changes to the active playlist should be detected here,
@@ -797,7 +796,9 @@ class CXNv2(Streamer):
                         update_dict = json.loads(update)
 
                         if update_dict["path"] == "/zone/play_state":
-                            self._play_state = TransportPlayState(**update_dict["params"]["data"])
+                            self._play_state = TransportPlayState(
+                                **update_dict["params"]["data"]
+                            )
 
                             play_state = update_dict["params"]["data"]
 
@@ -805,19 +806,25 @@ class CXNv2(Streamer):
                             try:
                                 self._transport_state.play_state = play_state["state"]
                                 self._transport_state.repeat = play_state["mode_repeat"]
-                                self._transport_state.shuffle = play_state["mode_shuffle"]
+                                self._transport_state.shuffle = play_state[
+                                    "mode_shuffle"
+                                ]
                             except KeyError:
                                 pass
 
                             # Extract the active track details from play_state metadata.
                             try:
-                                self._currently_playing.active_track = ActiveTrack(**play_state["metadata"])
+                                self._currently_playing.active_track = ActiveTrack(
+                                    **play_state["metadata"]
+                                )
                             except KeyError:
                                 pass
 
                             # Extract the format details from play_state metadata.
                             try:
-                                self._currently_playing.format = MediaFormat(**play_state["metadata"])
+                                self._currently_playing.format = MediaFormat(
+                                    **play_state["metadata"]
+                                )
                             except KeyError:
                                 pass
 
@@ -845,19 +852,27 @@ class CXNv2(Streamer):
                                 play_state_queue_index = self._play_state.queue_index
 
                                 if play_state_queue_index is not None:
-                                    queue_entry = self._cached_playlist_entries[play_state_queue_index]
+                                    queue_entry = self._cached_playlist_entries[
+                                        play_state_queue_index
+                                    ]
 
                                     if (
                                         self._play_state.state == "pause"
                                         and queue_entry.title == play_state_title
                                     ):
                                         if play_state_metadata.album is None:
-                                            play_state_metadata.album = queue_entry.album
+                                            play_state_metadata.album = (
+                                                queue_entry.album
+                                            )
                                         if play_state_metadata.artist is None:
-                                            play_state_metadata.artist = queue_entry.artist
+                                            play_state_metadata.artist = (
+                                                queue_entry.artist
+                                            )
                                         if play_state_metadata.duration is None:
-                                            play_state_metadata.duration = utils.hmmss_to_secs(
-                                                queue_entry.duration
+                                            play_state_metadata.duration = (
+                                                utils.hmmss_to_secs(
+                                                    queue_entry.duration
+                                                )
                                             )
                             except (IndexError, KeyError) as e:
                                 pass
@@ -911,21 +926,26 @@ class CXNv2(Streamer):
                             #   streamer types.
                             try:
                                 display_info = update_dict["params"]["data"]["display"]
-                                self._system_state.display = StreamerDeviceDisplay(**display_info)
+                                self._system_state.display = StreamerDeviceDisplay(
+                                    **display_info
+                                )
 
                                 # TODO: Remove the following?
-                                if DeepDiff(display_info, self._device_display_raw) != {}:
+                                if (
+                                    DeepDiff(display_info, self._device_display_raw)
+                                    != {}
+                                ):
                                     self._device_display_raw = display_info
-                                    self._on_update("DeviceDisplay", self.device_display)
+                                    self._on_update(
+                                        "DeviceDisplay", self.device_display
+                                    )
                             except KeyError:
                                 pass
                         elif update_dict["path"] == "/presets/list":
                             self._on_update("Presets", update_dict["params"]["data"])
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
-                            self._system_state.power = (
-                                "on" if power == "ON" else "off"
-                            )
+                            self._system_state.power = "on" if power == "ON" else "off"
                             self._on_update("System", self._system_state)
                         else:
                             logger.warning(f"Unknown message: {update}")
@@ -1111,7 +1131,9 @@ class CXNv2(Streamer):
 
             try:
                 _, marshaled_value = marshal_value(
-                    self._device[service_name].statevars[param_name.localname]["datatype"],
+                    self._device[service_name].statevars[param_name.localname][
+                        "datatype"
+                    ],
                     parameter.get("val"),
                 )
 
@@ -1181,7 +1203,9 @@ class CXNv2(Streamer):
                 xml = xml.replace("&", "&amp;")
 
                 try:
-                    self._upnp_properties[service_name][json_var_name] = xmltodict.parse(xml)
+                    self._upnp_properties[service_name][
+                        json_var_name
+                    ] = xmltodict.parse(xml)
                 except xml.parsers.expat.ExpatError as e:
                     logger.error(
                         f"Could not convert XML to JSON for "
@@ -1221,11 +1245,13 @@ class CXNv2(Streamer):
             )
 
     def _set_current_playlist_entries(self):
-        playlist_entries = self._retrieve_playlist_entries()
+        playlist_entries = self._retrieve_active_playlist_entries()
 
         # TODO: Remove _vibin_vars once the UI has migrated off of them
         try:
-            self._vibin_vars["current_playlist"] = [entry.dict() for entry in playlist_entries]
+            self._vibin_vars["current_playlist"] = [
+                entry.dict() for entry in playlist_entries
+            ]
         except KeyError:
             pass
 
@@ -1310,7 +1336,7 @@ class CXNv2(Streamer):
             self.set_upnp_property(
                 service_name=service_name,
                 property_name=property_element.tag,
-                property_value_xml=property_element.text
+                property_value_xml=property_element.text,
             )
 
         self.set_vibin_upnp_properties()

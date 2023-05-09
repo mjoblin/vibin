@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -58,7 +57,7 @@ class VibinStatus(BaseModel):
     clients: list[WebSocketClientDetails]
 
 
-# System ----------------------------------------------------------------------
+# System (top-level streamer and media server) --------------------------------
 
 
 class MediaSource(BaseModel):
@@ -256,10 +255,10 @@ class TransportPlayState(BaseModel):
     metadata: TransportPlayStateMetadata | None
 
 
-# Active Playlist -------------------------------------------------------------
+# Streamer's active playlist --------------------------------------------------
 
 
-class PlaylistEntry(BaseModel):
+class ActivePlaylistEntry(BaseModel):
     """A single entry in the streamer's active playlist."""
 
     album: str | None
@@ -276,14 +275,14 @@ class PlaylistEntry(BaseModel):
     trackMediaId: str | None
 
 
-class Playlist(BaseModel):
+class ActivePlaylist(BaseModel):
     """The streamer's active playlist."""
 
     current_track_index: int | None
-    entries: list[PlaylistEntry] = []
+    entries: list[ActivePlaylistEntry] = []
 
 
-class PlaylistModifyPayload(BaseModel):
+class ActivePlaylistModifyPayload(BaseModel):
     """A modification request to the streamer's active playlist."""
 
     action: PlaylistModifyAction
@@ -334,7 +333,7 @@ class CurrentlyPlaying(BaseModel):
     album_media_id: str | None
     track_media_id: str | None
     active_track: ActiveTrack = ActiveTrack()
-    playlist: Playlist = Playlist()
+    playlist: ActivePlaylist = ActivePlaylist()
     format: MediaFormat = MediaFormat()
     stream: MediaStream = MediaStream()
 
@@ -344,8 +343,7 @@ class CurrentlyPlaying(BaseModel):
 StoredPlaylistEntryId = str
 
 
-@dataclass
-class StoredPlaylist:
+class StoredPlaylist(BaseModel):
     id: str
     name: str
     created: float
@@ -353,11 +351,15 @@ class StoredPlaylist:
     entry_ids: list[StoredPlaylistEntryId]
 
 
-@dataclass
-class StoredPlaylistStatus:
+class StoredPlaylistStatus(BaseModel):
     active_id: str | None = None
     is_active_synced_with_store: bool = False
-    is_activating_new_playlist: bool = False
+    is_activating_playlist: bool = False
+
+
+class StoredPlaylists(BaseModel):
+    status: StoredPlaylistStatus
+    playlists: list[StoredPlaylist]
 
 
 # Favorites -------------------------------------------------------------------

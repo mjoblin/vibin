@@ -8,13 +8,10 @@ from vibin.models import StoredPlaylist
 from vibin.server.dependencies import get_vibin_instance
 
 # -----------------------------------------------------------------------------
-# The /playlists route.
-#
-# TODO: Consider renaming to /storedplaylists to more clearly distinguish from
-#  /playlist
+# The /stored_playlists route.
 # -----------------------------------------------------------------------------
 
-stored_playlists_router = APIRouter(prefix="/playlists")
+stored_playlists_router = APIRouter(prefix="/stored_playlists")
 
 
 @stored_playlists_router.get(
@@ -85,7 +82,7 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
     # TODO: Is it possible to configure FastAPI to always treat
     #   VibinNotFoundError as a 404 and VibinDeviceError as a 503?
     try:
-        return get_vibin_instance().set_current_playlist(playlist_id)
+        return get_vibin_instance().set_active_playlist(playlist_id)
     except VibinNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Playlist not found: {playlist_id}"
@@ -104,6 +101,6 @@ def playlists_current_store(
 ) -> StoredPlaylist:
     metadata = {"name": name} if name else None
 
-    return get_vibin_instance().store_current_playlist(
+    return get_vibin_instance().store_active_playlist(
         metadata=metadata, replace=replace
     )

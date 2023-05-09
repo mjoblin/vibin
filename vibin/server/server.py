@@ -110,20 +110,20 @@ def server_start(
         },
         {
             "name": "Media System",
-            "description": "Interact with devices in the media system as a whole (Streamer and Media Source)",
+            "description": "Interact with devices in the media system as a whole (Streamer and Media Server)",
         },
-        {"name": "Transport", "description": "Interact with the Streamer transport"},
-        {"name": "Artists", "description": "Interact with Artists"},
-        {"name": "Albums", "description": "Interact with Albums"},
-        {"name": "Tracks", "description": "Interact with Tracks"},
+        {"name": "Artists", "description": "Interact with Media Server Artists"},
+        {"name": "Albums", "description": "Interact with Media Server Albums"},
+        {"name": "Tracks", "description": "Interact with Media Server Tracks"},
+        {"name": "Browse", "description": "Browse media on the Media Server"},
+        {"name": "Transport", "description": "Interact with the Streamer's transport"},
         {
             "name": "Active Playlist",
-            "description": "Interact with the Streamer's active Playlist",
+            "description": "Interact with the Streamer's Active Playlist",
         },
+        {"name": "Presets", "description": "Interact with the Streamer's Presets"},
         {"name": "Stored Playlists", "description": "Interact with Stored Playlists"},
         {"name": "Favorites", "description": "Interact with Favorites"},
-        {"name": "Presets", "description": "Interact with Presets"},
-        {"name": "Browse", "description": "Browse media on the Media Server"},
     ]
 
     # Create the vibin FastAPI application.

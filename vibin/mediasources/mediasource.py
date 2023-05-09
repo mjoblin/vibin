@@ -6,8 +6,8 @@ from vibin.models import (
     Album,
     Artist,
     MediaServerState,
-    UPnPServiceSubscriptions,
     Track,
+    UPnPServiceSubscriptions,
 )
 from vibin.types import UpdateMessageHandler, UPnPProperties
 
