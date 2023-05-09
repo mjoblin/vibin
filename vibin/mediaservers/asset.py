@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -20,7 +21,11 @@ from vibin.models import (
 from vibin.types import UpdateMessageHandler, UPnPProperties
 
 
+# -----------------------------------------------------------------------------
+# Implementation of MediaServer for the Asset UPnP Server.
+#
 # https://dbpoweramp.com/asset-upnp-dlna.htm
+# -----------------------------------------------------------------------------
 
 
 class Asset(MediaServer):
@@ -48,8 +53,26 @@ class Asset(MediaServer):
         }
 
     @property
-    def upnp_properties(self) -> UPnPProperties:
-        return self._upnp_properties
+    def name(self) -> str:
+        return self._device.friendly_name
+
+    @property
+    def device(self):
+        return self._device
+
+    @property
+    def device_state(self) -> MediaServerState:
+        return MediaServerState(name=self._device.friendly_name)
+
+    @property
+    def device_udn(self) -> str:
+        return self._device.udn.removeprefix("uuid:")
+
+    def clear_caches(self):
+        self._albums.cache_clear()
+        self._new_albums.cache_clear()
+        self._artists.cache_clear()
+        self._tracks.cache_clear()
 
     @property
     def all_albums_path(self) -> str | None:
@@ -76,81 +99,11 @@ class Asset(MediaServer):
         self._all_artists_path = path
 
     @property
-    def name(self) -> str:
-        return self._device.friendly_name
-
-    @property
-    def device(self):
-        return self._device
-
-    @property
     def url_prefix(self):
         media_location = self.device.location
         parsed_location = urlparse(media_location)
 
         return f"{parsed_location.scheme}://{parsed_location.netloc}"
-
-    @property
-    def device_state(self) -> MediaServerState:
-        return MediaServerState(name=self._device.friendly_name)
-
-    @property
-    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
-        return {}
-
-    @property
-    def device_udn(self) -> str:
-        return self._device.udn.removeprefix("uuid:")
-
-    def clear_caches(self):
-        self._albums.cache_clear()
-        self._new_albums.cache_clear()
-        self._artists.cache_clear()
-        self._tracks.cache_clear()
-
-    def get_path_contents(
-        self, path
-    ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
-        # TODO: This isn't really producing expected results. It attempts to
-        #   convert (for example) a container.album into an Album, which isn't
-        #   strictly accurate.
-        parent_id = "0"
-
-        for path_part in path.parts:
-            parent_id, element_type = self._child_id_by_title(parent_id, path_part)
-
-        leaf_id = parent_id
-
-        if element_type == "container":
-            children = untangle.parse(self._get_children_xml(leaf_id))
-
-            contents = []
-
-            if "container" in children.DIDL_Lite:
-                for container in children.DIDL_Lite.container:
-                    this_class = container.upnp_class.cdata
-
-                    if this_class.startswith("object.container.album.musicAlbum"):
-                        contents.append(self._album_from_container(container))
-                    elif this_class.startswith("object.container.person.musicArtist"):
-                        contents.append(self._artist_from_container(container))
-                    elif this_class.startswith("object.container"):
-                        contents.append(self._folder_from_container(container))
-            elif "item" in children.DIDL_Lite:
-                for item in children.DIDL_Lite.item:
-                    this_class = item.upnp_class.cdata
-
-                    if this_class == "object.item.audioItem.musicTrack":
-                        contents.append(self._track_from_item(item))
-
-            return contents
-        elif element_type == "item":
-            try:
-                return self._track_from_metadata(self.get_metadata(leaf_id))
-            except VibinNotFoundError as e:
-                return None
-
-        return None
 
     @lru_cache
     def _albums(self) -> list[Album]:
@@ -230,8 +183,101 @@ class Asset(MediaServer):
     def tracks(self) -> list[Track]:
         return self._tracks()
 
+    def album(self, album_id: str) -> Album:
+        try:
+            return self._album_from_metadata(self.get_metadata(album_id))
+        except VibinNotFoundError as e:
+            raise VibinNotFoundError(f"Could not find Album with id '{album_id}'")
+
+    def track(self, track_id: str) -> Track:
+        try:
+            return self._track_from_metadata(self.get_metadata(track_id))
+        except VibinNotFoundError as e:
+            raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
+
+    def get_path_contents(
+        self, path
+    ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
+        # TODO: This isn't really producing expected results. It attempts to
+        #   convert (for example) a container.album into an Album, which isn't
+        #   strictly accurate.
+        parent_id = "0"
+
+        for path_part in path.parts:
+            parent_id, element_type = self._child_id_by_title(parent_id, path_part)
+
+        leaf_id = parent_id
+
+        if element_type == "container":
+            children = untangle.parse(self._get_children_xml(leaf_id))
+
+            contents = []
+
+            if "container" in children.DIDL_Lite:
+                for container in children.DIDL_Lite.container:
+                    this_class = container.upnp_class.cdata
+
+                    if this_class.startswith("object.container.album.musicAlbum"):
+                        contents.append(self._album_from_container(container))
+                    elif this_class.startswith("object.container.person.musicArtist"):
+                        contents.append(self._artist_from_container(container))
+                    elif this_class.startswith("object.container"):
+                        contents.append(self._folder_from_container(container))
+            elif "item" in children.DIDL_Lite:
+                for item in children.DIDL_Lite.item:
+                    this_class = item.upnp_class.cdata
+
+                    if this_class == "object.item.audioItem.musicTrack":
+                        contents.append(self._track_from_item(item))
+
+            return contents
+        elif element_type == "item":
+            try:
+                return self._track_from_metadata(self.get_metadata(leaf_id))
+            except VibinNotFoundError as e:
+                return None
+
+        return None
+
+    def children(self, parent_id: str = "0") -> MediaBrowseSingleLevel:
+        return MediaBrowseSingleLevel(
+            id=parent_id,
+            children=self._children_xml_to_list(self._get_children_xml(parent_id)),
+        )
+
+    def get_metadata(self, id: str):
+        try:
+            browse_result = self._device.ContentDirectory.Browse(
+                ObjectID=id,
+                BrowseFlag="BrowseMetadata",
+                Filter="*",
+                StartingIndex=0,
+                RequestedCount=0,
+                SortCriteria="",
+            )
+
+            return browse_result["Result"]
+        except upnpclient.soap.SOAPProtocolError as e:
+            raise VibinNotFoundError(f"Could not find media id {id}")
+
+    @property
+    def upnp_properties(self) -> UPnPProperties:
+        return self._upnp_properties
+
+    @property
+    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
+        return {}
+
+    # -------------------------------------------------------------------------
+    # Additional helpers (not part of MediaServer interface).
+    # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # Static
+
     @staticmethod
     def _folder_from_container(container) -> MediaFolder:
+        """Convert a UPnP container to a MediaFolder."""
         return MediaFolder(
             creator=container.dc_creator.cdata,
             title=container.dc_title.cdata,
@@ -243,6 +289,7 @@ class Asset(MediaServer):
 
     @staticmethod
     def _album_from_container(container) -> Album:
+        """Convert a UPnP container to an Album."""
         return Album(
             id=container["id"],
             parentId=container["parentID"],
@@ -256,6 +303,7 @@ class Asset(MediaServer):
 
     @staticmethod
     def _artist_from_container(container) -> Artist:
+        """Convert a UPnP container to an Artist."""
         return Artist(
             id=container["id"],
             parentId=container["parentID"],
@@ -264,32 +312,22 @@ class Asset(MediaServer):
             album_art_uri=container.upnp_albumArtURI.cdata,
         )
 
-    def _album_from_metadata(self, metadata) -> Album:
-        parsed_metadata = untangle.parse(metadata)
+    @staticmethod
+    def _playable_vibin_type(vibin_type: str) -> bool:
+        """Determine whether the givin UPnP class is playable by Vibin."""
+        # See ContentDirectory:4 spec, page 162, for all class names
+        playable_upnp_classes = [
+            "object.container.album.musicAlbum",
+            "object.item.audioItem.musicTrack",
+            "object.item.audioItem.audioBroadcast",
+        ]
 
-        if (
-            "container" not in parsed_metadata.DIDL_Lite
-            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
-            != "object.container.album.musicAlbum"
-        ):
-            raise VibinNotFoundError(f"Could not find Album")
-
-        return self._album_from_container(parsed_metadata.DIDL_Lite.container)
-
-    def _artist_from_metadata(self, metadata) -> Artist:
-        parsed_metadata = untangle.parse(metadata)
-
-        if (
-            "container" not in parsed_metadata.DIDL_Lite
-            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
-            != "object.container.person.musicArtist"
-        ):
-            raise VibinNotFoundError(f"Could not find Artist")
-
-        return self._artist_from_container(parsed_metadata.DIDL_Lite.container)
+        return vibin_type in playable_upnp_classes
 
     @staticmethod
     def _track_from_item(item) -> Track:
+        """Create a Track from a UPnP item's XML."""
+
         # Determine artist name. A single item can have multiple artists, each
         # with a different role ("AlbumArtist", "Composer", etc. The default
         # artist seems to have no role defined. The Track class currently only
@@ -326,7 +364,36 @@ class Asset(MediaServer):
             original_track_number=item.upnp_originalTrackNumber.cdata,
         )
 
+    # -------------------------------------------------------------------------
+
+    def _album_from_metadata(self, metadata) -> Album:
+        """Create an Album from the Media Server's item metadata."""
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "container" not in parsed_metadata.DIDL_Lite
+            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
+            != "object.container.album.musicAlbum"
+        ):
+            raise VibinNotFoundError(f"Could not find Album")
+
+        return self._album_from_container(parsed_metadata.DIDL_Lite.container)
+
+    def _artist_from_metadata(self, metadata) -> Artist:
+        """Create an Artist from the Media Server's item metadata."""
+        parsed_metadata = untangle.parse(metadata)
+
+        if (
+            "container" not in parsed_metadata.DIDL_Lite
+            or parsed_metadata.DIDL_Lite.container.upnp_class.cdata
+            != "object.container.person.musicArtist"
+        ):
+            raise VibinNotFoundError(f"Could not find Artist")
+
+        return self._artist_from_container(parsed_metadata.DIDL_Lite.container)
+
     def _track_from_metadata(self, metadata) -> Track:
+        """Create a Track from the Media Server's item metadata."""
         parsed_metadata = untangle.parse(metadata)
 
         if (
@@ -338,51 +405,8 @@ class Asset(MediaServer):
 
         return self._track_from_item(parsed_metadata.DIDL_Lite.item)
 
-    def album(self, album_id: str) -> Album:
-        try:
-            return self._album_from_metadata(self.get_metadata(album_id))
-        except VibinNotFoundError as e:
-            raise VibinNotFoundError(f"Could not find Album with id '{album_id}'")
-
-    def track(self, track_id: str) -> Track:
-        try:
-            return self._track_from_metadata(self.get_metadata(track_id))
-        except VibinNotFoundError as e:
-            raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
-
-    def children(self, parent_id: str = "0") -> MediaBrowseSingleLevel:
-        return MediaBrowseSingleLevel(
-            id=parent_id,
-            children=self._child_xml_to_list(self._get_children_xml(parent_id)),
-        )
-
-    def get_metadata(self, id: str):
-        try:
-            browse_result = self._device.ContentDirectory.Browse(
-                ObjectID=id,
-                BrowseFlag="BrowseMetadata",
-                Filter="*",
-                StartingIndex=0,
-                RequestedCount=0,
-                SortCriteria="",
-            )
-
-            return browse_result["Result"]
-        except upnpclient.soap.SOAPProtocolError as e:
-            raise VibinNotFoundError(f"Could not find media id {id}")
-
-    @staticmethod
-    def _playable_vibin_type(vibin_type: str):
-        # See ContentDirectory:4 spec, page 162, for all class names
-        playable_upnp_classes = [
-            "object.container.album.musicAlbum",
-            "object.item.audioItem.musicTrack",
-            "object.item.audioItem.audioBroadcast",
-        ]
-
-        return vibin_type in playable_upnp_classes
-
-    def _child_xml_to_list(self, xml: str):
+    def _children_xml_to_list(self, xml: str) -> list[dict[str, Any]]:
+        """Create a list of dicts, one per child, from the given xml."""
         elem_name_map = {
             "dc:title": "title",
             "dc:creator": "creator",
@@ -424,6 +448,7 @@ class Asset(MediaServer):
         return child_list
 
     def _xml_elem_field_value(self, elem, field):
+        """Extract a field's value from the given elem's XML."""
         find_result = elem.find(field, namespaces=self._media_namespaces)
 
         if not isinstance(find_result, ET.Element):
@@ -434,7 +459,11 @@ class Asset(MediaServer):
 
         return value
 
-    def _child_id_by_title(self, parent_id, title):
+    def _child_id_by_title(self, parent_id, title) -> (str, str):
+        """Find a single child by title, under the given parent_id.
+
+        Returns the child's id and type.
+        """
         children_xml = self._get_children_xml(parent_id)
         root = ET.fromstring(children_xml)
 
@@ -463,6 +492,7 @@ class Asset(MediaServer):
         return found.attrib["id"], element_type
 
     def _get_children_xml(self, id):
+        """Get the children of the given id from the Media Server."""
         browse_result = self._device.ContentDirectory.Browse(
             ObjectID=id,
             BrowseFlag="BrowseDirectChildren",
