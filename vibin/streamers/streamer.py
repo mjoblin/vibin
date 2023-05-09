@@ -6,7 +6,7 @@ import upnpclient
 from vibin.mediasources import MediaSource
 from vibin.models import (
     CurrentlyPlaying,
-    Playlist,
+    ActivePlaylist,
     Presets,
     UPnPServiceSubscriptions,
     StreamerDeviceDisplay,
@@ -84,7 +84,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def playlist(self) -> Playlist:
+    def playlist(self) -> ActivePlaylist:
         pass
 
     @abstractmethod
