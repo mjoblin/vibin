@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
@@ -96,7 +94,7 @@ def playlist_modify_multiple_entries(payload: ActivePlaylistModifyPayload):
 def playlist_modify_single_entry(
     media_id: str,
     action: PlaylistModifyAction = "REPLACE",
-    insert_index: Optional[int] = None,
+    insert_index: int | None = None,
 ):
     get_vibin_instance().modify_playlist(media_id, action, insert_index)
 

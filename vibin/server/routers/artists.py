@@ -20,7 +20,7 @@ artists_router = APIRouter(prefix="/artists")
 @requires_media
 def artists() -> list[Artist]:
     try:
-        return get_vibin_instance().media.artists
+        return get_vibin_instance().media_server.artists
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -32,6 +32,6 @@ def artists() -> list[Artist]:
 @requires_media
 def artist_by_id(artist_id: str) -> Artist:
     try:
-        return get_vibin_instance().media.artist(artist_id)
+        return get_vibin_instance().media_server.artist(artist_id)
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

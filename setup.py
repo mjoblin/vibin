@@ -18,7 +18,8 @@ setup(
     packages=[
         "vibin",
         "vibin.cli",
-        "vibin.mediasources",
+        "vibin.external_services",
+        "vibin.mediaservers",
         "vibin.streamers",
         "vibin.server",
     ],

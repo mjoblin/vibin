@@ -61,7 +61,15 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--media",
+    "--streamer-type",
+    help="Streamer type (e.g. StreamMagic). Usually not required.",
+    metavar="TYPE",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--media-server",
     "-m",
     help="Media server (UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
@@ -70,7 +78,15 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--no-media",
+    "--media-server-type",
+    help="Media server type (e.g. Asset). Usually not required.",
+    metavar="TYPE",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--no-media-server",
     help="Ignore any local media servers.",
     is_flag=True,
     default=False,
@@ -110,8 +126,10 @@ def serve(
     host,
     port,
     streamer,
-    media,
-    no_media,
+    streamer_type,
+    media_server,
+    media_server_type,
+    no_media_server,
     discovery_timeout,
     vibinui,
     no_vibinui,
@@ -139,8 +157,8 @@ def serve(
 
     If a local media server is also available on the network then it will be
     auto-detected from the Cambridge Audio streamer settings. Alternatively,
-    the --media flag can be used to specify a media server UPnP friendly name,
-    or UPnP location URL.
+    the --media-server flag can be used to specify a media server UPnP friendly
+    name, or UPnP location URL.
 
     WEB INTERFACE
 
@@ -164,15 +182,15 @@ def serve(
 
     To specify a streamer and media server by UPnP friendly name:
 
-     $ vibin serve --streamer MyStreamer --media MyMediaServer
+     $ vibin serve --streamer MyStreamer --media-server MyMediaServer
 
     To serve the Web UI and act as a proxy for all media server URLs:
 
      $ vibin serve --vibinui auto --proxy-media-server
     """
-    if proxy_media_server and no_media:
+    if proxy_media_server and no_media_server:
         raise click.ClickException(
-            f"Cannot specify both --proxy-media-server and --no-media"
+            f"Cannot specify both --proxy-media-server and --no-media-server"
         )
 
     if vibinui == "auto" and not no_vibinui:
@@ -198,7 +216,9 @@ def serve(
             host=host,
             port=port,
             streamer=streamer,
-            media=False if no_media else media,
+            streamer_type=streamer_type,
+            media_server=False if no_media_server else media_server,
+            media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
             vibinui=vibinui if not no_vibinui else None,
             proxy_media_server=proxy_media_server,

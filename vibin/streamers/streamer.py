@@ -1,9 +1,8 @@
 from abc import ABCMeta, abstractmethod
-import typing
 
 import upnpclient
 
-from vibin.mediasources import MediaSource
+from vibin.mediaservers import MediaServer
 from vibin.models import (
     CurrentlyPlaying,
     ActivePlaylist,
@@ -14,7 +13,7 @@ from vibin.models import (
     TransportState,
     TransportPlayState,
 )
-from vibin.types import UpdateMessageHandler, UPnPProperties
+from vibin.types import SeekTarget, UpdateMessageHandler, UPnPProperties
 
 # http://upnp.org/specs/av/UPnP-av-AVArchitecture-v2.pdf
 # http://upnp.org/specs/av/UPnP-av-AVTransport-v3-Service.pdf
@@ -26,12 +25,6 @@ from vibin.types import UpdateMessageHandler, UPnPProperties
 #     STOPPED = "STOPPED"
 #     PAUSED = "PAUSED"
 #     TRANSITIONING = "TRANSITIONING"
-
-
-# Float: 0.0 -> 1.0 (for beginning -> end of track; 0.5 is half way into track)
-# Int: Number of seconds into the track
-# Str: h:mm:ss into the track
-SeekTarget = typing.Union[float, int, str]
 
 
 class Streamer(metaclass=ABCMeta):
@@ -54,7 +47,7 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def register_media_source(self, media_source: MediaSource):
+    def register_media_server(self, media_server: MediaServer):
         pass
 
     @abstractmethod
@@ -68,7 +61,12 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def subscriptions(self) -> UPnPServiceSubscriptions:
+    def device_udn(self):
+        pass
+
+    @property
+    @abstractmethod
+    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
         pass
 
     @abstractmethod
@@ -112,11 +110,11 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def repeat(self, enabled: typing.Optional[str]):
+    def repeat(self, enabled: str | None):
         pass
 
     @abstractmethod
-    def shuffle(self, enabled: typing.Optional[str]):
+    def shuffle(self, enabled: str | None):
         pass
 
     # TODO: Make this a settable property
@@ -131,7 +129,7 @@ class Streamer(metaclass=ABCMeta):
         self,
         metadata: str,
         action: str = "REPLACE",
-        insert_index: typing.Optional[int] = None,
+        insert_index: int | None = None,
     ):
         pass
 
@@ -181,7 +179,7 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def system_state(self) -> StreamerState:
+    def device_state(self) -> StreamerState:
         pass
 
     @abstractmethod

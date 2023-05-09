@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
@@ -40,7 +38,7 @@ def playlists_id(playlist_id: str) -> StoredPlaylist:
 @stored_playlists_router.put(
     "/{playlist_id}", summary="Update a Stored Playlist", tags=["Stored Playlists"]
 )
-def playlists_id_update(playlist_id: str, name: Optional[str] = None) -> StoredPlaylist:
+def playlists_id_update(playlist_id: str, name: str | None = None) -> StoredPlaylist:
     metadata = {"name": name} if name else None
 
     try:
@@ -97,7 +95,7 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
     tags=["Stored Playlists"],
 )
 def playlists_current_store(
-    name: Optional[str] = None, replace: Optional[bool] = True
+    name: str | None = None, replace: bool | None = True
 ) -> StoredPlaylist:
     metadata = {"name": name} if name else None
 

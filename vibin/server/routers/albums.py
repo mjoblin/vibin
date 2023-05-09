@@ -20,7 +20,7 @@ albums_router = APIRouter(prefix="/albums")
 @requires_media
 def albums() -> list[Album]:
     try:
-        return get_vibin_instance().media.albums
+        return get_vibin_instance().media_server.albums
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -30,7 +30,7 @@ def albums() -> list[Album]:
 @requires_media
 def albums_new() -> list[Album]:
     try:
-        return get_vibin_instance().media.new_albums
+        return get_vibin_instance().media_server.new_albums
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -42,7 +42,7 @@ def albums_new() -> list[Album]:
 @requires_media
 def album_by_id(album_id: str) -> Album:
     try:
-        return get_vibin_instance().media.album(album_id)
+        return get_vibin_instance().media_server.album(album_id)
     except VibinNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -55,7 +55,7 @@ def album_by_id(album_id: str) -> Album:
 @transform_media_server_urls_if_proxying
 @requires_media
 def album_tracks(album_id: str) -> list[Track]:
-    return get_vibin_instance().media.album_tracks(album_id)
+    return get_vibin_instance().media_server.album_tracks(album_id)
 
 
 @albums_router.get(

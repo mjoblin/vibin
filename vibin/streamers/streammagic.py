@@ -8,7 +8,6 @@ import pathlib
 import re
 import sys
 import time
-from typing import List, Optional
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -24,7 +23,7 @@ import xmltodict
 
 from ..logger import logger
 from vibin import VibinDeviceError
-from vibin.mediasources import MediaSource
+from vibin.mediaservers import MediaServer
 from vibin.models import (
     ActiveTrack,
     CurrentlyPlaying,
@@ -32,8 +31,8 @@ from vibin.models import (
     ActivePlaylistEntry,
     ActivePlaylist,
     Presets,
-    MediaSource,
-    MediaSources,
+    AudioSource,
+    AudioSources,
     MediaStream,
     UPnPServiceSubscriptions,
     StreamerDeviceDisplay,
@@ -43,6 +42,7 @@ from vibin.models import (
     TransportPlayState,
 )
 from vibin.types import (
+    SeekTarget,
     UPnPServiceName,
     UpdateMessageHandler,
     UPnPPropertyName,
@@ -50,7 +50,7 @@ from vibin.types import (
     UPnPPropertyChangeHandlers,
 )
 
-from vibin.streamers import SeekTarget, Streamer
+from vibin.streamers import Streamer
 from .. import utils
 
 
@@ -101,8 +101,8 @@ from .. import utils
 #         return self.stop_event.is_set()
 
 
-class CXNv2(Streamer):
-    model_name = "CXNv2"
+class StreamMagic(Streamer):
+    model_name = "StreamMagic"
 
     def __init__(
         self,
@@ -119,10 +119,10 @@ class CXNv2(Streamer):
 
         self._device_hostname = urlparse(device.location).hostname
 
-        self._system_state: StreamerState = StreamerState(
+        self._device_state: StreamerState = StreamerState(
             name=self._device.friendly_name,
             power=None,
-            sources=MediaSources(),
+            sources=AudioSources(),
             display=StreamerDeviceDisplay(),
         )
 
@@ -162,8 +162,8 @@ class CXNv2(Streamer):
         }
 
         self._disconnected = False
-        self._media_device: Optional[MediaSource] = None
-        self._instance_id = 0  # CXNv2 implements a static AVTransport instance
+        self._media_server: MediaServer | None = None
+        self._instance_id = 0  # StreamMagic implements a static AVTransport instance
         self._navigator_id = None
         self._upnp_subscriptions: UPnPServiceSubscriptions = {}
         self._upnp_subscription_renewal_thread = None
@@ -200,10 +200,10 @@ class CXNv2(Streamer):
                 self._navigator_id = new_nav["RetNavigatorId"]
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
                 logger.error(
-                    "Could not acquire CXNv2 navigator. If device is in "
+                    "Could not acquire StreamMagic navigator. If device is in "
                     + "standby, power it on and try again."
                 )
-                raise VibinDeviceError(f"Could not acquire CXNv2 navigator: {e}")
+                raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
 
         atexit.register(self.disconnect)
 
@@ -213,8 +213,8 @@ class CXNv2(Streamer):
                 f"http://{self._device_hostname}/smoip/system/sources"
             )
 
-            self._system_state.sources.available = [
-                MediaSource(**source) for source in response.json()["data"]["sources"]
+            self._device_state.sources.available = [
+                AudioSource(**source) for source in response.json()["data"]["sources"]
             ]
 
             # sources = device.UuVolControl.GetAudioSourcesByNumber()
@@ -276,7 +276,7 @@ class CXNv2(Streamer):
         if self._disconnected:
             return
 
-        logger.info("CXNv2 disconnect requested")
+        logger.info("StreamMagic disconnect requested")
         self._disconnected = True
 
         # Clean up the navigator.
@@ -299,17 +299,21 @@ class CXNv2(Streamer):
             self._websocket_thread.stop()
             self._websocket_thread.join()
 
-        logger.info("CXNv2 disconnection complete")
+        logger.info("StreamMagic disconnection complete")
 
-    def register_media_source(self, media_source: MediaSource):
-        self._media_device = media_source
+    def register_media_server(self, media_server: MediaServer):
+        self._media_server = media_server
 
     @property
     def name(self):
         return self._device.friendly_name
 
     @property
-    def subscriptions(self) -> UPnPServiceSubscriptions:
+    def device_udn(self):
+        return self._device.udn.removeprefix("uuid:")
+
+    @property
+    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
         return self._upnp_subscriptions
 
     def power_toggle(self):
@@ -326,7 +330,7 @@ class CXNv2(Streamer):
         self,
         metadata: str,
         action: str = "REPLACE",
-        insert_index: Optional[int] = None,  # Only used by INSERT action
+        insert_index: int | None = None,  # Only used by INSERT action
     ):
         try:
             if action == "INSERT":
@@ -338,7 +342,7 @@ class CXNv2(Streamer):
             else:
                 # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
                 self._uu_vol_control.QueueFolder(
-                    ServerUDN=self._media_device.udn,
+                    ServerUDN=self._media_server.device_udn,
                     Action=action,
                     NavigatorId=self._navigator_id,
                     ExtraInfo="",
@@ -443,8 +447,8 @@ class CXNv2(Streamer):
         # UuVolControl state: AudioSourceNumber determines AirPlay, etc
         # ---------------------------------------------------------------------
 
-        # CXNv2's Next feature is not via AVTransport.Next(), but is instead
-        # achieved via UuVolControl.SetCurrentPlaylistTrack().
+        # StreamMagic's Next feature is not via AVTransport.Next(), but is
+        # instead achieved via UuVolControl.SetCurrentPlaylistTrack().
         #
         # When already at the end of the playlist, Next will be a no-op unless
         # shuffle is enabled, in which case Next cycles back to track id 0.
@@ -467,8 +471,8 @@ class CXNv2(Streamer):
             f"http://{self._device_hostname}/smoip/zone/play_control?skip_track=-1"
         )
 
-        # CXNv2's Previous feature is not via AVTransport.Previous(), but is
-        # instead achieved via UuVolControl.SetCurrentPlaylistTrack().
+        # StreamMagic's Previous feature is not via AVTransport.Previous(), but
+        # is instead achieved via UuVolControl.SetCurrentPlaylistTrack().
         #
         # When already at the beginning of the playlist, Previous appears to
         # effectively restart the track; even if repeat is enabled.
@@ -482,7 +486,7 @@ class CXNv2(Streamer):
         # else:
         #     self.seek("0:00:00")
 
-    def repeat(self, state: Optional[str] = "toggle"):
+    def repeat(self, state: str | None = "toggle"):
         requests.get(
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
         )
@@ -499,7 +503,7 @@ class CXNv2(Streamer):
         #
         # return enabled
 
-    def shuffle(self, state: Optional[str] = "toggle"):
+    def shuffle(self, state: str | None = "toggle"):
         requests.get(
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
         )
@@ -516,7 +520,7 @@ class CXNv2(Streamer):
         #
         # return enabled
 
-    def transport_position(self) -> Optional[int]:
+    def transport_position(self) -> int | None:
         response = requests.get(
             f"http://{self._device_hostname}/smoip/zone/play_state/position"
         )
@@ -830,9 +834,9 @@ class CXNv2(Streamer):
 
                             # Extract the format details.
 
-                            # When the CXNv2 comes out of standby mode, its
-                            # play_state update message does not include the
-                            # following fields:
+                            # When a StreamMagic device comes out of standby
+                            # mode, its play_state update message does not
+                            # include the following fields:
                             #
                             # If this play_state update comes in while the
                             # player is paused and the title matches playlist
@@ -889,7 +893,7 @@ class CXNv2(Streamer):
 
                             # TODO: now_playing is driving 3 chunks of data.
                             #   Figure out how to generalize this to not be
-                            #   so specific to CXNv2/StreamMagic.
+                            #   so specific to StreamMagic.
 
                             self._on_update(
                                 "ActiveTransportControls",
@@ -926,7 +930,7 @@ class CXNv2(Streamer):
                             #   streamer types.
                             try:
                                 display_info = update_dict["params"]["data"]["display"]
-                                self._system_state.display = StreamerDeviceDisplay(
+                                self._device_state.display = StreamerDeviceDisplay(
                                     **display_info
                                 )
 
@@ -945,8 +949,8 @@ class CXNv2(Streamer):
                             self._on_update("Presets", update_dict["params"]["data"])
                         elif update_dict["path"] == "/system/power":
                             power = update_dict["params"]["data"]["power"]
-                            self._system_state.power = "on" if power == "ON" else "off"
-                            self._on_update("System", self._system_state)
+                            self._device_state.power = "on" if power == "ON" else "off"
+                            self._on_update("System", self._device_state)
                         else:
                             logger.warning(f"Unknown message: {update}")
                             # self._updates_handler("Unknown", update)
@@ -969,7 +973,7 @@ class CXNv2(Streamer):
     def _send_device_display_update(self):
         self._on_update("DeviceDisplay", self.device_display)
 
-    def _renew_subscriptions(self):
+    def _renew_upnp_subscriptions(self):
         renewal_buffer = 10
 
         while not self._upnp_subscription_renewal_thread.stop_event.is_set():
@@ -1030,7 +1034,7 @@ class CXNv2(Streamer):
                     self._upnp_subscription_renewal_thread = None
 
             self._upnp_subscription_renewal_thread = utils.StoppableThread(
-                target=self._renew_subscriptions
+                target=self._renew_upnp_subscriptions
             )
 
             # TODO: This seems to be invoked multiple times
@@ -1059,8 +1063,8 @@ class CXNv2(Streamer):
         self._upnp_subscriptions = {}
 
     @property
-    def system_state(self) -> StreamerState:
-        return self._system_state
+    def device_state(self) -> StreamerState:
+        return self._device_state
 
     @property
     def upnp_properties(self) -> UPnPProperties:
@@ -1076,13 +1080,13 @@ class CXNv2(Streamer):
 
     @property
     def play_state(self) -> TransportPlayState:
-        # TODO: This is a raw CXNv2 WebSocket payload shape. This should
+        # TODO: This is a raw StreamMagic WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
 
         # NOTE: This manually injects the track and album media IDs into the
         # play state details. The idea is that these IDs are part of the
-        # "currently-playing" information, but the CXNv2 doesn't appear to
+        # "currently-playing" information, but StreamMagic doesn't appear to
         # include this information itself, so it's injected here to meet what
         # might become the future payload contract for the play state type
         # coming from anything implementing Streamer.
@@ -1097,7 +1101,7 @@ class CXNv2(Streamer):
 
     @property
     def device_display(self) -> StreamerDeviceDisplay:
-        # TODO: This is a raw CXNv2 WebSocket payload shape. This should
+        # TODO: This is a raw StreamMagic WebSocket payload shape. This should
         #   probably be cleaned up before passing back to the streamer-agnostic
         #   caller.
         return StreamerDeviceDisplay(**self._device_display_raw)
@@ -1232,16 +1236,16 @@ class CXNv2(Streamer):
 
     def _set_active_audio_source(self, source_id: str):
         try:
-            self._system_state.sources.active = [
+            self._device_state.sources.active = [
                 source
-                for source in self._system_state.sources.available
+                for source in self._device_state.sources.available
                 if source.id == source_id
             ][0]
         except (IndexError, KeyError):
-            self._system_state.sources.active = MediaSource()
+            self._device_state.sources.active = AudioSource()
             logger.warning(
                 "Could not determine active audio source from id "
-                + f"'{source_id}', setting to empty MediaSource"
+                + f"'{source_id}', setting to empty AudioSource"
             )
 
     def _set_current_playlist_entries(self):
@@ -1265,7 +1269,7 @@ class CXNv2(Streamer):
 
         self._currently_playing.playlist.current_track_index = index
 
-    def _album_and_track_ids_from_file(self, file) -> (Optional[str], Optional[str]):
+    def _album_and_track_ids_from_file(self, file) -> (str | None, str | None):
         filename_only = pathlib.Path(file).stem
 
         # The streamed filename matches "<track>-<album>.ext". It seems

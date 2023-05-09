@@ -17,6 +17,16 @@ from vibin.types import (
 )
 
 
+# -----------------------------------------------------------------------------
+# Application models
+#
+# NOTE: Although Vibin wants to be fairly streamer and media server agnostic,
+#   some of these models leak the data structure shapes found in the
+#   StreamMagic and Asset implementations. If other streamers or media servers
+#   were to be supported then that would likely require a refactoring of many
+#   of these models.
+# -----------------------------------------------------------------------------
+
 # Messaging -------------------------------------------------------------------
 
 
@@ -60,7 +70,7 @@ class VibinStatus(BaseModel):
 # System (top-level streamer and media server) --------------------------------
 
 
-class MediaSource(BaseModel):
+class AudioSource(BaseModel):
     """A source like "CD" or "Media Library"."""
 
     id: str | None
@@ -74,11 +84,11 @@ class MediaSource(BaseModel):
     preferred_order: int | None
 
 
-class MediaSources(BaseModel):
-    """All streamer sources, and which one is currently active."""
+class AudioSources(BaseModel):
+    """All streamer audio sources, and which one is currently active."""
 
-    available: list[MediaSource] = []
-    active: MediaSource | None
+    available: list[AudioSource] = []
+    active: AudioSource | None
 
 
 class StreamerDeviceDisplayProgress(BaseModel):
@@ -114,7 +124,7 @@ class StreamerState(UPnPDeviceState):
     """Streamer hardware state."""
 
     power: PowerState | None
-    sources: MediaSources | None = MediaSources()
+    sources: AudioSources | None = AudioSources()
     display: StreamerDeviceDisplay | None = StreamerDeviceDisplay()
 
 
@@ -141,6 +151,8 @@ class SystemUPnPProperties(BaseModel):
 # Media -----------------------------------------------------------------------
 
 
+# TODO: MediaFolder is weird. Rethink how to manage folders, containers, and
+#   general Media Server browsing, and MediaBrowseSingleLevel.
 class MediaFolder(BaseModel):
     """A folder on a local media server."""
 
@@ -153,6 +165,13 @@ class MediaFolder(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+
+class MediaBrowseSingleLevel(BaseModel):
+    """The single-level contents (no recursing) of an Id on the Media Server."""
+
+    id: MediaId
+    children: list[dict[str, Any]]
 
 
 class Album(BaseModel):

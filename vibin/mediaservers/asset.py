@@ -1,4 +1,3 @@
-import logging
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
@@ -8,19 +7,23 @@ import upnpclient
 import untangle
 
 from vibin import VibinNotFoundError
-from vibin.mediasources import MediaSource
+from vibin.mediaservers import MediaServer
 from vibin.models import (
     Album,
     Artist,
+    MediaBrowseSingleLevel,
     MediaFolder,
     MediaServerState,
-    UPnPServiceSubscriptions,
     Track,
+    UPnPServiceSubscriptions,
 )
 from vibin.types import UpdateMessageHandler, UPnPProperties
 
 
-class Asset(MediaSource):
+# https://dbpoweramp.com/asset-upnp-dlna.htm
+
+
+class Asset(MediaServer):
     model_name = "Asset UPnP Server"
 
     def __init__(
@@ -29,11 +32,11 @@ class Asset(MediaSource):
         subscribe_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
-        self._device = device
+        self._device: upnpclient.Device = device
 
-        self._all_albums_path = None
-        self._new_albums_path = None
-        self._all_artists_path = None
+        self._all_albums_path: str | None = None
+        self._new_albums_path: str | None = None
+        self._all_artists_path: str | None = None
 
         self._upnp_properties: UPnPProperties = {}
 
@@ -49,31 +52,31 @@ class Asset(MediaSource):
         return self._upnp_properties
 
     @property
-    def all_albums_path(self):
+    def all_albums_path(self) -> str | None:
         return self._all_albums_path
 
     @all_albums_path.setter
-    def all_albums_path(self, path):
+    def all_albums_path(self, path: str):
         self._all_albums_path = path
 
     @property
-    def new_albums_path(self):
+    def new_albums_path(self) -> str | None:
         return self._new_albums_path
 
     @new_albums_path.setter
-    def new_albums_path(self, path):
+    def new_albums_path(self, path: str):
         self._new_albums_path = path
 
     @property
-    def all_artists_path(self):
+    def all_artists_path(self) -> str | None:
         return self._all_artists_path
 
     @all_artists_path.setter
-    def all_artists_path(self, path):
+    def all_artists_path(self, path: str):
         self._all_artists_path = path
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._device.friendly_name
 
     @property
@@ -88,15 +91,15 @@ class Asset(MediaSource):
         return f"{parsed_location.scheme}://{parsed_location.netloc}"
 
     @property
-    def system_state(self) -> MediaServerState:
+    def device_state(self) -> MediaServerState:
         return MediaServerState(name=self._device.friendly_name)
 
     @property
-    def subscriptions(self) -> UPnPServiceSubscriptions:
+    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
         return {}
 
     @property
-    def udn(self):
+    def device_udn(self) -> str:
         return self._device.udn.removeprefix("uuid:")
 
     def clear_caches(self):
@@ -347,12 +350,11 @@ class Asset(MediaSource):
         except VibinNotFoundError as e:
             raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
 
-    def children(self, parent_id: str = "0"):
-        # TODO: Should this return Container, Album, and Track types?
-        return {
-            "id": parent_id,
-            "children": self._child_xml_to_list(self._get_children_xml(parent_id)),
-        }
+    def children(self, parent_id: str = "0") -> MediaBrowseSingleLevel:
+        return MediaBrowseSingleLevel(
+            id=parent_id,
+            children=self._child_xml_to_list(self._get_children_xml(parent_id)),
+        )
 
     def get_metadata(self, id: str):
         try:

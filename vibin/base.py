@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable
 
 import requests
 from tinydb import TinyDB, Query
@@ -35,8 +35,8 @@ from vibin.constants import (
 )
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
-import vibin.mediasources as mediasources
-from vibin.mediasources import MediaSource
+import vibin.mediaservers as mediaservers
+from vibin.mediaservers import MediaServer, model_to_media_server
 from vibin.models import (
     Album,
     CurrentlyPlaying,
@@ -45,6 +45,7 @@ from vibin.models import (
     Favorites,
     Links,
     Lyrics,
+    MediaBrowseSingleLevel,
     Presets,
     UPnPServiceSubscriptions,
     StoredPlaylist,
@@ -59,7 +60,7 @@ from vibin.models import (
 )
 from .types import UpdateMessageHandler, UPnPDeviceType, UpdateMessageType
 import vibin.streamers as streamers
-from vibin.streamers import Streamer
+from vibin.streamers import model_to_streamer, Streamer
 from .device_resolution import determine_streamer_and_media_server
 from .logger import logger
 
@@ -68,7 +69,7 @@ def requires_media(return_val=None):
     def decorator_requires_media(func):
         @functools.wraps(func)
         def wrapper_requires_media(*args, **kwargs):
-            if args[0].media is not None:
+            if args[0].media_server is not None:
                 return func(*args, **kwargs)
             else:
                 return return_val
@@ -82,13 +83,15 @@ class Vibin:
     def __init__(
         self,
         streamer: str | None = None,
-        media: Union[str, bool, None] = None,
+        streamer_type: str | None = None,
+        media_server: str | bool | None = None,
+        media_server_type: str | None = None,
         discovery_timeout: int = 5,
-        subscribe_callback_base: str | None = None,
+        subscribe_callback_base: str | None = None,  # TODO: Rename upnp_subscription_callback_base
     ):
         logger.info("Initializing Vibin")
 
-        self._on_update_handlers: List[UpdateMessageHandler] = []
+        self._on_update_handlers: list[UpdateMessageHandler] = []
 
         self._last_played_id = None
 
@@ -106,33 +109,37 @@ class Vibin:
         self._init_db()
 
         self._current_streamer: Streamer | None = None
-        self._current_media_server: MediaSource | None = None
+        self._current_media_server: MediaServer | None = None
 
         streamer_device, media_server_device = determine_streamer_and_media_server(
-            streamer, media, discovery_timeout
+            streamer, media_server, discovery_timeout
         )
 
         if streamer_device is None:
             raise VibinError("Could not find streamer on the network")
 
         self._current_streamer = self._instantiate_streamer_instance(
-            streamer_device, f"{subscribe_callback_base}/streamer"
+            streamer_device, streamer_type, f"{subscribe_callback_base}/streamer"
         )
-        logger.info(f"Using streamer UPnP device: {self.streamer.name}")
+        logger.info(
+            f"Using streamer UPnP device: {self.streamer.name} ({type(self.streamer).__name__})"
+        )
 
         if media_server_device:
-            logger.info(
-                f"Using media server UPnP device: {media_server_device.friendly_name}"
-            )
             self._current_media_server = self._instantiate_media_server_instance(
-                media_server_device, f"{subscribe_callback_base}/media"
+                media_server_device, media_server_type, f"{subscribe_callback_base}/media_server"
             )
-            self._current_streamer.register_media_source(self._current_media_server)
+            self._current_streamer.register_media_server(self._current_media_server)
 
             settings = self.settings
             self._current_media_server.all_albums_path = settings.all_albums_path
             self._current_media_server.new_albums_path = settings.new_albums_path
             self._current_media_server.all_artists_path = settings.all_artists_path
+
+            logger.info(
+                f"Using media server UPnP device: {self.media_server.name} "
+                + f"({type(self.media_server).__name__})"
+            )
         else:
             logger.warning(
                 "Not using a local media server; some features will be unavailable"
@@ -145,7 +152,7 @@ class Vibin:
         return (
             f"Vibin: "
             + f"streamer:'{'None' if self.streamer is None else self.streamer.name}'; "
-            + f"media server:'{'None' if self.media is None else self.media.name}'"
+            + f"media server:'{'None' if self.media_server is None else self.media_server.name}'"
         )
 
     def get_current_state_messages(self) -> list[UpdateMessage]:
@@ -326,10 +333,10 @@ class Vibin:
     def media_links(
         self,
         *,
-        media_id: Optional[str] = None,
-        artist: Optional[str] = None,
-        album: Optional[str] = None,
-        title: Optional[str] = None,
+        media_id: str | None = None,
+        artist: str | None = None,
+        album: str | None = None,
+        title: str | None = None,
         include_all: bool = False,
     ) -> dict[ExternalService.name, list[ExternalServiceLink]]:
         if len(self._external_services) == 0:
@@ -351,7 +358,7 @@ class Vibin:
 
         if media_id:
             try:
-                media_info = xmltodict.parse(self.media.get_metadata(media_id))
+                media_info = xmltodict.parse(self.media_server.get_metadata(media_id))
                 didl = media_info["DIDL-Lite"]
 
                 if "container" in didl:
@@ -422,65 +429,120 @@ class Vibin:
 
         return results
 
-    def _instantiate_streamer_instance(self, streamer_device, subscribe_callback_base):
-        # Build a map (device model name to Streamer subclass) of all the
-        # streamers Vibin is able to handle.
+    def _instantiate_streamer_instance(
+        self, streamer_device, streamer_type, subscribe_callback_base
+    ):
+        # Build a list of all known Streamer implementations; and a map of
+        # device model name to Streamer implementation.
+        known_streamers = []
         known_streamers_by_model: dict[str, Streamer] = {}
 
         for name, obj in inspect.getmembers(streamers):
             if inspect.isclass(obj) and issubclass(obj, Streamer):
+                known_streamers.append(obj)
                 known_streamers_by_model[obj.model_name] = obj
 
-        try:
-            streamer_class = known_streamers_by_model[streamer_device.model_name]
+        # Inject any model additions/overrides
+        known_streamers_by_model.update(model_to_streamer)
 
-            return streamer_class(
-                device=streamer_device,
-                subscribe_callback_base=subscribe_callback_base,
-                on_update=self._on_streamer_update,
-                on_playlist_modified=self._on_playlist_modified,
-            )
+        # Determine which Streamer implementation to use
+        try:
+            if streamer_type is None:
+                streamer_class = known_streamers_by_model[streamer_device.model_name]
+            else:
+                # A specific Streamer implementation was requested.
+                streamer_class = next(
+                    (
+                        streamer for streamer in known_streamers
+                        if streamer.__name__ == streamer_type
+                    ),
+                    None
+                )
+
+                if streamer_class is None:
+                    raise VibinError(
+                        f"Could not find Vibin implementation for requested "
+                        + f"streamer type: {streamer_type}"
+                    )
         except KeyError:
             raise VibinError(
-                f"Could not find Vibin implementation for streamer model '{streamer_device.model_name}'"
+                f"Could not find Vibin implementation for streamer model "
+                + f"'{streamer_device.model_name}'"
             )
 
-    def _instantiate_media_server_instance(self, media_server_device, subscribe_callback_base):
-        # Build a map (device model name to MediaSource subclass) of all the
-        # media sources Vibin is able to handle.
-        known_media_servers_by_model: dict[str, MediaSource] = {}
+        # Create an instance of the Streamer subclass which we can use to
+        # manage our streamer.
 
-        for name, obj in inspect.getmembers(mediasources):
-            if inspect.isclass(obj) and issubclass(obj, MediaSource):
+        return streamer_class(
+            device=streamer_device,
+            subscribe_callback_base=subscribe_callback_base,
+            on_update=self._on_streamer_update,
+            on_playlist_modified=self._on_playlist_modified,
+        )
+
+    def _instantiate_media_server_instance(
+        self, media_server_device, media_server_type, subscribe_callback_base
+    ):
+        # Build a list of all known MediaServer implementations; and a map of
+        # device model name to MediaServer implementation.
+        known_media_servers = []
+        known_media_servers_by_model: dict[str, MediaServer] = {}
+
+        for name, obj in inspect.getmembers(mediaservers):
+            if inspect.isclass(obj) and issubclass(obj, MediaServer):
+                known_media_servers.append(obj)
                 known_media_servers_by_model[obj.model_name] = obj
 
+        # Inject any additions/overrides
+        known_media_servers_by_model.update(model_to_media_server)
+
+        # Determine which MediaServer implementation to use
         try:
-            # Create an instance of the MediaSource subclass which we can use to
-            # manage our media device.
-            media_server_class = known_media_servers_by_model[
-                media_server_device.model_name
-            ]
-            return media_server_class(
-                device=media_server_device,
-                subscribe_callback_base=subscribe_callback_base,
-                on_update=self._on_media_server_update,
-            )
+            if media_server_type is None:
+                media_server_class = known_media_servers_by_model[
+                    media_server_device.model_name
+                ]
+            else:
+                # A specific MediaServer implementation was requested.
+                media_server_class = next(
+                    (
+                        media_server for media_server in known_media_servers
+                        if media_server.__name__ == media_server_type
+                    ),
+                    None
+                )
+
+                if media_server_class is None:
+                    raise VibinError(
+                        f"Could not find Vibin implementation for requested "
+                        + f"media server type: {media_server_type}"
+                    )
         except KeyError:
             raise VibinError(
-                f"Could not find Vibin implementation for media server model '{media_server_device.model_name}'"
+                f"Could not find Vibin implementation for media server model "
+                + f"'{media_server_device.model_name}'"
             )
+
+        # Create an instance of the MediaServer subclass which we can use to
+        # manage our media device.
+
+        return media_server_class(
+            device=media_server_device,
+            subscribe_callback_base=subscribe_callback_base,
+            on_update=self._on_media_server_update,
+        )
 
     @property
     def streamer(self):
         return self._current_streamer
 
     @property
-    def media(self):
+    def media_server(self):
         return self._current_media_server
 
     @requires_media()
-    def browse_media(self, parent_id: str = "0"):
-        return self.media.children(parent_id)
+    def browse_media(self, parent_id: str = "0") -> MediaBrowseSingleLevel:
+        return self.media_server.children(parent_id)
 
     @requires_media()
     def play_album(self, album: Album):
@@ -493,7 +555,7 @@ class Vibin:
     @requires_media()
     def play_id(self, id: str):
         self._reset_stored_playlist_status(send_update=True)
-        self.streamer.play_metadata(self.media.get_metadata(id))
+        self.streamer.play_metadata(self.media_server.get_metadata(id))
         self._last_played_id = id
 
     @requires_media()
@@ -538,9 +600,9 @@ class Vibin:
         self,
         id: str,
         action: str = "REPLACE",
-        insert_index: Optional[int] = None,
+        insert_index: int | None = None,
     ):
-        self.streamer.play_metadata(self.media.get_metadata(id), action, insert_index)
+        self.streamer.play_metadata(self.media_server.get_metadata(id), action, insert_index)
 
         if action == "REPLACE":
             self._reset_stored_playlist_status(send_update=True)
@@ -573,7 +635,7 @@ class Vibin:
             code, err = e.args
             raise VibinError(f"Unable to perform Previous transition: [{code}] {err}")
 
-    def repeat(self, state: Optional[str] = "toggle"):
+    def repeat(self, state: str | None = "toggle"):
         try:
             self.streamer.repeat(state)
         except SOAPError as e:
@@ -581,7 +643,7 @@ class Vibin:
             code, err = e.args
             raise VibinError(f"Unable to interact with Repeat setting: [{code}] {err}")
 
-    def shuffle(self, state: Optional[str] = "toggle"):
+    def shuffle(self, state: str | None = "toggle"):
         try:
             self.streamer.shuffle(state)
         except SOAPError as e:
@@ -641,9 +703,9 @@ class Vibin:
         #   to other messages. Then use SystemUPnPProperties type.
         all_vars = {
             "streamer_name": self.streamer.name,
-            "media_source_name": self.media.name if self.media else None,
+            "media_source_name": self.media_server.name if self.media_server else None,
             "streamer": self.streamer.upnp_properties,
-            "media_server": self.media.upnp_properties if self.media else None,
+            "media_server": self.media_server.upnp_properties if self.media_server else None,
             "vibin": {
                 "last_played_id": self._last_played_id,
                 self.streamer.name: self.streamer.vibin_vars,
@@ -654,10 +716,9 @@ class Vibin:
 
     @property
     def system_state(self) -> SystemState:
-        # TODO: Confusion: streamer_name/media_source_name vs. system_state()
         return SystemState(
-            streamer=self.streamer.system_state,
-            media=self.media.system_state,
+            streamer=self.streamer.device_state,
+            media=self.media_server.device_state,
         )
 
     # TODO: Deprecate in favor of transport_state
@@ -718,7 +779,7 @@ class Vibin:
         if track_id:
             # Extract artist and title from the media metadata
             try:
-                track_info = xmltodict.parse(self.media.get_metadata(track_id))
+                track_info = xmltodict.parse(self.media_server.get_metadata(track_id))
 
                 artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
                 title = track_info["DIDL-Lite"]["item"]["dc:title"]
@@ -796,7 +857,7 @@ class Vibin:
     @requires_media()
     def waveform_for_track(self, track_id, data_format="json", width=800, height=250):
         try:
-            track_info = xmltodict.parse(self.media.get_metadata(track_id))
+            track_info = xmltodict.parse(self.media_server.get_metadata(track_id))
 
             audio_files = [
                 file
@@ -876,26 +937,26 @@ class Vibin:
     def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
         # Extract the event.
 
-        subscriptions: UPnPServiceSubscriptions = {}
+        upnp_subscriptions: UPnPServiceSubscriptions = {}
 
         if device == "streamer":
-            subscriptions = self.streamer.subscriptions
-        elif device == "media":
-            subscriptions = self.media.subscriptions
+            upnp_subscriptions = self.streamer.upnp_subscriptions
+        elif device == "media_server":
+            upnp_subscriptions = self.media_server.upnp_subscriptions
 
-        if not subscriptions:
+        if not upnp_subscriptions:
             logger.warning(
                 f"UPnP event received for device with no subscriptions: {device}"
             )
         else:
             # Pass event to the device to handle.
-            subscribed_service_names = [service.name for service in subscriptions.keys()]
+            subscribed_service_names = [service.name for service in upnp_subscriptions.keys()]
 
             if service_name in subscribed_service_names:
                 if device == "streamer":
                     self.streamer.on_upnp_event(service_name, event)
-                elif device == "media":
-                    self.media.on_upnp_event(service_name, event)
+                elif device == "media_server":
+                    self.media_server.on_upnp_event(service_name, event)
             else:
                 logger.warning(
                     f"UPnP event received for device ({device}) with no subscription handler "
@@ -1017,7 +1078,7 @@ class Vibin:
 
         for entry_id in playlist.entry_ids:
             self.streamer.play_metadata(
-                self.media.get_metadata(entry_id), action="APPEND"
+                self.media_server.get_metadata(entry_id), action="APPEND"
             )
 
         self._ignore_playlist_updates = False
@@ -1031,7 +1092,7 @@ class Vibin:
     @requires_media()
     def store_active_playlist(
         self,
-        metadata: Optional[dict[str, any]] = None,
+        metadata: dict[str, any] | None = None,
         replace: bool = True,
     ) -> StoredPlaylist:
         active_playlist = self.streamer.playlist
@@ -1140,11 +1201,11 @@ class Vibin:
             raise VibinError(f"Could not update Playlist Id: {playlist_id}")
 
     @requires_media(return_val=[])
-    def favorites(self, requested_types: Optional[list[str]] = None) -> list[Favorite]:
+    def favorites(self, requested_types: list[str] | None = None) -> list[Favorite]:
         media_hydrators: dict[str, Callable[[str], Album | Track]] = {
-            "album": self.media.album,
+            "album": self.media_server.album,
             # "artist": self.media.artist,
-            "track": self.media.track,
+            "track": self.media_server.track,
         }
 
         return [
@@ -1169,9 +1230,9 @@ class Vibin:
 
         # Check that favorite media_id exists
         media_hydrators = {
-            "album": self.media.album,
+            "album": self.media_server.album,
             # "artist": self.media.artist,
-            "track": self.media.track,
+            "track": self.media_server.track,
         }
 
         try:

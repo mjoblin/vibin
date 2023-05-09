@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 import xmltodict
 
 from vibin import VibinNotFoundError
-from vibin.models import Album, Artist, MediaFolder, Track
+from vibin.models import Album, Artist, MediaBrowseSingleLevel, MediaFolder, Track
 from vibin.server.dependencies import (
     get_vibin_instance,
     requires_media,
@@ -30,7 +30,7 @@ def path_contents(
     media_path,
 ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
     try:
-        return get_vibin_instance().media.get_path_contents(
+        return get_vibin_instance().media_server.get_path_contents(
             Path(media_path.removeprefix("/"))
         )
     except VibinNotFoundError as e:
@@ -44,7 +44,7 @@ def path_contents(
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def browse(parent_id: str):
+def browse(parent_id: str) -> MediaBrowseSingleLevel:
     return get_vibin_instance().browse_media(parent_id)
 
 
@@ -54,4 +54,4 @@ def browse(parent_id: str):
 @transform_media_server_urls_if_proxying
 @requires_media
 def browse(id: str):
-    return xmltodict.parse(get_vibin_instance().media.get_metadata(id))
+    return xmltodict.parse(get_vibin_instance().media_server.get_metadata(id))
