@@ -3,8 +3,8 @@ from fastapi.responses import Response
 
 from vibin import VibinError
 from vibin.models import (
-    TransportActiveControls,
-    TransportPlayheadPosition,
+    TransportAction,
+    TransportPlayheadPositionPayload,
     TransportPlayState,
     TransportState,
 )
@@ -23,87 +23,82 @@ transport_router = APIRouter(prefix="/transport")
     summary="Retrieve the current Transport details",
     tags=["Transport"],
 )
-def transport_active_controls() -> TransportState:
-    return get_vibin_instance().transport_state
+def transport_state() -> TransportState:
+    return get_vibin_instance().streamer.transport_state
 
 
-@transport_router.post(
-    "/pause",
-    summary="Pause the Transport",
-    tags=["Transport"],
-    response_class=Response,
-)
-def transport_pause():
+@transport_router.post("/pause", summary="Pause the Transport", tags=["Transport"])
+def transport_pause() -> TransportState:
+    vibin = get_vibin_instance()
+
     try:
-        get_vibin_instance().pause()
+        vibin.streamer.pause()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    return vibin.streamer.transport_state
 
-@transport_router.post(
-    "/play",
-    summary="Play the Transport",
-    tags=["Transport"],
-    response_class=Response,
-)
-def transport_play():
+
+@transport_router.post("/play", summary="Play the Transport", tags=["Transport"])
+def transport_play() -> TransportState:
+    vibin = get_vibin_instance()
+
     try:
-        get_vibin_instance().play()
+        vibin.streamer.play()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    return vibin.streamer.transport_state
 
-@transport_router.post(
-    "/next",
-    summary="Next Playlist Entry",
-    tags=["Transport"],
-    response_class=Response,
-)
-def transport_next():
+
+@transport_router.post("/next", summary="Next Playlist Entry", tags=["Transport"])
+def transport_next() -> TransportState:
+    vibin = get_vibin_instance()
+
     try:
-        get_vibin_instance().next_track()
+        vibin.streamer.next_track()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@transport_router.post(
-    "/previous",
-    summary="Previous Playlist Entry",
-    tags=["Transport"],
-    response_class=Response,
-)
-def transport_previous():
-    try:
-        get_vibin_instance().previous_track()
-    except VibinError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# TODO: Consider whether repeat and shuffle should be toggles or not.
-@transport_router.post(
-    "/repeat",
-    summary="Toggle repeat",
-    tags=["Transport"],
-    response_class=Response,
-)
-def transport_repeat():
-    try:
-        get_vibin_instance().repeat("toggle")
-    except VibinError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return vibin.streamer.transport_state
 
 
 @transport_router.post(
-    "/shuffle",
-    summary="Toggle shuffle",
-    tags=["Transport"],
-    response_class=Response,
+    "/previous", summary="Previous Playlist Entry", tags=["Transport"]
 )
-def transport_shuffle():
+def transport_previous() -> TransportState:
+    vibin = get_vibin_instance()
+
     try:
-        get_vibin_instance().shuffle("toggle")
+        vibin.streamer.previous_track()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    return vibin.streamer.transport_state
+
+
+@transport_router.post("/repeat", summary="Toggle repeat", tags=["Transport"])
+def transport_repeat() -> TransportState:
+    vibin = get_vibin_instance()
+
+    try:
+        vibin.streamer.repeat("toggle")
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return vibin.streamer.transport_state
+
+
+@transport_router.post("/shuffle", summary="Toggle shuffle", tags=["Transport"])
+def transport_shuffle() -> TransportState:
+    vibin = get_vibin_instance()
+
+    try:
+        vibin.streamer.shuffle("toggle")
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return vibin.streamer.transport_state
 
 
 @transport_router.post(
@@ -121,7 +116,7 @@ def transport_shuffle():
 )
 def transport_seek(target: SeekTarget):
     try:
-        get_vibin_instance().seek(target)
+        get_vibin_instance().streamer.seek(target)
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -131,8 +126,10 @@ def transport_seek(target: SeekTarget):
     summary="Retrieve the current Playhead position (in whole seconds)",
     tags=["Transport"],
 )
-def transport_position() -> TransportPlayheadPosition:
-    return TransportPlayheadPosition(position=get_vibin_instance().transport_position())
+def transport_position() -> TransportPlayheadPositionPayload:
+    return TransportPlayheadPositionPayload(
+        position=get_vibin_instance().streamer.transport_position
+    )
 
 
 @transport_router.post(
@@ -154,10 +151,8 @@ def transport_play_media_id(media_id: str):
     tags=["Transport"],
     deprecated=True,
 )
-def transport_active_controls() -> TransportActiveControls:
-    return TransportActiveControls(
-        active_controls=get_vibin_instance().transport_active_controls()
-    )
+def transport_active_controls() -> list[TransportAction]:
+    return get_vibin_instance().streamer.active_transport_controls
 
 
 @transport_router.get(

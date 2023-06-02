@@ -18,11 +18,13 @@ from vibin.models import (
     Track,
     UPnPServiceSubscriptions,
 )
-from vibin.types import UpdateMessageHandler, UPnPProperties
+from vibin.types import MediaMetadata, UpdateMessageHandler, UPnPProperties
 
 
 # -----------------------------------------------------------------------------
 # Implementation of MediaServer for the Asset UPnP Server.
+#
+# See MediaServer interface for method documentation.
 #
 # https://dbpoweramp.com/asset-upnp-dlna.htm
 # -----------------------------------------------------------------------------
@@ -68,11 +70,24 @@ class Asset(MediaServer):
     def device_udn(self) -> str:
         return self._device.udn.removeprefix("uuid:")
 
+    # -------------------------------------------------------------------------
+    # System
+
     def clear_caches(self):
         self._albums.cache_clear()
         self._new_albums.cache_clear()
         self._artists.cache_clear()
         self._tracks.cache_clear()
+
+    @property
+    def url_prefix(self):
+        media_location = self.device.location
+        parsed_location = urlparse(media_location)
+
+        return f"{parsed_location.scheme}://{parsed_location.netloc}"
+
+    # -------------------------------------------------------------------------
+    # Settings
 
     @property
     def all_albums_path(self) -> str | None:
@@ -98,12 +113,8 @@ class Asset(MediaServer):
     def all_artists_path(self, path: str):
         self._all_artists_path = path
 
-    @property
-    def url_prefix(self):
-        media_location = self.device.location
-        parsed_location = urlparse(media_location)
-
-        return f"{parsed_location.scheme}://{parsed_location.netloc}"
+    # -------------------------------------------------------------------------
+    # Media
 
     @lru_cache
     def _albums(self) -> list[Album]:
@@ -195,6 +206,9 @@ class Asset(MediaServer):
         except VibinNotFoundError as e:
             raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
 
+    # -------------------------------------------------------------------------
+    # Browsing
+
     def get_path_contents(
         self, path
     ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
@@ -260,6 +274,12 @@ class Asset(MediaServer):
         except upnpclient.soap.SOAPProtocolError as e:
             raise VibinNotFoundError(f"Could not find media id {id}")
 
+    # -------------------------------------------------------------------------
+    # UPnP
+
+    def subscribe_to_upnp_events(self) -> None:
+        pass
+
     @property
     def upnp_properties(self) -> UPnPProperties:
         return self._upnp_properties
@@ -267,6 +287,9 @@ class Asset(MediaServer):
     @property
     def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
         return {}
+
+    def on_upnp_event(self, service_name: str, event: str):
+        pass
 
     # -------------------------------------------------------------------------
     # Additional helpers (not part of MediaServer interface).
