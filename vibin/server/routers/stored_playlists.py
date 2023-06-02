@@ -19,6 +19,21 @@ def playlists() -> list[StoredPlaylist]:
     return get_vibin_instance().playlists()
 
 
+@stored_playlists_router.post(
+    "/current/store",
+    summary="Store the Streamer's active Playlist as a new Stored Playlist",
+    tags=["Stored Playlists"],
+)
+def playlists_current_store(
+    name: str | None = None, replace: bool | None = True
+) -> StoredPlaylist:
+    metadata = {"name": name} if name else None
+
+    return get_vibin_instance().store_active_playlist(
+        metadata=metadata, replace=replace
+    )
+
+
 @stored_playlists_router.get(
     "/{playlist_id}",
     summary="Retrieve details on a single Stored Playlist",
@@ -87,18 +102,3 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
         )
     except VibinDeviceError as e:
         raise HTTPException(status_code=503, detail=f"Downstream device error: {e}")
-
-
-@stored_playlists_router.post(
-    "/current/store",
-    summary="Store the Streamer's active Playlist as a new Stored Playlist",
-    tags=["Stored Playlists"],
-)
-def playlists_current_store(
-    name: str | None = None, replace: bool | None = True
-) -> StoredPlaylist:
-    metadata = {"name": name} if name else None
-
-    return get_vibin_instance().store_active_playlist(
-        metadata=metadata, replace=replace
-    )
