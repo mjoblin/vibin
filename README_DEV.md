@@ -16,17 +16,18 @@ And [Black] for code formatting.
 The main responsibilities of `vibin` are:
 
 1. **Interact with a network music streamer**, implementing the `Streamer` interface.
-   * The only current implementation is `CXNv2` (a Cambridge Audio streamer using [StreamMagic]).
+   * The only current implementation is `StreamMagic` (for Cambridge Audio streamers using
+     [StreamMagic]).
 1. **Interact with a local media server**, implementing the `MediaServer` interface.
-   * The only current implementation is `Asset` (using the [Asset UPnP] server).
+   * The only current implementation is `Asset` (for the [Asset UPnP] server).
 1. **Retrieve information from external sources** (Wikipedia, Genius, Rate Your Music, Discogs,
    etc).
 1. **Persist information** such as user-defined Playlists, Favorites, lyrics, etc.
 1. Expose:
    * **A REST API**.
      * To retrieve media metadata.
-     * To perform actions on the streamer.
-     * To receive UPnP events from the streamer.
+     * To perform actions on the streamer and media server.
+     * To receive UPnP events from the streamer, to forward on to the interface implementation.
    * **A WebSocket server** (to send live updates to any connected clients).
    * **The UI's static files** (see [vibinui]).
    * **A proxy for the media server** (mostly for album art).
@@ -105,6 +106,19 @@ The main hub of `vibin` is the `Vibin` class, which:
 
 The REST API is mostly a thin API layer that sits in front of `Vibin`. The WebSocket server
 subscribes to any `Vibin` updates, which it then passes on to any connected clients.
+
+### Supporting other hardware devices
+
+The intent behind the `Streamer` and `MediaServer` interfaces is that they would be general enough
+to support a variety of implementations for different hardware devices. The reality is that they're
+_heavily_ influenced by two specific products: [StreamMagic] network streamers from Cambridge Audio,
+and the [Asset UPnP] media server software (implemented in `streammagic.py` and `asset.py`
+respectively).
+
+The same issue applies to many of the models (`models.py`) and types (`types.py`).
+
+If additional devices were to be supported then it's likely that the interfaces, models, and types,
+would need to be adjusted appropriately. It would be a learning adventure.
 
 ### Tests
 

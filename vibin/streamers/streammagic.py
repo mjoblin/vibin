@@ -8,6 +8,7 @@ import pathlib
 import re
 import sys
 import time
+from typing import Literal
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
@@ -25,24 +26,30 @@ from ..logger import logger
 from vibin import VibinDeviceError
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    ActiveTrack,
-    CurrentlyPlaying,
-    MediaFormat,
-    ActivePlaylistEntry,
     ActivePlaylist,
-    Presets,
+    ActivePlaylistEntry,
+    ActiveTrack,
     AudioSource,
     AudioSources,
+    CurrentlyPlaying,
+    MediaFormat,
     MediaStream,
-    UPnPServiceSubscriptions,
+    PlaylistModifiedHandler,
+    PlaylistModifyAction,
+    Presets,
     StreamerDeviceDisplay,
     StreamerState,
-    UPnPSubscription,
-    TransportState,
+    TransportAction,
     TransportPlayState,
+    TransportRepeatState,
+    TransportShuffleState,
+    TransportState,
+    UPnPServiceSubscriptions,
+    UPnPSubscription,
 )
 from vibin.types import (
     SeekTarget,
+    TransportPosition,
     UPnPServiceName,
     UpdateMessageHandler,
     UPnPPropertyName,
@@ -54,51 +61,20 @@ from vibin.streamers import Streamer
 from .. import utils
 
 
+# See Streamer interface for method documentation.
+
+# -----------------------------------------------------------------------------
+# NOTE: Media IDs only make sense when streaming from a local source.
+# -----------------------------------------------------------------------------
+
+# TODO: This class would benefit from some overall refactoring. Its current
+#  implementation isn't very clear and is showing its hacked-together history.
+# TODO: Investigate migrating from UPnP to SMOIP where possible.
 # TODO: Consider using httpx instead of requests, and making some of these
 #   methods (particularly the ones that use SMOIP) async.
-
-# -----------------------------------------------------------------------------
-# NOTE: Media IDs only make sense when streaming from a local source. This
-#   should impact when non-None Media IDs are sent to any clients.
-# -----------------------------------------------------------------------------
-
-
-# TODO: upnpclient.SOAPError
-# TODO: upnpclient.UPNPError
-# TODO: Consider migrating core (if any) capabilities to Streamer class
-# TODO: Can end up with multiple subscriptions to each service
-
-# open websocket:
-#   ws://10.0.0.13:80/smoip
-# send: {"path": "/zone/play_state/position", "params": {"update": 1}}
-# will then receive an update on position per second
-# "position" appears to be the number of seconds into the track
-# get a message for 0, then 1, 2, 3, etc...
-#
-# {
-#   "path": "/zone/play_state/position",
-#   "type": "update",
-#   "result": 200,
-#   "message": "OK",
-#   "params": {
-#     "zone": "ZONE1",
-#     "data": {
-#       "position": 21
-#     }
-#   }
-# }
-
-
-# class StoppableThread(threading.Thread):
-#     def __init__(self, *args, **kwargs):
-#         super(StoppableThread, self).__init__(*args, **kwargs)
-#         self.stop_event = threading.Event()
-#
-#     def stop(self):
-#         self.stop_event.set()
-#
-#     def stopped(self):
-#         return self.stop_event.is_set()
+# TODO: Consider using upnpclient.SOAPError more for error handling.
+# TODO: Consider using upnpclient.UPNPError more for error handling.
+# TODO: Can end up with multiple UPnP subscriptions to each service.
 
 
 class StreamMagic(Streamer):
@@ -109,13 +85,12 @@ class StreamMagic(Streamer):
         device: upnpclient.Device,
         subscribe_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
-        on_playlist_modified=None,
+        on_playlist_modified: PlaylistModifiedHandler | None = None,
     ):
         self._device = device
         self._subscribe_callback_base = subscribe_callback_base
         self._on_update = on_update
         self._on_playlist_modified = on_playlist_modified
-        self._ignore_playlist_updates = None
 
         self._device_hostname = urlparse(device.location).hostname
 
@@ -205,7 +180,7 @@ class StreamMagic(Streamer):
                 )
                 raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
 
-        atexit.register(self.disconnect)
+        atexit.register(self.on_shutdown)
 
         # Determine audio sources
         try:
@@ -216,34 +191,9 @@ class StreamMagic(Streamer):
             self._device_state.sources.available = [
                 AudioSource(**source) for source in response.json()["data"]["sources"]
             ]
-
-            # sources = device.UuVolControl.GetAudioSourcesByNumber()
-            # for source_number in sources["RetAudioSourceListValue"].split(","):
-            #     source_int = int(source_number)
-            #
-            #     source_name = (
-            #         device.UuVolControl.GetAudioSourceName(
-            #             InAudioSource=source_int
-            #         )
-            #     )
-            #
-            #     self._vibin_vars["audio_sources"][source_int] = (
-            #         source_name["RetAudioSourceName"]
-            #     )
         except Exception:
             # TODO
             pass
-
-        # THIS HAS BEEN REPLACED BY NOW_PLAYING INFO FROM SMOIP
-        # # Current audio source.
-        # try:
-        #     current_source = device.UuVolControl.GetAudioSourceByNumber()
-        #     self._set_active_audio_source(
-        #         int(current_source["RetAudioSourceValue"])
-        #     )
-        # except Exception:
-        #     # TODO
-        #     pass
 
         # Current playlist.
         self._playlist_id_array = None
@@ -269,10 +219,29 @@ class StreamMagic(Streamer):
         self._set_last_seen_media_ids(None, None)
 
     @property
+    def name(self):
+        return self._device.friendly_name
+
+    @property
     def device(self):
         return self._device
 
-    def disconnect(self):
+    @property
+    def device_state(self) -> StreamerState:
+        return self._device_state
+
+    @property
+    def device_udn(self):
+        return self._device.udn.removeprefix("uuid:")
+
+    @property
+    def device_display(self) -> StreamerDeviceDisplay:
+        return StreamerDeviceDisplay(**self._device_display_raw)
+
+    def register_media_server(self, media_server: MediaServer):
+        self._media_server = media_server
+
+    def on_shutdown(self) -> None:
         if self._disconnected:
             return
 
@@ -301,35 +270,143 @@ class StreamMagic(Streamer):
 
         logger.info("StreamMagic disconnection complete")
 
-    def register_media_server(self, media_server: MediaServer):
-        self._media_server = media_server
+    # -------------------------------------------------------------------------
+    # System
 
     @property
-    def name(self):
-        return self._device.friendly_name
-
-    @property
-    def device_udn(self):
-        return self._device.udn.removeprefix("uuid:")
-
-    @property
-    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
-        return self._upnp_subscriptions
+    def currently_playing(self) -> CurrentlyPlaying:
+        return self._currently_playing
 
     def power_toggle(self):
         requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
 
-    def set_source(self, source: str):
+    def set_audio_source(self, source: str):
         requests.get(f"http://{self._device_hostname}/smoip/zone/state?source={source}")
 
-    def ignore_playlist_updates(self, ignore=False):
-        self._ignore_playlist_updates = ignore
+    # -------------------------------------------------------------------------
+    # Transport
+    #
+    # Interacting with the transport is currently a mix of UPnP requests and
+    # SMOIP HTTP requests.
 
-    # TODO: Consider renaming to modify_playlist() or similar
-    def play_metadata(
+    @property
+    def transport_state(self) -> TransportState:
+        return self._transport_state
+
+    def play(self):
+        self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+
+    def pause(self):
+        self._av_transport.Pause(InstanceID=self._instance_id)
+
+    def stop(self):
+        self._av_transport.Stop(InstanceID=self._instance_id)
+
+    def seek(self, target: SeekTarget):
+        target_hmmss = None
+
+        # TODO: Fix handling of float vs. int. All numbers come in as floats,
+        #   so what to do with 1/1.0 is ambiguous (here we treat is as 1 second
+        #   not the end of the 0-1 normalized range).
+        if isinstance(target, float):
+            if target == 0:
+                target_hmmss = utils.secs_to_hmmss(0)
+            elif target < 1:
+                media_info = self._av_transport.GetMediaInfo(InstanceID=0)
+                duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
+
+                target_hmmss = utils.secs_to_hmmss(math.floor(duration_secs * target))
+            else:
+                target_hmmss = utils.secs_to_hmmss(int(target))
+        elif isinstance(target, str):
+            if not utils.is_hmmss(target):
+                raise TypeError("Time must be in h:mm:ss format")
+
+            target_hmmss = target
+
+        if target_hmmss:
+            self._av_transport.Seek(
+                InstanceID=self._instance_id,
+                Unit="ABS_TIME",
+                Target=target_hmmss,
+            )
+        else:
+            logger.warning(f"Unable to seek to {target}")
+
+    def next_track(self):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?skip_track=1"
+        )
+
+    def previous_track(self):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?skip_track=-1"
+        )
+
+    def repeat(
+        self, state: TransportRepeatState | Literal["toggle"] = "toggle"
+    ) -> TransportRepeatState:
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
+        )
+
+        repeat_state = self._playlist_extension.Repeat()
+        self._transport_state.repeat = "all" if repeat_state["aRepeat"] is True else "off"
+
+        return self._transport_state.repeat
+
+    def shuffle(
+        self, state: TransportShuffleState | Literal["toggle"] = "toggle"
+    ) -> TransportShuffleState:
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
+        )
+
+        shuffle_state = self._playlist_extension.Shuffle()
+        self._transport_state.shuffle = "all" if shuffle_state["aShuffle"] is True else "off"
+
+        return self._transport_state.shuffle
+
+    @property
+    def transport_position(self) -> TransportPosition:
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_state/position"
+        )
+
+        if response.status_code != 200:
+            return 0
+
+        try:
+            return int(response.json()["data"]["position"])
+        except (KeyError, json.decoder.JSONDecodeError) as e:
+            return 0
+
+    @property
+    def active_transport_controls(self) -> list[TransportAction]:
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/zone/now_playing"
+        )
+
+        # TODO: Improve error handling
+        if response.status_code != 200:
+            return []
+
+        try:
+            return self._transform_active_controls(response.json()["data"]["controls"])
+        except (KeyError, json.decoder.JSONDecodeError) as e:
+            return []
+
+    # -------------------------------------------------------------------------
+    # Active Playlist
+
+    @property
+    def playlist(self) -> ActivePlaylist:
+        return self._currently_playing.playlist
+
+    def modify_playlist(
         self,
         metadata: str,
-        action: str = "REPLACE",
+        action: PlaylistModifyAction = "REPLACE",
         insert_index: int | None = None,  # Only used by INSERT action
     ):
         try:
@@ -381,168 +458,108 @@ class StreamMagic(Streamer):
             json={"id": playlist_id, "from": from_index, "to": to_index},
         )
 
-    def play(self):
-        self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+    # -------------------------------------------------------------------------
+    # Presets
 
-    def pause(self):
-        self._av_transport.Pause(InstanceID=self._instance_id)
+    @property
+    def presets(self) -> Presets:
+        # TODO: Change to local cache data, as received from websocket.
+        response = requests.get(f"http://{self._device_hostname}/smoip/presets/list")
 
-    def stop(self):
-        self._av_transport.Stop(InstanceID=self._instance_id)
+        return Presets(**response.json()["data"])
 
-    def seek(self, target: SeekTarget):
-        target_hmmss = None
-
-        # TODO: Fix handling of float vs. int. All numbers come in as floats,
-        #   so what to do with 1/1.0 is ambiguous (here we treat is as 1 second
-        #   not the end of the 0-1 normalized range).
-        if isinstance(target, float):
-            if target == 0:
-                target_hmmss = utils.secs_to_hmmss(0)
-            elif target < 1:
-                media_info = self._av_transport.GetMediaInfo(InstanceID=0)
-                duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
-
-                target_hmmss = utils.secs_to_hmmss(math.floor(duration_secs * target))
-            else:
-                target_hmmss = utils.secs_to_hmmss(int(target))
-        elif isinstance(target, str):
-            if not utils.is_hmmss(target):
-                raise TypeError("Time must be in h:mm:ss format")
-
-            target_hmmss = target
-
-        if target_hmmss:
-            self._av_transport.Seek(
-                InstanceID=self._instance_id,
-                Unit="ABS_TIME",
-                Target=target_hmmss,
-            )
-        else:
-            logger.warning(f"Unable to seek to {target}")
-
-    def playlist_length(self):
-        return self._uu_vol_control.GetPlaylistLength()["PlaylistLength"]
-
-    # TODO: Clear up confusion between this track id (a playlist id) and the
-    #   unique media id for the track.
-    def current_track_id(self):
-        # Appears to be the same as GetMediaQueueIndex()
-        result = self._uu_vol_control.GetCurrentPlaylistTrack()
-
-        return result["CurrentPlaylistTrackID"]
-
-    def next_track(self):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/zone/play_control?skip_track=1"
-        )
-
-        # ---------------------------------------------------------------------
-        # TODO: Add support for airplay next/prev:
-        #   http://10.0.0.13/smoip/zone/play_control?skip_track=1
-        #   http://10.0.0.13/smoip/zone/play_control?skip_track=-1
-        #   http://10.0.0.13/smoip/zone/play_state
-        #   http://10.0.0.13/smoip/zone/play_state/position
-        #
-        # UuVolControl state: AudioSourceNumber determines AirPlay, etc
-        # ---------------------------------------------------------------------
-
-        # StreamMagic's Next feature is not via AVTransport.Next(), but is
-        # instead achieved via UuVolControl.SetCurrentPlaylistTrack().
-        #
-        # When already at the end of the playlist, Next will be a no-op unless
-        # shuffle is enabled, in which case Next cycles back to track id 0.
-        # a no-op; even if repeat is enabled.
-
-        # current_track_id = self.current_track_id()
-        # max_playlist_track_id = self.playlist_length() - 1
-        #
-        # if current_track_id < max_playlist_track_id:
-        #     self._uu_vol_control.SetCurrentPlaylistTrack(
-        #         CurrentPlaylistTrackID=(current_track_id + 1)
-        #     )
-        # elif self.repeat():
-        #     self._uu_vol_control.SetCurrentPlaylistTrack(
-        #         CurrentPlaylistTrackID=0
-        #     )
-
-    def previous_track(self):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/zone/play_control?skip_track=-1"
-        )
-
-        # StreamMagic's Previous feature is not via AVTransport.Previous(), but
-        # is instead achieved via UuVolControl.SetCurrentPlaylistTrack().
-        #
-        # When already at the beginning of the playlist, Previous appears to
-        # effectively restart the track; even if repeat is enabled.
-
-        # current_track_id = self.current_track_id()
-        #
-        # if current_track_id > 0:
-        #     self._uu_vol_control.SetCurrentPlaylistTrack(
-        #         CurrentPlaylistTrackID=(current_track_id - 1)
-        #     )
-        # else:
-        #     self.seek("0:00:00")
-
-    def repeat(self, state: str | None = "toggle"):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
-        )
-
-        return self._playlist_extension.Repeat()
-
-        # if enabled is None:
-        #     result = self._playlist_extension.Repeat()
-        #     return result["aRepeat"] == "true"
-        #
-        # self._playlist_extension.SetRepeat(
-        #     aRepeat="true" if enabled else "false"
-        # )
-        #
-        # return enabled
-
-    def shuffle(self, state: str | None = "toggle"):
-        requests.get(
-            f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
-        )
-
-        return self._playlist_extension.Shuffle()
-
-        # if enabled is None:
-        #     result = self._playlist_extension.Shuffle()
-        #     return result["aShuffle"] == "true"
-        #
-        # self._playlist_extension.SetShuffle(
-        #     aShuffle="true" if enabled else "false"
-        # )
-        #
-        # return enabled
-
-    def transport_position(self) -> int | None:
+    def play_preset_id(self, preset_id: int):
         response = requests.get(
-            f"http://{self._device_hostname}/smoip/zone/play_state/position"
+            f"http://{self._device_hostname}/smoip/zone/recall_preset?preset={preset_id}"
         )
 
-        if response.status_code != 200:
-            return None
+    # -------------------------------------------------------------------------
+    # UPnP
 
-        try:
-            return response.json()["data"]["position"]
-        except (KeyError, json.decoder.JSONDecodeError) as e:
-            return None
+    def subscribe_to_upnp_events(self) -> None:
+        # Clean up any existing subscriptions before making new ones.
+        self._cancel_subscriptions()
 
-    def transport_actions(self):
-        actions = self._av_transport.GetCurrentTransportActions(
-            InstanceID=self._instance_id
-        )
+        if self._subscribe_callback_base:
+            for service in self._subscribed_services:
+                now = int(time.time())
+                (subscription_id, timeout) = service.subscribe(
+                    callback_url=(f"{self._subscribe_callback_base}/{service.name}")
+                )
 
-        return [action.lower() for action in actions["Actions"].split(", ")]
+                self._upnp_subscriptions[service] = UPnPSubscription(
+                    id=subscription_id,
+                    timeout=timeout,
+                    next_renewal=(now + timeout) if timeout else None,
+                )
 
-    def _transform_active_controls(self, controls):
-        transform_map = {
+                logger.info(
+                    f"Streamer subscribed to UPnP events from {service.name} "
+                    + f"with timeout {timeout}"
+                )
+
+            if self._upnp_subscription_renewal_thread:
+                logger.warning("Stopping streamer UPnP subscription renewal thread")
+
+                try:
+                    self._upnp_subscription_renewal_thread.stop()
+                    self._upnp_subscription_renewal_thread.join()
+                except RuntimeError as e:
+                    logger.warning(
+                        f"Cannot stop streamer's UPnP subscription renewal thread: {e}"
+                    )
+                finally:
+                    self._upnp_subscription_renewal_thread = None
+
+            self._upnp_subscription_renewal_thread = utils.StoppableThread(
+                target=self._renew_upnp_subscriptions
+            )
+
+            # TODO: This seems to be invoked multiple times
+            logger.info("Starting streamer's UPnP subscription renewal thread")
+            self._upnp_subscription_renewal_thread.start()
+
+    @property
+    def upnp_properties(self) -> UPnPProperties:
+        return self._upnp_properties
+
+    @property
+    def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
+        return self._upnp_subscriptions
+
+    def on_upnp_event(self, service_name: UPnPServiceName, event: str):
+        logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")
+
+        property_set = etree.fromstring(event)
+
+        # TODO: Migrate to untangle
+        # parsed = untangle.parse(event)
+        # parsed.e_propertyset.children[0].LastChange.cdata
+
+        for property in property_set:
+            property_element = property[0]
+
+            self._set_upnp_property(
+                service_name=service_name,
+                property_name=property_element.tag,
+                property_value_xml=property_element.text,
+            )
+
+        self._set_vibin_upnp_properties()
+
+    # =========================================================================
+    # Additional helpers (not part of Streamer interface).
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Static
+
+    @staticmethod
+    def _transform_active_controls(controls) -> list[TransportAction]:
+        """Transform StreamMagic transport control names to TransportActions."""
+        transform_map: dict[str, TransportAction] = {
             "pause": "pause",
+            "play": "play",
             "play_pause": "stop",
             "toggle_shuffle": "shuffle",
             "toggle_repeat": "repeat",
@@ -557,40 +574,128 @@ class StreamMagic(Streamer):
             try:
                 transformed.append(transform_map[control])
             except KeyError:
-                transformed.append(control)
+                pass
 
         return transformed
 
-    def transport_active_controls(self):
-        response = requests.get(
-            f"http://{self._device_hostname}/smoip/zone/now_playing"
-        )
+    @staticmethod
+    def _album_and_track_ids_from_file(file: str) -> (str | None, str | None):
+        """Determine Album and Track Media IDs from the given filename.
 
-        # TODO: Improve error handling
-        if response.status_code != 200:
-            return []
+        The source `file` is expected to be a local media file, e.g. a .flac.
+        This is making assumptions about the naming conventions used by the
+        Asset server, where files are named <track_id>-<album_id>.<ext>.
+        """
+        filename_only = pathlib.Path(file).stem
 
+        # It seems that the track id can itself include a hyphen whereas the
+        # album id won't.
+        match = re.match(r"^(.*-([^-]+))$", filename_only)
+
+        if match and len(match.groups(0)) == 2:
+            this_track_id = match.groups(0)[0]
+            this_album_id = match.groups(0)[1]
+
+            return this_album_id, this_track_id
+
+        return None, None
+
+    # -------------------------------------------------------------------------
+    # State setters
+
+    def _set_current_playback_details(self, details):
+        """Set current playback details from an incoming `details` UPnP event.
+
+        This exists only to set the last seen track and album IDs.
+
+        TODO: Can the last seen track and album IDs be set from information
+            coming in from the WebSocket instead.
+        """
+        self._vibin_vars["current_playback_details"] = details
+
+        # If the current playback details includes the streamed filename, then
+        # extract the Track ID and Album ID.
         try:
-            return self._transform_active_controls(response.json()["data"]["controls"])
-        except (KeyError, json.decoder.JSONDecodeError) as e:
-            return []
+            stream_url = details["stream"]["url"]
+            this_album_id, this_track_id = self._album_and_track_ids_from_file(
+                stream_url
+            )
 
-    @property
-    def transport_state(self) -> TransportState:
-        return self._transport_state
+            send_update = True
 
-    def transport_status(self) -> str:
-        info = self._av_transport.GetTransportInfo(InstanceID=self._instance_id)
+            if this_album_id and this_track_id:
+                if this_track_id != self._last_seen_track_id:
+                    self._set_last_seen_media_ids(this_album_id, this_track_id)
+                else:
+                    send_update = False
+            else:
+                # A streamed file was found, but the track and album ids could
+                # not be determined. Play it safe and set the IDs to None to
+                # ensure clients aren't provided incorrect/misleading ids.
+                self._set_last_seen_media_ids(None, None)
 
-        return info["CurrentTransportStatus"]
+            # Force a send of a PlayState message to ensure any listening
+            # clients get the new track/album id information without having
+            # to wait for a normal PlayState update.
+            if send_update:
+                self._send_play_state_update()
+        except KeyError:
+            # No streamed filename found in the playback details
+            pass
 
-    @property
-    def playlist(self) -> ActivePlaylist:
-        return self._currently_playing.playlist
+    def _set_active_audio_source(self, source_id: str):
+        """Set the active audio source to the one matching the `source_id`."""
+        try:
+            self._device_state.sources.active = [
+                source
+                for source in self._device_state.sources.available
+                if source.id == source_id
+            ][0]
+        except (IndexError, KeyError):
+            self._device_state.sources.active = AudioSource()
+            logger.warning(
+                "Could not determine active audio source from id "
+                + f"'{source_id}', setting to empty AudioSource"
+            )
+
+    def _set_current_playlist_entries(self):
+        """Set the active playlist entries in local state."""
+        playlist_entries = self._retrieve_active_playlist_entries()
+
+        # TODO: Remove _vibin_vars once the UI has migrated off of them
+        try:
+            self._vibin_vars["current_playlist"] = [
+                entry.dict() for entry in playlist_entries
+            ]
+        except KeyError:
+            pass
+
+        self._currently_playing.playlist.entries = playlist_entries
+
+    def _set_current_playlist_track_index(self, index: int):
+        try:
+            self._vibin_vars["current_playlist_track_index"] = index
+        except KeyError:
+            pass
+
+        self._currently_playing.playlist.current_track_index = index
+
+    def _set_last_seen_media_ids(self, album_id, track_id):
+        self._last_seen_album_id = album_id
+        self._last_seen_track_id = track_id
+
+        self._currently_playing.album_media_id = album_id
+        self._currently_playing.track_media_id = track_id
+
+    # -------------------------------------------------------------------------
+    # Playlist helpers
 
     def _retrieve_active_playlist_array(self) -> list[int]:
+        """Retrieve the active playlist ID array from the streamer."""
         try:
             response = self._device.PlaylistExtension.IdArray()
+
+            # The array comes back as base64-encoded array of ints.
             playlist_encoded = response["aIdArray"]
             playlist_decoded = base64.b64decode(playlist_encoded)
             playlist_array = array.array("I", playlist_decoded)
@@ -600,12 +705,17 @@ class StreamMagic(Streamer):
 
             return list(playlist_array)
         except Exception:
-            # TODO
+            # TODO: What exception gets thrown here?
+            logger.warning("Could not determine the streamer's active playlist IDs")
             return []
 
     def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
+        """Retrieve the active playlist entries from the streamer."""
         playlist_entry_ids = self._retrieve_active_playlist_array()
 
+        # Retrieve the playlist via UPnP.
+        # TODO: Can this information be plucked from a streamer WebSocket
+        #   message? If so, would that path be simpler?
         response = self._device.PlaylistExtension.ReadList(
             aIdList=",".join([str(id) for id in playlist_entry_ids])
         )
@@ -621,6 +731,8 @@ class StreamMagic(Streamer):
 
         playlist_entries = etree.fromstring(response["aMetaDataList"])
 
+        # Construct a sanitized playlist entry for each of the raw entries
+        # retrieved via UPnP. Store all entries in a map keyed by entry ID.
         entry_id_to_playlist_entry = {}
 
         for index, playlist_entry in enumerate(playlist_entries):
@@ -657,12 +769,17 @@ class StreamMagic(Streamer):
 
         results = []
 
+        # Create an array of playlist entries, in the same order as the ID list
+        # retrieved earlier. This ID list is the source of truth for entry order.
         for playlist_entry_id in playlist_entry_ids:
             try:
                 results.append(entry_id_to_playlist_entry[playlist_entry_id])
             except KeyError:
                 pass
 
+        # Check whether the playlist has changed from the last time the playlist
+        # was cached in local state. If the playlist has changed then we'll want
+        # to announce that.
         cached_playlist_media_ids = [
             entry.trackMediaId for entry in self._cached_playlist_entries
         ]
@@ -675,292 +792,14 @@ class StreamMagic(Streamer):
             # NOTE: All changes to the active playlist should be detected here,
             #   regardless of where they originated (a Vibin client, another
             #   app like the StreamMagic iOS app, etc).
-            self._on_playlist_modified(results)
+            self._on_playlist_modified(results_as_entries)
 
         self._cached_playlist_entries = results_as_entries
 
         return results_as_entries
 
-    def _handle_websocket_to_streamer(self):
-        async def async_websocket_manager():
-            uri = f"ws://{self._device_hostname}:80/smoip"
-            logger.info(f"Connecting to {self.name} WebSocket server on {uri}")
-
-            async with websockets.connect(
-                uri,
-                ssl=None,
-                extra_headers={
-                    "Origin": "vibin",
-                },
-            ) as websocket:
-                logger.info(f"Successfully connected to {self.name} WebSocket server")
-
-                # Request playhead position updates (these arrive one per sec).
-                await websocket.send(
-                    '{"path": "/zone/play_state/position", "params": {"update": 1}}'
-                )
-
-                # Request now-playing updates, so the "controls" information can
-                # be used to construct ActiveTransportControls messages.
-                await websocket.send(
-                    '{"path": "/zone/now_playing", "params": {"update": 1}}'
-                )
-
-                # Request play state updates (these arrive one per track change).
-                await websocket.send(
-                    '{"path": "/zone/play_state", "params": {"update": 1}}'
-                )
-
-                # Request preset updates.
-                await websocket.send(
-                    '{"path": "/presets/list", "params": {"update": 1}}'
-                )
-
-                # Request power updates (on/off).
-                await websocket.send(
-                    '{"path": "/system/power", "params": {"update": 100}}'
-                )
-
-                # TODO: Add /smoip/zone/now_playing
-                #   Extract data.controls
-                #   Use to set vibin-level "enabled controls"
-                #
-                # {
-                #   "zone": "ZONE1",
-                #   "data": {
-                #     "state": "PLAYING",
-                #     "source": {
-                #       "id": "MEDIA_PLAYER",
-                #       "name": "Media Library"
-                #     },
-                #     "display": {
-                #       "line1": "Priority Boredom",
-                #       "mqa": "none",
-                #       "playback_source": "Asset UPnP: thicc",
-                #       "class": "stream.media.upnp",
-                #       "art_url": "http://192.168.1.14:26125/aa/538396257135550/cover.jpg?size=0",
-                #       "context": "1/12"
-                #     },
-                #     "queue": {
-                #       "length": 12,
-                #       "position": 0,
-                #       "shuffle": "off",
-                #       "repeat": "off"
-                #     },
-                #     "controls": [
-                #       "toggle_shuffle",
-                #       "toggle_repeat",
-                #       "track_next",
-                #       "track_previous"
-                #     ]
-                #   }
-                # }
-                #
-                # ALBUM PLAY:
-                # "controls": [
-                #   "pause",
-                #   "play_pause",
-                #   "toggle_shuffle",
-                #   "toggle_repeat",
-                #   "track_next",
-                #   "track_previous",
-                #   "seek"
-                # ]
-                #
-                # PLAYLIST JUST SELECTED:
-                # "controls": [
-                #   "toggle_shuffle",
-                #   "toggle_repeat",
-                #   "track_next",
-                #   "track_previous"
-                # ]
-                #
-                # RADIO:
-                # "controls": [
-                #   "play_pause"
-                # ]
-
-                wait_for_message = True
-
-                while wait_for_message:
-                    try:
-                        # Wait for an incoming message
-                        update = await asyncio.wait_for(
-                            websocket.recv(), timeout=self._websocket_timeout
-                        )
-                    except asyncio.TimeoutError:
-                        if not self._websocket_thread.stop_event.is_set():
-                            # Keep listening for incoming messages
-                            continue
-
-                        # The thread we're running in has been told to stop
-                        wait_for_message = False
-
-                    try:
-                        update_dict = json.loads(update)
-
-                        if update_dict["path"] == "/zone/play_state":
-                            self._play_state = TransportPlayState(
-                                **update_dict["params"]["data"]
-                            )
-
-                            play_state = update_dict["params"]["data"]
-
-                            # Extract current transport state.
-                            try:
-                                self._transport_state.play_state = play_state["state"]
-                                self._transport_state.repeat = play_state["mode_repeat"]
-                                self._transport_state.shuffle = play_state[
-                                    "mode_shuffle"
-                                ]
-                            except KeyError:
-                                pass
-
-                            # Extract the active track details from play_state metadata.
-                            try:
-                                self._currently_playing.active_track = ActiveTrack(
-                                    **play_state["metadata"]
-                                )
-                            except KeyError:
-                                pass
-
-                            # Extract the format details from play_state metadata.
-                            try:
-                                self._currently_playing.format = MediaFormat(
-                                    **play_state["metadata"]
-                                )
-                            except KeyError:
-                                pass
-
-                            # Extract the format details.
-
-                            # When a StreamMagic device comes out of standby
-                            # mode, its play_state update message does not
-                            # include the following fields:
-                            #
-                            # If this play_state update comes in while the
-                            # player is paused and the title matches playlist
-                            # title for the queue_index, then we fill in some
-                            # of the missing fields by taking their values from
-                            # the matching playlist entry. This isn't ideal.
-                            #
-                            # TODO: Is there some way to ensure the play_state
-                            #   message always includes all of the same fields
-                            #   so we don't have to look elsewhere for any
-                            #   missing values?
-
-                            try:
-                                play_state_metadata = self._play_state.metadata
-                                play_state_title = play_state_metadata.title
-
-                                play_state_queue_index = self._play_state.queue_index
-
-                                if play_state_queue_index is not None:
-                                    queue_entry = self._cached_playlist_entries[
-                                        play_state_queue_index
-                                    ]
-
-                                    if (
-                                        self._play_state.state == "pause"
-                                        and queue_entry.title == play_state_title
-                                    ):
-                                        if play_state_metadata.album is None:
-                                            play_state_metadata.album = (
-                                                queue_entry.album
-                                            )
-                                        if play_state_metadata.artist is None:
-                                            play_state_metadata.artist = (
-                                                queue_entry.artist
-                                            )
-                                        if play_state_metadata.duration is None:
-                                            play_state_metadata.duration = (
-                                                utils.hmmss_to_secs(
-                                                    queue_entry.duration
-                                                )
-                                            )
-                            except (IndexError, KeyError) as e:
-                                pass
-
-                            self._send_play_state_update()
-                            self._send_transport_state_update()
-                        elif update_dict["path"] == "/zone/play_state/position":
-                            self._on_update("Position", update_dict["params"]["data"])
-                        elif update_dict["path"] == "/zone/now_playing":
-                            # TODO: THIS IS RECEIVED EVERY SECOND (PROGRESS)
-                            #
-                            # --> Consider consequences for updating data, when
-                            #   those updates are sent to on_update, etc.
-
-                            # TODO: now_playing is driving 3 chunks of data.
-                            #   Figure out how to generalize this to not be
-                            #   so specific to StreamMagic.
-
-                            self._on_update(
-                                "ActiveTransportControls",
-                                self._transform_active_controls(
-                                    update_dict["params"]["data"]["controls"]
-                                ),
-                            )
-
-                            self._transport_state.active_controls = [
-                                control
-                                for control in self._transform_active_controls(
-                                    update_dict["params"]["data"]["controls"]
-                                )
-                            ]
-
-                            self._send_transport_state_update()
-
-                            # TODO: Figure out what to do with current audio
-                            #   source. This call to _set_active_audio_source
-                            #   will ensure the source is set for the next
-                            #   StateVars message publish.
-                            audio_source_id = update_dict["params"]["data"]["source"][
-                                "id"
-                            ]
-
-                            self._set_active_audio_source(audio_source_id)
-
-                            # Media IDs should only be sent to any clients when
-                            # the current source is a MEDIA_PLAYER.
-                            if audio_source_id != "MEDIA_PLAYER":
-                                self._set_last_seen_media_ids(None, None)
-
-                            # TODO: Figure out what "display" means for other
-                            #   streamer types.
-                            try:
-                                display_info = update_dict["params"]["data"]["display"]
-                                self._device_state.display = StreamerDeviceDisplay(
-                                    **display_info
-                                )
-
-                                # TODO: Remove the following?
-                                if (
-                                    DeepDiff(display_info, self._device_display_raw)
-                                    != {}
-                                ):
-                                    self._device_display_raw = display_info
-                                    self._on_update(
-                                        "DeviceDisplay", self.device_display
-                                    )
-                            except KeyError:
-                                pass
-                        elif update_dict["path"] == "/presets/list":
-                            self._on_update("Presets", update_dict["params"]["data"])
-                        elif update_dict["path"] == "/system/power":
-                            power = update_dict["params"]["data"]["power"]
-                            self._device_state.power = "on" if power == "ON" else "off"
-                            self._on_update("System", self._device_state)
-                        else:
-                            logger.warning(f"Unknown message: {update}")
-                            # self._updates_handler("Unknown", update)
-                    except (KeyError, json.decoder.JSONDecodeError) as e:
-                        # TODO: This currently quietly ignores unexpected
-                        #   payload formats or missing keys. Consider adding
-                        #   error handling if errors need to be announced.
-                        pass
-
-        asyncio.run(async_websocket_manager())
+    # -------------------------------------------------------------------------
+    # Helpers to send messages back to Vibin
 
     def _send_play_state_update(self):
         self._on_update("PlayState", self.play_state)
@@ -973,7 +812,15 @@ class StreamMagic(Streamer):
     def _send_device_display_update(self):
         self._on_update("DeviceDisplay", self.device_display)
 
+    # -------------------------------------------------------------------------
+    # UPnP event handling
+    # -------------------------------------------------------------------------
+
     def _renew_upnp_subscriptions(self):
+        """Renew the subscriptions to the streamer's UPnP services.
+
+        Subscriptions need to be renewed after their timeout has expired.
+        """
         renewal_buffer = 10
 
         while not self._upnp_subscription_renewal_thread.stop_event.is_set():
@@ -996,60 +843,22 @@ class StreamMagic(Streamer):
                             "Could not renew UPnP subscription. Attempting "
                             + "re-subscribe of all subscriptions."
                         )
-                        # TODO: This is the renewal thread, but subscribe()
+                        # TODO: This is the renewal thread, but subscribe_to_upnp_events()
                         #   attempts to stop the thread; and can't join itself.
-                        self.subscribe()
-
-    def subscribe(self):
-        # Clean up any existing subscriptions before making new ones.
-        self._cancel_subscriptions()
-
-        if self._subscribe_callback_base:
-            for service in self._subscribed_services:
-                now = int(time.time())
-                (subscription_id, timeout) = service.subscribe(
-                    callback_url=(f"{self._subscribe_callback_base}/{service.name}")
-                )
-
-                self._upnp_subscriptions[service] = UPnPSubscription(
-                    id=subscription_id,
-                    timeout=timeout,
-                    next_renewal=(now + timeout) if timeout else None,
-                )
-
-                logger.info(
-                    f"Subscribed to UPnP events from {service.name} with "
-                    + f"timeout {timeout}"
-                )
-
-            if self._upnp_subscription_renewal_thread:
-                logger.warning("Stopping UPnP subscription renewal thread")
-
-                try:
-                    self._upnp_subscription_renewal_thread.stop()
-                    self._upnp_subscription_renewal_thread.join()
-                except RuntimeError as e:
-                    logger.warning(f"Cannot stop UPnP subscription renewal thread: {e}")
-                finally:
-                    self._upnp_subscription_renewal_thread = None
-
-            self._upnp_subscription_renewal_thread = utils.StoppableThread(
-                target=self._renew_upnp_subscriptions
-            )
-
-            # TODO: This seems to be invoked multiple times
-            logger.info("Starting UPnP subscription renewal thread")
-            self._upnp_subscription_renewal_thread.start()
+                        self.subscribe_to_upnp_events()
 
     def _cancel_subscriptions(self):
+        """Cancel all subscriptions to the streamer's UPnP services."""
         # Clean up any UPnP subscriptions.
         for service, subscription in self._upnp_subscriptions.items():
             try:
-                logger.info(f"Canceling UPnP subscription for {service.name}")
+                logger.info(
+                    f"Canceling streamer's UPnP subscription for {service.name}"
+                )
                 service.cancel_subscription(subscription.id)
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
                 logger.error(
-                    f"Could not cancel UPnP subscription for {service.name}: {e}"
+                    f"Could not cancel streamer's UPnP subscription for {service.name}: {e}"
                 )
             except HTTPError as e:
                 if e.response.status_code == 412:
@@ -1062,67 +871,12 @@ class StreamMagic(Streamer):
 
         self._upnp_subscriptions = {}
 
-    @property
-    def device_state(self) -> StreamerState:
-        return self._device_state
-
-    @property
-    def upnp_properties(self) -> UPnPProperties:
-        return self._upnp_properties
-
-    @property
-    def vibin_vars(self):
-        return self._vibin_vars
-
-    @property
-    def currently_playing(self) -> CurrentlyPlaying:
-        return self._currently_playing
-
-    @property
-    def play_state(self) -> TransportPlayState:
-        # TODO: This is a raw StreamMagic WebSocket payload shape. This should
-        #   probably be cleaned up before passing back to the streamer-agnostic
-        #   caller.
-
-        # NOTE: This manually injects the track and album media IDs into the
-        # play state details. The idea is that these IDs are part of the
-        # "currently-playing" information, but StreamMagic doesn't appear to
-        # include this information itself, so it's injected here to meet what
-        # might become the future payload contract for the play state type
-        # coming from anything implementing Streamer.
-
-        try:
-            self._play_state.metadata.current_track_media_id = self._last_seen_track_id
-            self._play_state.metadata.current_album_media_id = self._last_seen_album_id
-        except AttributeError:
-            pass
-
-        return self._play_state
-
-    @property
-    def device_display(self) -> StreamerDeviceDisplay:
-        # TODO: This is a raw StreamMagic WebSocket payload shape. This should
-        #   probably be cleaned up before passing back to the streamer-agnostic
-        #   caller.
-        return StreamerDeviceDisplay(**self._device_display_raw)
-
-    @property
-    def presets(self) -> Presets:
-        # TODO: Change to local cache data, as received from websocket.
-        response = requests.get(f"http://{self._device_hostname}/smoip/presets/list")
-
-        return Presets(**response.json()["data"])
-
-    def play_preset_id(self, preset_id: int):
-        response = requests.get(
-            f"http://{self._device_hostname}/smoip/zone/recall_preset?preset={preset_id}"
-        )
-
     def _upnp_last_change_event_handler(
         self,
         service_name: UPnPServiceName,
         property_value: str,
     ):
+        """Handle "LastChange" UPnP events. from the AVTransport service."""
         nested_element = etree.fromstring(property_value)
         instance_element = nested_element.find(
             "InstanceID", namespaces=nested_element.nsmap
@@ -1151,6 +905,14 @@ class StreamMagic(Streamer):
     def _upnp_playlist_id_array_event_handler(
         self, service_name: UPnPServiceName, property_value: str
     ):
+        """Handle "IdArray" UPnP events from the PlaylistExtension service.
+
+        The IdArray event is received when the playlist changes, so this is an
+        entrypoint into knowing when the playlist has changed. Playlist changes
+        might come from us (e.g. Vibin adding a playlist entry), or from
+        somewhere else (maybe the StreamMagic app running on iOS). This is
+        considered the playlist-change source of truth.
+        """
         if property_value != self._playlist_id_array:
             self._playlist_id_array = property_value
             self._set_current_playlist_entries()
@@ -1158,11 +920,20 @@ class StreamMagic(Streamer):
     def _upnp_current_playlist_track_id_event_handler(
         self, service_name: UPnPServiceName, property_value: str
     ):
+        """Handle "CurrentPlaylistTrackID" UPnP events from the UuVolControl service.
+
+        The CurrentPlaylistTrackID event is the source of truth for when the
+        streamer has started playing a new playlist entry.
+        """
         self._set_current_playlist_track_index(int(property_value))
 
     def _upnp_current_playback_event_handler(
         self, service_name: UPnPServiceName, property_value: str
     ):
+        """Handle "PlaybackXML" UPnP events from the UuVolControl service.
+
+        The PlaybackXML event contains media stream information.
+        """
         # Extract current Stream details from playback information.
         parsed = untangle.parse(property_value)
 
@@ -1173,7 +944,7 @@ class StreamMagic(Streamer):
         except (IndexError, AttributeError):
             pass
 
-    def set_upnp_property(
+    def _set_upnp_property(
         self,
         service_name: UPnPServiceName,
         property_name: UPnPPropertyName,
@@ -1216,15 +987,9 @@ class StreamMagic(Streamer):
                         + f"{service_name}:{property_name}: {e}"
                     )
 
-    def set_vibin_upnp_properties(self):
-        # THIS HAS BEEN REPLACED BY NOW_PLAYING INFO FROM SMOIP
-        # try:
-        #     self._set_active_audio_source(
-        #         int(self._state_vars["UuVolControl"]["AudioSourceNumber"])
-        #     )
-        # except KeyError:
-        #     pass
-
+    def _set_vibin_upnp_properties(self):
+        # TODO: Can this be removed once last seen track and album IDs are
+        #   extracted from a StreamMagic WebSocket update.
         try:
             self._set_current_playback_details(
                 self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
@@ -1234,113 +999,245 @@ class StreamMagic(Streamer):
         except KeyError:
             pass
 
-    def _set_active_audio_source(self, source_id: str):
-        try:
-            self._device_state.sources.active = [
-                source
-                for source in self._device_state.sources.available
-                if source.id == source_id
-            ][0]
-        except (IndexError, KeyError):
-            self._device_state.sources.active = AudioSource()
-            logger.warning(
-                "Could not determine active audio source from id "
-                + f"'{source_id}', setting to empty AudioSource"
+    # =========================================================================
+    # WebSocket connection to StreamMagic streamer.
+    # =========================================================================
+
+    def _handle_websocket_to_streamer(self):
+        """Handle the WebSocket connection to the StreamMagic WebSocket server.
+
+        On connection, subscribe to a variety of StreamMagic events. Then
+        continue to process messages as they come in, until told to stop
+        (probably because the system is shutting down).
+        """
+
+        async def async_websocket_manager():
+            uri = f"ws://{self._device_hostname}:80/smoip"
+            logger.info(f"Connecting to {self.name} WebSocket server on {uri}")
+
+            async with websockets.connect(
+                uri,
+                ssl=None,
+                extra_headers={
+                    "Origin": "vibin",
+                },
+            ) as websocket:
+                logger.info(f"Successfully connected to {self.name} WebSocket server")
+
+                # Request playhead position updates (these arrive one per sec).
+                await websocket.send(
+                    '{"path": "/zone/play_state/position", "params": {"update": 1}}'
+                )
+
+                # Request now-playing updates, so the "controls" information can
+                # be used to construct ActiveTransportControls messages.
+                await websocket.send(
+                    '{"path": "/zone/now_playing", "params": {"update": 1}}'
+                )
+
+                # Request play state updates (these arrive one per track change).
+                await websocket.send(
+                    '{"path": "/zone/play_state", "params": {"update": 1}}'
+                )
+
+                # Request preset updates.
+                await websocket.send(
+                    '{"path": "/presets/list", "params": {"update": 1}}'
+                )
+
+                # Request power updates (on/off).
+                await websocket.send(
+                    '{"path": "/system/power", "params": {"update": 100}}'
+                )
+
+                wait_for_message = True
+
+                while wait_for_message:
+                    try:
+                        # Wait for an incoming message
+                        update = await asyncio.wait_for(
+                            websocket.recv(), timeout=self._websocket_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        if not self._websocket_thread.stop_event.is_set():
+                            # Keep listening for incoming messages
+                            continue
+
+                        # The thread we're running in has been told to stop
+                        wait_for_message = False
+
+                    try:
+                        self._process_streamer_message(json.loads(update))
+                    except (KeyError, json.decoder.JSONDecodeError) as e:
+                        # TODO: This currently quietly ignores unexpected
+                        #   payload formats or missing keys. Consider adding
+                        #   error handling if errors need to be announced.
+                        pass
+
+        asyncio.run(async_websocket_manager())
+
+    def _process_streamer_message(self, update_dict: dict) -> None:
+        """Process a single incoming message from the StreamMagic WebSocket server."""
+        if update_dict["path"] == "/zone/play_state":
+            # Current play state ----------------------------------------------
+
+            self._play_state = TransportPlayState(**update_dict["params"]["data"])
+
+            play_state = update_dict["params"]["data"]
+
+            # Extract current transport state.
+            try:
+                self._transport_state.play_state = play_state["state"]
+                self._transport_state.repeat = play_state["mode_repeat"]
+                self._transport_state.shuffle = play_state["mode_shuffle"]
+            except KeyError:
+                pass
+
+            # Extract the active track details from play_state metadata.
+            try:
+                self._currently_playing.active_track = ActiveTrack(
+                    **play_state["metadata"]
+                )
+            except KeyError:
+                pass
+
+            # Extract the format details from play_state metadata.
+            try:
+                self._currently_playing.format = MediaFormat(**play_state["metadata"])
+            except KeyError:
+                pass
+
+            # Extract the format details.
+
+            # Note: When a StreamMagic device comes out of standby mode, its
+            # play_state update message does not include some fields.
+            #
+            # If this play_state update comes in while the player is paused and
+            # the title matches playlist title for the queue_index, then we fill
+            # in some of the missing fields by taking their values from the
+            # matching playlist entry. This isn't ideal.
+            #
+            # TODO: Is there some way to ensure the play_state message always
+            #  includes all of the same fields so we don't have to look
+            #  elsewhere for any missing values?
+
+            try:
+                play_state_metadata = self._play_state.metadata
+                play_state_title = play_state_metadata.title
+
+                play_state_queue_index = self._play_state.queue_index
+
+                if play_state_queue_index is not None:
+                    queue_entry = self._cached_playlist_entries[play_state_queue_index]
+
+                    if (
+                        self._play_state.state == "pause"
+                        and queue_entry.title == play_state_title
+                    ):
+                        if play_state_metadata.album is None:
+                            play_state_metadata.album = queue_entry.album
+                        if play_state_metadata.artist is None:
+                            play_state_metadata.artist = queue_entry.artist
+                        if play_state_metadata.duration is None:
+                            play_state_metadata.duration = utils.hmmss_to_secs(
+                                queue_entry.duration
+                            )
+            except (IndexError, KeyError) as e:
+                pass
+
+            self._send_play_state_update()
+            self._send_transport_state_update()
+        elif update_dict["path"] == "/zone/play_state/position":
+            # Transport playhead position -------------------------------------
+
+            self._on_update("Position", update_dict["params"]["data"])
+        elif update_dict["path"] == "/zone/now_playing":
+            # TODO: This message is received every second (because of playhead
+            #   position information). Consider consequences for updating data,
+            #   when those updates are sent to on_update, etc.
+
+            self._on_update(
+                "ActiveTransportControls",
+                self._transform_active_controls(
+                    update_dict["params"]["data"]["controls"]
+                ),
             )
 
-    def _set_current_playlist_entries(self):
-        playlist_entries = self._retrieve_active_playlist_entries()
-
-        # TODO: Remove _vibin_vars once the UI has migrated off of them
-        try:
-            self._vibin_vars["current_playlist"] = [
-                entry.dict() for entry in playlist_entries
+            self._transport_state.active_controls = [
+                control
+                for control in self._transform_active_controls(
+                    update_dict["params"]["data"]["controls"]
+                )
             ]
-        except KeyError:
-            pass
 
-        self._currently_playing.playlist.entries = playlist_entries
+            self._send_transport_state_update()
 
-    def _set_current_playlist_track_index(self, index: int):
-        try:
-            self._vibin_vars["current_playlist_track_index"] = index
-        except KeyError:
-            pass
+            # TODO: Figure out what to do with current audio source. This call
+            #   to _set_active_audio_source will ensure the source is set for
+            #   the next StateVars message publish.
+            audio_source_id = update_dict["params"]["data"]["source"]["id"]
 
-        self._currently_playing.playlist.current_track_index = index
+            self._set_active_audio_source(audio_source_id)
 
-    def _album_and_track_ids_from_file(self, file) -> (str | None, str | None):
-        filename_only = pathlib.Path(file).stem
-
-        # The streamed filename matches "<track>-<album>.ext". It seems
-        # that the track id can itself include a hyphen whereas the album
-        # id won't (TODO: can that be validated?).
-        match = re.match(r"^(.*-([^-]+))$", filename_only)
-
-        if match and len(match.groups(0)) == 2:
-            this_track_id = match.groups(0)[0]
-            this_album_id = match.groups(0)[1]
-
-            return this_album_id, this_track_id
-
-        return None, None
-
-    def _set_last_seen_media_ids(self, album_id, track_id):
-        self._last_seen_album_id = album_id
-        self._last_seen_track_id = track_id
-
-        self._currently_playing.album_media_id = album_id
-        self._currently_playing.track_media_id = track_id
-
-    def _set_current_playback_details(self, details):
-        self._vibin_vars["current_playback_details"] = details
-
-        # If the current playback details includes the streamed filename, then
-        # extract the Track ID and Album ID.
-        try:
-            stream_url = details["stream"]["url"]
-            this_album_id, this_track_id = self._album_and_track_ids_from_file(
-                stream_url
-            )
-
-            send_update = True
-
-            if this_album_id and this_track_id:
-                if this_track_id != self._last_seen_track_id:
-                    self._set_last_seen_media_ids(this_album_id, this_track_id)
-                else:
-                    send_update = False
-            else:
-                # A streamed file was found, but the track and album ids could
-                # not be determined. Play it safe and set the IDs to None to
-                # ensure clients aren't provided incorrect/misleading ids.
+            # Media IDs should only be sent to any clients when the current
+            # source is a MEDIA_PLAYER.
+            if audio_source_id != "MEDIA_PLAYER":
                 self._set_last_seen_media_ids(None, None)
 
-            # Force a send of a PlayState message to ensure any listening
-            # clients get the new track/album id information without having
-            # to wait for a normal PlayState update.
-            if send_update:
-                self._send_play_state_update()
-        except KeyError:
-            # No streamed filename found in the playback details
+            try:
+                display_info = update_dict["params"]["data"]["display"]
+                self._device_state.display = StreamerDeviceDisplay(**display_info)
+
+                # TODO: Remove the following?
+                if DeepDiff(display_info, self._device_display_raw) != {}:
+                    self._device_display_raw = display_info
+                    self._on_update("DeviceDisplay", self.device_display)
+            except KeyError:
+                pass
+        elif update_dict["path"] == "/presets/list":
+            # Presets ---------------------------------------------------------
+
+            self._on_update("Presets", update_dict["params"]["data"])
+        elif update_dict["path"] == "/system/power":
+            # System power ----------------------------------------------------
+
+            power = update_dict["params"]["data"]["power"]
+            self._device_state.power = "on" if power == "ON" else "off"
+            self._on_update("System", self._device_state)
+        else:
+            logger.warning(f"Unknown message: {json.dumps(update_dict)}")
+
+    # -------------------------------------------------------------------------
+    # Deprecate
+
+    @property
+    def vibin_vars(self):
+        return self._vibin_vars
+
+    @property
+    def play_state(self) -> TransportPlayState:
+        # TODO: This is a raw StreamMagic WebSocket payload shape. This should
+        #   probably be cleaned up before passing back to the streamer-agnostic
+        #   caller.
+
+        # NOTE: This manually injects the track and album media IDs into the
+        # play state details. The idea is that these IDs are part of the
+        # "currently-playing" information, but StreamMagic doesn't appear to
+        # include this information itself, so it's injected here to meet what
+        # might become the future payload contract for the play state type
+        # coming from anything implementing Streamer.
+
+        try:
+            self._play_state.metadata.current_track_media_id = self._last_seen_track_id
+            self._play_state.metadata.current_album_media_id = self._last_seen_album_id
+        except AttributeError:
             pass
 
-    def on_upnp_event(self, service_name: UPnPServiceName, event: str):
-        logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")
+        return self._play_state
 
-        property_set = etree.fromstring(event)
+    def transport_actions(self):
+        actions = self._av_transport.GetCurrentTransportActions(
+            InstanceID=self._instance_id
+        )
 
-        # TODO: Migrate to untangle
-        # parsed = untangle.parse(event)
-        # parsed.e_propertyset.children[0].LastChange.cdata
-
-        for property in property_set:
-            property_element = property[0]
-
-            self.set_upnp_property(
-                service_name=service_name,
-                property_name=property_element.tag,
-                property_value_xml=property_element.text,
-            )
-
-        self.set_vibin_upnp_properties()
+        return [action.lower() for action in actions["Actions"].split(", ")]

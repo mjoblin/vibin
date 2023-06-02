@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field, HttpUrl
 import upnpclient
@@ -10,6 +10,7 @@ from vibin.types import (
     PowerState,
     TransportAction,
     TransportPlayStatus,
+    TransportPosition,
     TransportRepeatState,
     TransportShuffleState,
     UpdateMessageType,
@@ -92,9 +93,9 @@ class AudioSources(BaseModel):
 
 
 class StreamerDeviceDisplayProgress(BaseModel):
-    """Position into the current track, as shown on the streamer's display."""
+    """Position into the current playlist entry, as shown on the streamer's display."""
 
-    position: int | None
+    position: TransportPosition | None
     duration: int | None
 
 
@@ -225,16 +226,14 @@ class TransportState(BaseModel):
     shuffle: TransportShuffleState | None
 
 
-class TransportPlayheadPosition(BaseModel):
-    """Position into the current track (in whole seconds)."""
+class TransportPlayheadPositionPayload(BaseModel):
+    """Position into the current track (in whole seconds).
 
-    position: int
+    This model exists for sending the playhead position over the wire, where
+    a full class is preferred (it will be converted to a JSON object).
+    """
 
-
-class TransportActiveControls(BaseModel):
-    """Transport actions which can currently be performed on the streamer."""
-
-    active_controls: list[TransportAction]
+    position: TransportPosition
 
 
 # TODO: Deprecate along with TransportPlayState
@@ -307,6 +306,9 @@ class ActivePlaylistModifyPayload(BaseModel):
     action: PlaylistModifyAction
     max_count: int | None
     media_ids: list[MediaId]
+
+
+PlaylistModifiedHandler = Callable[[list[ActivePlaylistEntry]], None]
 
 
 # Currently playing -----------------------------------------------------------
@@ -393,10 +395,17 @@ class Favorite(BaseModel):
     media: Album | Track | None = None
 
 
-class Favorites(BaseModel):
-    """All stored favorites."""
+Favorites = list[Favorite]
 
-    favorites: list[Favorite]
+
+class FavoritesPayload(BaseModel):
+    """A list of Favorites.
+
+    This model exists for sending Favorites over the wire, where a full class
+    is preferred (it will be converted to a JSON object).
+    """
+
+    favorites: Favorites
 
 
 # Lyrics ----------------------------------------------------------------------

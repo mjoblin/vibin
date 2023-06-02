@@ -22,7 +22,7 @@ system_router = APIRouter(prefix="/system")
 @system_router.get(
     "", summary="Retrieve the system's state details", tags=["Media System"]
 )
-def state_vars() -> SystemState:
+def system_state() -> SystemState:
     return get_vibin_instance().system_state
 
 
@@ -31,7 +31,7 @@ def state_vars() -> SystemState:
     summary="Retrieve details on what is currently playing",
     tags=["Media System"],
 )
-def state_vars() -> CurrentlyPlaying:
+def system_streamer_currently_playing() -> CurrentlyPlaying:
     return get_vibin_instance().currently_playing
 
 
@@ -41,7 +41,7 @@ def state_vars() -> CurrentlyPlaying:
     tags=["Media System"],
     response_class=Response,
 )
-def system_power_toggle():
+def system_streamer_power_toggle():
     try:
         get_vibin_instance().streamer.power_toggle()
     except VibinError as e:
@@ -49,14 +49,14 @@ def system_power_toggle():
 
 
 @system_router.post(
-    "/streamer/source",
-    summary="Set the Streamer's Media Source",
+    "/streamer/audio_source",
+    summary="Set the Streamer's Audio Source",
     tags=["Media System"],
     response_class=Response,
 )
-def system_source(source: str):
+def system_streamer_audio_source(source: str):
     try:
-        get_vibin_instance().streamer.set_source(source)
+        get_vibin_instance().streamer.set_audio_source(source)
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
 
@@ -66,7 +66,7 @@ def system_source(source: str):
     summary="Retrieve the Streamer's current display",
     tags=["Media System"],
 )
-def device_display() -> StreamerDeviceDisplay:
+def system_streamer_device_display() -> StreamerDeviceDisplay:
     return get_vibin_instance().streamer.device_display
 
 
@@ -83,5 +83,5 @@ def device_display() -> StreamerDeviceDisplay:
     ),
     tags=["Media System"],
 )
-def state_vars() -> SystemUPnPProperties:
+def system_upnp_properties() -> SystemUPnPProperties:
     return get_vibin_instance().upnp_properties

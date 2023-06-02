@@ -1,3 +1,4 @@
+import inspect
 import json
 from urllib.parse import urlparse
 
@@ -6,14 +7,18 @@ import upnpclient
 
 from vibin import VibinError
 from .logger import logger
+import vibin.mediaservers as mediaservers
+from vibin.mediaservers import MediaServer, model_to_media_server
+import vibin.streamers as streamers
+from vibin.streamers import model_to_streamer, Streamer
 
 _upnp_devices = None
 
 
 def _discover_upnp_devices(timeout: int):
-    """
-    Perform a UPnP discovery on the local network. Found devices are cached in
-    case this gets called more than once.
+    """Perform a UPnP discovery on the local network.
+
+    Found devices are cached in case this gets called more than once.
     """
     global _upnp_devices
 
@@ -36,8 +41,7 @@ def _discover_upnp_devices(timeout: int):
 def _determine_streamer_device(
     streamer_input: str | None, discovery_timeout: int
 ) -> upnpclient.Device | None:
-    """
-    Attempt to find a streamer on the network.
+    """Attempt to find a streamer on the network.
 
     Heuristic:
 
@@ -165,8 +169,7 @@ def _determine_media_server_device(
     discovery_timeout: int,
     streamer_device: upnpclient.Device,
 ) -> upnpclient.Device | None:
-    """
-    Attempt to find a media server on the network.
+    """Attempt to find a media server on the network.
 
     Heuristic:
 
@@ -290,3 +293,95 @@ def determine_streamer_and_media_server(
         )
 
     return streamer_device, media_server_device
+
+
+def determine_streamer_class(streamer_device, streamer_type):
+    """
+
+    """
+    # Build a list of all known Streamer implementations; and a map of
+    # device model name to Streamer implementation.
+    known_streamers = []
+    known_streamers_by_model: dict[str, Streamer] = {}
+
+    for name, obj in inspect.getmembers(streamers):
+        if inspect.isclass(obj) and issubclass(obj, Streamer):
+            known_streamers.append(obj)
+            known_streamers_by_model[obj.model_name] = obj
+
+    # Inject any model additions/overrides
+    known_streamers_by_model.update(model_to_streamer)
+
+    # Determine which Streamer implementation to use
+    try:
+        if streamer_type is None:
+            streamer_class = known_streamers_by_model[streamer_device.model_name]
+        else:
+            # A specific Streamer implementation was requested.
+            streamer_class = next(
+                (
+                    streamer for streamer in known_streamers
+                    if streamer.__name__ == streamer_type
+                ),
+                None
+            )
+
+            if streamer_class is None:
+                raise VibinError(
+                    f"Could not find Vibin implementation for requested "
+                    + f"streamer type: {streamer_type}"
+                )
+    except KeyError:
+        raise VibinError(
+            f"Could not find Vibin implementation for streamer model "
+            + f"'{streamer_device.model_name}'"
+        )
+
+    return streamer_class
+
+
+def determine_media_server_class(media_server_device, media_server_type):
+    """
+
+    """
+    # Build a list of all known MediaServer implementations; and a map of
+    # device model name to MediaServer implementation.
+    known_media_servers = []
+    known_media_servers_by_model: dict[str, MediaServer] = {}
+
+    for name, obj in inspect.getmembers(mediaservers):
+        if inspect.isclass(obj) and issubclass(obj, MediaServer):
+            known_media_servers.append(obj)
+            known_media_servers_by_model[obj.model_name] = obj
+
+    # Inject any additions/overrides
+    known_media_servers_by_model.update(model_to_media_server)
+
+    # Determine which MediaServer implementation to use
+    try:
+        if media_server_type is None:
+            media_server_class = known_media_servers_by_model[
+                media_server_device.model_name
+            ]
+        else:
+            # A specific MediaServer implementation was requested.
+            media_server_class = next(
+                (
+                    media_server for media_server in known_media_servers
+                    if media_server.__name__ == media_server_type
+                ),
+                None
+            )
+
+            if media_server_class is None:
+                raise VibinError(
+                    f"Could not find Vibin implementation for requested "
+                    + f"media server type: {media_server_type}"
+                )
+    except KeyError:
+        raise VibinError(
+            f"Could not find Vibin implementation for media server model "
+            + f"'{media_server_device.model_name}'"
+        )
+
+    return media_server_class

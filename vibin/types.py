@@ -13,11 +13,24 @@ from lxml import etree
 
 MediaId = str  # Local media server id (Album, Track, Artist)
 
+MediaMetadata = dict  # Local media server metadata
+
 PowerState = Literal["on", "off"]
 
 # Modifications that can be made to the active streamer playlist
 PlaylistModifyAction = Literal[
-    "REPLACE", "PLAY_NOW", "PLAY_NEXT", "PLAY_FROM_HERE", "APPEND"
+    # Add to the end of the playlist. Track or Album.
+    "APPEND",
+    # Insert into the playlist at the given index. Track only.
+    "INSERT",
+    # Replace the playlist with the Track's Album, and plays the Track. Track only.
+    "PLAY_FROM_HERE",
+    # Insert after the current entry. Track or Album.
+    "PLAY_NEXT",
+    # Insert after the current entry and starts playing the new entry. Track or Album.
+    "PLAY_NOW",
+    # Replaces the playlist. Track or Album.
+    "REPLACE",
 ]
 
 # Messaging -------------------------------------------------------------------
@@ -67,6 +80,8 @@ PlayStatus = Literal[
     "ready",
     "stop",
 ]
+
+TransportPosition = int
 
 # Actions that can be performed on the streamer.
 TransportAction = Literal[

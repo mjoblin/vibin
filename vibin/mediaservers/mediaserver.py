@@ -11,7 +11,7 @@ from vibin.models import (
     Track,
     UPnPServiceSubscriptions,
 )
-from vibin.types import MediaId, UpdateMessageHandler, UPnPProperties
+from vibin.types import MediaId, MediaMetadata, UpdateMessageHandler, UPnPProperties
 
 
 # -----------------------------------------------------------------------------
@@ -30,8 +30,19 @@ from vibin.types import MediaId, UpdateMessageHandler, UPnPProperties
 # http://upnp.org/specs/av/UPnP-av-ContentDirectory-v4-Service.pdf
 # -----------------------------------------------------------------------------
 
-
 class MediaServer(metaclass=ABCMeta):
+    """
+    Manage a media server for Vibin.
+
+        * `device`: The `upnp.Device` instance for the media server to be
+            managed.
+        * `subscribe_callback_base`: The REST API base URL to use when
+            subscribing to media server-related UPnP service events. Events
+            will be passed to the implementation's `on_upnp_event()`.
+        * `on_update`: A callback to invoke when a message is ready to be sent
+            back to Vibin.
+    """
+
     model_name = "VibinMediaSource"
 
     @abstractmethod
@@ -67,10 +78,22 @@ class MediaServer(metaclass=ABCMeta):
         """The Media Server's UPnP device UDN (Unique Device Name)."""
         pass
 
+    # -------------------------------------------------------------------------
+    # System
+
     @abstractmethod
     def clear_caches(self) -> None:
         """Clear all media caches."""
         pass
+
+    @property
+    @abstractmethod
+    def url_prefix(self) -> str:
+        """URL prefix to access content on the Media Server (e.g. art)."""
+        pass
+
+    # -------------------------------------------------------------------------
+    # Settings
 
     @property
     @abstractmethod
@@ -117,11 +140,8 @@ class MediaServer(metaclass=ABCMeta):
     def all_artists_path(self, path: str) -> None:
         pass
 
-    @property
-    @abstractmethod
-    def url_prefix(self) -> str:
-        """URL prefix to access content on the Media Server (e.g. art)."""
-        pass
+    # -------------------------------------------------------------------------
+    # Media
 
     @property
     @abstractmethod
@@ -167,6 +187,9 @@ class MediaServer(metaclass=ABCMeta):
         """Get details on a Track by MediaId."""
         pass
 
+    # -------------------------------------------------------------------------
+    # Browsing
+
     @abstractmethod
     def get_path_contents(
         self, path: str
@@ -176,11 +199,21 @@ class MediaServer(metaclass=ABCMeta):
 
     @abstractmethod
     def children(self, parent_id: MediaId = "0") -> MediaBrowseSingleLevel:
+        """Retrieve information on all children of the given `parent_id`."""
         pass
 
     @abstractmethod
-    def get_metadata(self, id: MediaId) -> dict:
+    def get_metadata(self, id: MediaId):
         """Get Media Server metadata on an item by MediaId."""
+        pass
+
+    # -------------------------------------------------------------------------
+    # UPnP
+
+    @abstractmethod
+    def subscribe_to_upnp_events(self) -> None:
+        """Invoked when the Media Server should initiate any UPnP service event
+        subscriptions."""
         pass
 
     @abstractmethod
@@ -196,4 +229,10 @@ class MediaServer(metaclass=ABCMeta):
     @abstractmethod
     def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
         """All active UPnP subscriptions."""
+        pass
+
+    @abstractmethod
+    def on_upnp_event(self, service_name: str, event: str):
+        """Invoked when a UPnP event has been received from a subscription
+        managed by the Media Server."""
         pass
