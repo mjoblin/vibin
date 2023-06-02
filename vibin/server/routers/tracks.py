@@ -19,6 +19,64 @@ from vibin.server.dependencies import (
 tracks_router = APIRouter(prefix="/tracks")
 
 
+@tracks_router.get(
+    "/lyrics",
+    summary="Retrieve lyrics for a Track, by Artist and Title",
+    description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
+    tags=["Tracks"],
+)
+def track_lyrics(artist: str, title: str, update_cache: bool | None = False):
+    lyrics = get_vibin_instance().lyrics_for_track(
+        artist=artist, title=title, update_cache=update_cache
+    )
+
+    if lyrics is None:
+        raise HTTPException(status_code=404, detail="Lyrics not found")
+
+    return lyrics
+
+
+@tracks_router.post(
+    "/lyrics/validate",
+    summary="Mark lyrics as valid or invalid, by Artist and Title",
+    description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
+    tags=["Tracks"],
+)
+def track_lyrics_validate(artist: str, title: str, is_valid: bool):
+    lyrics = track_lyrics(artist=artist, title=title)
+    get_vibin_instance().lyrics_valid(lyrics_id=lyrics["id"], is_valid=is_valid)
+
+    return track_lyrics(artist=artist, title=title)
+
+
+@tracks_router.post(
+    "/lyrics/search", summary="Search all Track lyrics", tags=["Tracks"]
+)
+def track_lyrics_search(lyrics_query: LyricsQuery):
+    results = get_vibin_instance().lyrics_search(lyrics_query.query)
+
+    return {
+        "query": lyrics_query.query,
+        "matches": results,
+    }
+
+
+@tracks_router.get(
+    "/links",
+    summary="Retrieve links for a Track by Artist, Album, and Title",
+    tags=["Tracks"],
+)
+def track_links(
+    artist: str | None = None,
+    album: str | None = None,
+    title: str | None = None,
+    all_types: bool = False,
+):
+    return get_vibin_instance().media_links(
+        artist=artist, album=album, title=title, include_all=all_types
+    )
+
+
 @tracks_router.get("", summary="Retrieve all Track details", tags=["Tracks"])
 @transform_media_server_urls_if_proxying
 @requires_media
@@ -68,68 +126,10 @@ def track_lyrics_by_track_id_validate(track_id: str, is_valid: bool):
 
 
 @tracks_router.get(
-    "/lyrics",
-    summary="Retrieve lyrics for a Track, by Artist and Title",
-    description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
-    tags=["Tracks"],
-)
-def track_lyrics(artist: str, title: str, update_cache: bool | None = False):
-    lyrics = get_vibin_instance().lyrics_for_track(
-        artist=artist, title=title, update_cache=update_cache
-    )
-
-    if lyrics is None:
-        raise HTTPException(status_code=404, detail="Lyrics not found")
-
-    return lyrics
-
-
-@tracks_router.post(
-    "/lyrics/validate",
-    summary="Mark lyrics as valid or invalid, by Artist and Title",
-    description="This endpoint supports lyrics for Tracks without a local Media ID (e.g. AirPlay).",
-    tags=["Tracks"],
-)
-def track_lyrics_validate(artist: str, title: str, is_valid: bool):
-    lyrics = track_lyrics(artist=artist, title=title)
-    get_vibin_instance().lyrics_valid(lyrics_id=lyrics["id"], is_valid=is_valid)
-
-    return track_lyrics(artist=artist, title=title)
-
-
-@tracks_router.post(
-    "/lyrics/search", summary="Search all Track lyrics", tags=["Tracks"]
-)
-def track_lyrics_search(lyrics_query: LyricsQuery):
-    results = get_vibin_instance().lyrics_search(lyrics_query.query)
-
-    return {
-        "query": lyrics_query.query,
-        "matches": results,
-    }
-
-
-@tracks_router.get(
     "/{track_id}/links", summary="Retrieve links for a Track", tags=["Tracks"]
 )
 def track_links_by_track_id(track_id: str, all_types: bool = False):
     return get_vibin_instance().media_links(media_id=track_id, include_all=all_types)
-
-
-@tracks_router.get(
-    "/links",
-    summary="Retrieve links for a Track by Artist, Album, and Title",
-    tags=["Tracks"],
-)
-def track_links(
-    artist: str | None = None,
-    album: str | None = None,
-    title: str | None = None,
-    all_types: bool = False,
-):
-    return get_vibin_instance().media_links(
-        artist=artist, album=album, title=title, include_all=all_types
-    )
 
 
 @tracks_router.get(

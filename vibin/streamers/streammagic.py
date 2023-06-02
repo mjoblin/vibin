@@ -638,7 +638,7 @@ class StreamMagic(Streamer):
             # clients get the new track/album id information without having
             # to wait for a normal PlayState update.
             if send_update:
-                self._send_play_state_update()
+                self._send_currently_playing_update()
         except KeyError:
             # No streamed filename found in the playback details
             pass
@@ -671,6 +671,7 @@ class StreamMagic(Streamer):
             pass
 
         self._currently_playing.playlist.entries = playlist_entries
+        self._send_currently_playing_update()
 
     def _set_current_playlist_track_index(self, index: int):
         try:
@@ -801,10 +802,11 @@ class StreamMagic(Streamer):
     # -------------------------------------------------------------------------
     # Helpers to send messages back to Vibin
 
-    def _send_play_state_update(self):
-        self._on_update("PlayState", self.play_state)
-
+    def _send_currently_playing_update(self):
         self._on_update("CurrentlyPlaying", self.currently_playing)
+
+        # TODO: Remove PlayState send once no longer used by client
+        self._on_update("PlayState", self.play_state)
 
     def _send_transport_state_update(self):
         self._on_update("TransportState", self.transport_state)
@@ -1145,7 +1147,7 @@ class StreamMagic(Streamer):
             except (IndexError, KeyError) as e:
                 pass
 
-            self._send_play_state_update()
+            self._send_currently_playing_update()
             self._send_transport_state_update()
         elif update_dict["path"] == "/zone/play_state/position":
             # Transport playhead position -------------------------------------
