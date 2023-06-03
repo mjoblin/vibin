@@ -51,7 +51,6 @@ from vibin.models import (
     StoredPlaylistStatus,
     SystemState,
     Track,
-    TransportPlayState,
     UpdateMessage,
     VibinSettings,
 )
@@ -182,23 +181,15 @@ class Vibin:
         return [
             UpdateMessage(message_type="System", payload=self.system_state),
             UpdateMessage(message_type="UPnPProperties", payload=self.upnp_properties),
-            UpdateMessage(message_type="PlayState", payload=self.play_state),
             UpdateMessage(
                 message_type="TransportState", payload=self.streamer.transport_state
             ),
             UpdateMessage(message_type="CurrentlyPlaying", payload=self.currently_playing),
             UpdateMessage(
-                message_type="DeviceDisplay", payload=self.streamer.device_display
-            ),
-            UpdateMessage(
                 message_type="Favorites", payload=FavoritesPayload(favorites=self.favorites)
             ),
             UpdateMessage(message_type="Presets", payload=self.presets),
             UpdateMessage(message_type="StoredPlaylists", payload=self.stored_playlists),
-            UpdateMessage(
-                message_type="ActiveTransportControls",
-                payload=self.streamer.active_transport_controls,
-            ),
         ]
 
     def _reset_stored_playlist_status(
@@ -533,69 +524,6 @@ class Vibin:
         if action == "REPLACE":
             self._reset_stored_playlist_status(send_update=True)
 
-    # def pause(self):
-    #     try:
-    #         self.streamer.pause()
-    #     except SOAPError as e:
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to perform Pause transition: [{code}] {err}")
-    #
-    # def play(self):
-    #     try:
-    #         self.streamer.play()
-    #     except SOAPError as e:
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to perform Play transition: [{code}] {err}")
-    #
-    # def next_track(self):
-    #     try:
-    #         self.streamer.next_track()
-    #     except SOAPError as e:
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to perform Next transition: [{code}] {err}")
-    #
-    # def previous_track(self):
-    #     try:
-    #         self.streamer.previous_track()
-    #     except SOAPError as e:
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to perform Previous transition: [{code}] {err}")
-
-    # def repeat(self, state: str | None = "toggle"):
-    #     try:
-    #         self.streamer.repeat(state)
-    #     except SOAPError as e:
-    #         # TODO: Will no longer get a SOAPError after switching to SMOIP
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to interact with Repeat setting: [{code}] {err}")
-    #
-    # def shuffle(self, state: str | None = "toggle"):
-    #     try:
-    #         self.streamer.shuffle(state)
-    #     except SOAPError as e:
-    #         # TODO: Will no longer get a SOAPError after switching to SMOIP
-    #         code, err = e.args
-    #         raise VibinError(f"Unable to interact with Shuffle setting: [{code}] {err}")
-
-    # def seek(self, target):
-    #     self.streamer.seek(target)
-
-    # def transport_position(self):
-    #     return self.streamer.transport_position()
-
-    # def transport_active_controls(self):
-    #     return self.streamer.transport_active_controls()
-
-    # @property
-    # def transport_state(self) -> TransportState:
-    #     return self.streamer.transport_state
-
-    # TODO: Consider improving this eventing system. Currently it only allows
-    #   the streamer to subscribe to events; and when a new event comes in,
-    #   it checks the event's service name against all the streamers
-    #   subscriptions. It might be better to allow multiple streamer/media/etc
-    #   objects to register event handlers with Vibin.
-
     def _subscribe_to_upnp_events(self):
         """Instruct the streamer and media server to subscribe to UPnP events.
 
@@ -613,37 +541,12 @@ class Vibin:
 
     @property
     def upnp_properties(self):
-    # def upnp_properties(self) -> SystemUPnPProperties:
-        # return SystemUPnPProperties(
-        #     streamer=self.streamer.upnp_properties,
-        #     media_server=self.media.upnp_properties,
-        # )
-
-        # TODO: Do a pass at redefining the shape of upnp_properties. It should
-        #   include:
-        #   * Standard keys shared across all streamers/media (audience: any
-        #     client which wants to be device-agnostic). This will require some
-        #     well-defined keys in some sort of device interface definition.
-        #   * All streamer- and media-specific data (audience: any client which
-        #     is OK with understanding device-specific data).
-        #
-        # TODO: Confusion: streamer_name/media_source_name vs. system_state()
-        # TODO: Remove data which isn't directly upnp_properties
-        #
-        # TODO: Remove everything except streamer and media_server once migrated
-        #   to other messages. Then use SystemUPnPProperties type.
-        all_vars = {
-            "streamer_name": self.streamer.name,
-            "media_source_name": self.media_server.name if self.media_server else None,
+        all_upnp_properties = {
             "streamer": self.streamer.upnp_properties,
             "media_server": self.media_server.upnp_properties if self.media_server else None,
-            "vibin": {
-                "last_played_id": self._last_played_id,
-                self.streamer.name: self.streamer.vibin_vars,
-            },
         }
 
-        return all_vars
+        return all_upnp_properties
 
     @property
     def system_state(self) -> SystemState:
@@ -651,11 +554,6 @@ class Vibin:
             streamer=self.streamer.device_state,
             media=self.media_server.device_state,
         )
-
-    # TODO: Deprecate in favor of transport_state
-    @property
-    def play_state(self) -> TransportPlayState:
-        return self.streamer.play_state
 
     @property
     def currently_playing(self) -> CurrentlyPlaying:
@@ -671,13 +569,6 @@ class Vibin:
             status=self._stored_playlist_status,
             playlists=[StoredPlaylist(**playlist) for playlist in self._playlists.all()],
         )
-
-        # return {
-        #     "active_stored_playlist_id": self._stored_playlist_status.active_id,
-        #     "active_synced_with_store": self._stored_playlist_status.is_active_synced_with_store,
-        #     "activating_stored_playlist": self._stored_playlist_status.is_activating_new_playlist,
-        #     "stored_playlists": self._playlists.all(),
-        # }
 
     def lyrics_for_track(
         self, update_cache=False, *, track_id=None, artist=None, title=None

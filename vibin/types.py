@@ -37,11 +37,8 @@ PlaylistModifyAction = Literal[
 
 # Message types sent to subscribed clients (over a WebSocket)
 UpdateMessageType = Literal[
-    "ActiveTransportControls",  # TODO: Deprecate
     "CurrentlyPlaying",
-    "DeviceDisplay",  # TODO: Deprecate
     "Favorites",
-    "PlayState",  # TODO: Deprecate
     "Position",
     "Presets",
     "StoredPlaylists",
@@ -92,18 +89,6 @@ TransportAction = Literal[
     "repeat",
     "seek",
     "shuffle",
-    "stop",
-]
-
-# TODO: Deprecate along with the TransportPlayState class
-TransportPlayStatus = Literal[
-    "buffering",
-    "connecting",
-    "no_signal",
-    "not_ready",
-    "pause",
-    "play",
-    "ready",
     "stop",
 ]
 
