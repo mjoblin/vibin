@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 import upnpclient
 
 from vibin.types import (
@@ -9,7 +9,6 @@ from vibin.types import (
     PlayStatus,
     PowerState,
     TransportAction,
-    TransportPlayStatus,
     TransportPosition,
     TransportRepeatState,
     TransportShuffleState,
@@ -234,43 +233,6 @@ class TransportPlayheadPositionPayload(BaseModel):
     """
 
     position: TransportPosition
-
-
-# TODO: Deprecate along with TransportPlayState
-class TransportPlayStateMetadata(BaseModel):
-    class_field: str | None = Field(alias="class")
-    source: str | None
-    name: str | None
-    playback_source: str | None
-    track_number: int | None
-    duration: int | None
-    album: str | None
-    artist: str | None
-    title: str | None
-    art_url: HttpUrl | None
-    sample_format: str | None
-    mqa: str | None
-    codec: str | None
-    lossless: bool | None
-    sample_rate: int | None
-    bit_depth: int | None
-    encoding: str | None
-    current_track_media_id: str | None
-    current_album_media_id: str | None
-
-
-# TODO: Remove once confirmed it's not in use (replaced by TransportState)
-class TransportPlayState(BaseModel):
-    state: TransportPlayStatus | None
-    position: int | None
-    # TODO: Consider renaming "queue_*" to "active_playlist_*", or just remove
-    #   since they can be determined from the active playlist
-    queue_index: int | None
-    queue_length: int | None
-    queue_id: int | None
-    mode_repeat: TransportRepeatState | None
-    mode_shuffle: TransportShuffleState | None
-    metadata: TransportPlayStateMetadata | None
 
 
 # Streamer's active playlist --------------------------------------------------

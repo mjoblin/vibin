@@ -2,12 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from vibin import VibinError
-from vibin.models import (
-    TransportAction,
-    TransportPlayheadPositionPayload,
-    TransportPlayState,
-    TransportState,
-)
+from vibin.models import TransportPlayheadPositionPayload, TransportState
 from vibin.server.dependencies import get_vibin_instance
 from vibin.types import SeekTarget
 
@@ -143,23 +138,3 @@ def transport_play_media_id(media_id: str):
         get_vibin_instance().play_id(media_id)
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@transport_router.get(
-    "/active_controls",
-    summary="Retrieve the list of currently-valid Transport controls",
-    tags=["Transport"],
-    deprecated=True,
-)
-def transport_active_controls() -> list[TransportAction]:
-    return get_vibin_instance().streamer.active_transport_controls
-
-
-@transport_router.get(
-    "/play_state",
-    summary="Retrieve the current play state",
-    tags=["Transport"],
-    deprecated=True,
-)
-def transport_play_state() -> TransportPlayState:
-    return get_vibin_instance().play_state

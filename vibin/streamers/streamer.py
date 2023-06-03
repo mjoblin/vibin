@@ -13,7 +13,6 @@ from vibin.models import (
     StreamerDeviceDisplay,
     StreamerState,
     TransportAction,
-    TransportPlayState,
     TransportRepeatState,
     TransportShuffleState,
     TransportState,
@@ -320,15 +319,4 @@ class Streamer(metaclass=ABCMeta):
         """Invoked when a UPnP event has been received from a subscription
         managed by the Streamer.
         """
-        pass
-
-    # -------------------------------------------------------------------------
-    # TODO: Deprecate
-
-    @abstractmethod
-    def play_state(self) -> TransportPlayState:
-        pass
-
-    @abstractmethod
-    def vibin_vars(self):
         pass
