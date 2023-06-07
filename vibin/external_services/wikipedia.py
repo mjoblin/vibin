@@ -1,9 +1,5 @@
-from functools import lru_cache
-from typing import Optional
-
 import wikipedia
 
-from vibin import VibinError
 from vibin.external_services import ExternalService
 from vibin.models import ExternalServiceLink
 
@@ -21,11 +17,11 @@ class Wikipedia(ExternalService):
         return self.service_name
 
     def links(
-            self,
-            artist: Optional[str] = None,
-            album: Optional[str] = None,
-            track: Optional[str] = None,
-            link_type: str = "All",
+        self,
+        artist: str | None = None,
+        album: str | None = None,
+        track: str | None = None,
+        link_type: str = "All",
     ) -> list[ExternalServiceLink]:
         links = []
 
@@ -42,11 +38,13 @@ class Wikipedia(ExternalService):
                 page_data = wikipedia.page(search_result[0], auto_suggest=False)
 
                 if page_data:
-                    links.append(ExternalServiceLink(
-                        type=link_type,
-                        name=link_type,
-                        url=page_data.url,
-                    ))
+                    links.append(
+                        ExternalServiceLink(
+                            type=link_type,
+                            name=link_type,
+                            url=page_data.url,
+                        )
+                    )
             except IndexError:
                 pass
 

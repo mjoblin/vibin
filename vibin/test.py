@@ -3,7 +3,7 @@ from vibin import Vibin
 vibin = Vibin(streamer="streamer", media_source="Asset UPnP: thicc")
 
 name = vibin.streamer.name
-albums = vibin.media.albums
+albums = vibin.media_server.albums
 print()
 
 # vibin.play_id("coE2A8E1A777532255")
@@ -18,7 +18,7 @@ try:
     user_index = int(user_input)
     print(f"\nPlaying {albums[user_index].title} ... ", end="")
 
-    vibin.play_id(vibin.media.albums[user_index].id)
+    vibin.play_id(vibin.media_server.albums[user_index].id)
 
     # vibin.play_album(vibin.media.albums[user_index])
 

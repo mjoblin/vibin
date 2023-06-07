@@ -1,6 +1,4 @@
-from functools import lru_cache
 import re
-from typing import Optional
 
 import lyricsgenius
 
@@ -26,11 +24,11 @@ class Genius(ExternalService):
         return self.service_name
 
     def links(
-            self,
-            artist: Optional[str] = None,
-            album: Optional[str] = None,
-            track: Optional[str] = None,
-            link_type: str = "All",
+        self,
+        artist: str | None = None,
+        album: str | None = None,
+        track: str | None = None,
+        link_type: str = "All",
     ) -> list[ExternalServiceLink]:
         if not self._client:
             return []
@@ -43,35 +41,41 @@ class Genius(ExternalService):
             result = self._client.search_artist(artist_name=artist, max_songs=0)
 
             if result is not None:
-                links.append(ExternalServiceLink(
-                    type="Artist",
-                    name="Artist",
-                    url=f"{result.url}",
-                ))
+                links.append(
+                    ExternalServiceLink(
+                        type="Artist",
+                        name="Artist",
+                        url=f"{result.url}",
+                    )
+                )
 
         if album and (link_type == "Album" or link_type == "All"):
             result = self._client.search_album(name=album, artist=artist)
 
             if result is not None:
-                links.append(ExternalServiceLink(
-                    type="Album",
-                    name="Album",
-                    url=f"{result.url}",
-                ))
+                links.append(
+                    ExternalServiceLink(
+                        type="Album",
+                        name="Album",
+                        url=f"{result.url}",
+                    )
+                )
 
         if track and (link_type == "Track" or link_type == "All"):
             result = self._client.search_song(title=track, artist=artist)
 
             if result is not None:
-                links.append(ExternalServiceLink(
-                    type="Track",
-                    name="Lyrics",
-                    url=f"{result.url}",
-                ))
+                links.append(
+                    ExternalServiceLink(
+                        type="Track",
+                        name="Lyrics",
+                        url=f"{result.url}",
+                    )
+                )
 
         return links
 
-    def lyrics(self, artist: str, track: str) -> Optional[list[LyricsChunk]]:
+    def lyrics(self, artist: str, track: str) -> list[LyricsChunk] | None:
         if not self._client:
             return None
 
@@ -126,42 +130,43 @@ class Genius(ExternalService):
 
             # Enforce at least two newlines before any line looking like
             # "[Chorus]".
-            chunks_as_strings = \
-                re.split(r"\n{2,}", re.sub(r'(\n\[[^\[\]]+\])', r"\n\1", lyrics))
+            chunks_as_strings = re.split(
+                r"\n{2,}", re.sub(r"(\n\[[^\[\]]+\])", r"\n\1", lyrics)
+            )
 
             # The lyrics scraper prepends the first line of lyrics with
             # "<song title>Lyrics", so we remove that if we see it.
-            chunks_as_strings[0] = \
-                re.sub(r"^.*Lyrics", "", chunks_as_strings[0])
+            chunks_as_strings[0] = re.sub(r"^.*Lyrics", "", chunks_as_strings[0])
 
             # The scraper also might append "<digits>Embed" to the last line.
-            chunks_as_strings[-1] = re.sub(
-                r"\d*Embed$", "", chunks_as_strings[-1]
-            )
+            chunks_as_strings[-1] = re.sub(r"\d*Embed$", "", chunks_as_strings[-1])
 
-            chunks_as_arrays = \
-                [chunk.split("\n") for chunk in chunks_as_strings]
+            chunks_as_arrays = [chunk.split("\n") for chunk in chunks_as_strings]
 
             results = []
 
             for chunk in chunks_as_arrays:
                 chunk_header = re.match(r"^\[([^\[\]]+)\]$", chunk[0])
                 if chunk_header:
-                    results.append(LyricsChunk(
-                        header=chunk_header.group(1),
-                        body=chunk[1:],
-                    ))
+                    results.append(
+                        LyricsChunk(
+                            header=chunk_header.group(1),
+                            body=chunk[1:],
+                        )
+                    )
                 else:
-                    results.append(LyricsChunk(
-                        header=None,
-                        body=chunk,
-                    ))
+                    results.append(
+                        LyricsChunk(
+                            header=None,
+                            body=chunk,
+                        )
+                    )
 
             return results
         except (KeyError, IndexError) as e:
             raise VibinError(
-                f"Could not extract track details for lyrics lookup for: " +
-                f"{artist} - {track}: {e}"
+                f"Could not extract track details for lyrics lookup for: "
+                + f"{artist} - {track}: {e}"
             )
 
         return None

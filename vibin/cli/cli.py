@@ -13,7 +13,6 @@ from vibin.server import server_start
 from vibin.constants import UI_ROOT, VIBIN_PORT
 from vibin.utils import get_ui_install_dir, install_vibinui
 
-
 CONTEXT_SETTINGS = {
     "max_content_width": 100,
     "help_option_names": ["--help"],
@@ -35,7 +34,8 @@ def cli():
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 @click.option(
-    "--host", "-h",
+    "--host",
+    "-h",
     help="Host to listen on.",
     metavar="HOST",
     type=click.STRING,
@@ -43,7 +43,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--port", "-p",
+    "--port",
+    "-p",
     help="Port to listen on.",
     metavar="PORT",
     type=click.INT,
@@ -51,7 +52,8 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--streamer", "-s",
+    "--streamer",
+    "-s",
     help="Streamer (hostname, UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
@@ -59,7 +61,16 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--media", "-m",
+    "--streamer-type",
+    help="Streamer type (e.g. StreamMagic). Usually not required.",
+    metavar="TYPE",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--media-server",
+    "-m",
     help="Media server (UPnP friendly name, or UPnP location URL).",
     metavar="NAME",
     type=click.STRING,
@@ -67,13 +78,22 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--no-media", "-n",
+    "--media-server-type",
+    help="Media server type (e.g. Asset). Usually not required.",
+    metavar="TYPE",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--no-media-server",
     help="Ignore any local media servers.",
     is_flag=True,
     default=False,
 )
 @click.option(
-    "--discovery-timeout", "-t",
+    "--discovery-timeout",
+    "-t",
     help="UPnP discovery timeout (seconds).",
     metavar="SECS",
     type=click.INT,
@@ -81,28 +101,39 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "--vibinui", "-u",
+    "--vibinui",
+    "-u",
     help="Path to Web UI static files; use 'auto' to find 'vibin installui' location.",
     metavar="DIR",
     type=click.STRING,
-    default=None,
+    default="auto",
     show_default=True,
 )
 @click.option(
-    "--proxy-media-server", "-o",
+    "--no-vibinui",
+    help="Do not serve the Web UI.",
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--proxy-media-server",
+    "-o",
     help="Act as a proxy for the media server.",
     is_flag=True,
     default=False,
 )
 def serve(
-        host,
-        port,
-        streamer,
-        media,
-        no_media,
-        discovery_timeout,
-        vibinui,
-        proxy_media_server,
+    host,
+    port,
+    streamer,
+    streamer_type,
+    media_server,
+    media_server_type,
+    no_media_server,
+    discovery_timeout,
+    vibinui,
+    no_vibinui,
+    proxy_media_server,
 ):
     """
     Start the Vibin server.
@@ -126,8 +157,8 @@ def serve(
 
     If a local media server is also available on the network then it will be
     auto-detected from the Cambridge Audio streamer settings. Alternatively,
-    the --media flag can be used to specify a media server UPnP friendly name,
-    or UPnP location URL.
+    the --media-server flag can be used to specify a media server UPnP friendly
+    name, or UPnP location URL.
 
     WEB INTERFACE
 
@@ -151,23 +182,23 @@ def serve(
 
     To specify a streamer and media server by UPnP friendly name:
 
-     $ vibin serve --streamer MyStreamer --media MyMediaServer
+     $ vibin serve --streamer MyStreamer --media-server MyMediaServer
 
     To serve the Web UI and act as a proxy for all media server URLs:
 
      $ vibin serve --vibinui auto --proxy-media-server
     """
-    if proxy_media_server and no_media:
+    if proxy_media_server and no_media_server:
         raise click.ClickException(
-            f"Cannot specify both --proxy-media-server and --no-media"
+            f"Cannot specify both --proxy-media-server and --no-media-server"
         )
 
-    if vibinui == "auto":
+    if vibinui == "auto" and not no_vibinui:
         latest_ui_install_dir = get_ui_install_dir()
 
         if latest_ui_install_dir is None:
             raise click.ClickException(
-                f"Could not determine latest UI version from {UI_ROOT}"
+                f"Could not determine latest UI version from {UI_ROOT} -- have you run 'vibin installui'?"
             )
 
         if not os.path.isfile(Path(latest_ui_install_dir, "build", "index.html")):
@@ -185,9 +216,11 @@ def serve(
             host=host,
             port=port,
             streamer=streamer,
-            media=False if no_media else media,
+            streamer_type=streamer_type,
+            media_server=False if no_media_server else media_server,
+            media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
-            vibinui=vibinui,
+            vibinui=vibinui if not no_vibinui else None,
             proxy_media_server=proxy_media_server,
         )
     except VibinError as e:
@@ -208,11 +241,11 @@ def call_vibin(endpoint, method="POST", payload=None):
         vibin_server = get_server_info()
     except IOError:
         click.echo(
-            f"Unable to locate the Vibin server.\n\n" +
-            f"When 'vibin serve' is run, the server details are stored in\n" +
-            f"{SERVER_FILE}.\n\n" +
-            f"Either the server has not been started, or the server details " +
-            f"could not be stored.\n"
+            f"Unable to locate the Vibin server.\n\n"
+            + f"When 'vibin serve' is run, the server details are stored in\n"
+            + f"{SERVER_FILE}.\n\n"
+            + f"Either the server has not been started, or the server details "
+            + f"could not be stored.\n"
         )
 
         raise click.ClickException(f"Could not determine Vibin server details.")
@@ -233,8 +266,8 @@ def call_vibin(endpoint, method="POST", payload=None):
         return response.json()
     except requests.exceptions.ConnectionError:
         raise click.ClickException(
-            f"Unable to connect to the Vibin server at {vibin_server}. Is " +
-            f"'vibin serve' running?"
+            f"Unable to connect to the Vibin server at {vibin_server}. Is "
+            + f"'vibin serve' running?"
         )
 
 
@@ -338,7 +371,7 @@ def browse(id):
     """
     Browse the children of the given media id.
     """
-    browse_results = call_vibin(f"/browse/{id}", method="GET")
+    browse_results = call_vibin(f"/browse/children/{id}", method="GET")
 
     console = Console()
 
