@@ -10,11 +10,13 @@
   UI, etc.
 
 > `vibin` can in theory be extended to support other streamers and media servers. Currently it has
-> only been used with the Cambridge Audio CXNv2 and a NAS running Asset UPnP.
+> only been used with the Cambridge Audio CXNv2 (via StreamMagic and UPnP) and a NAS running Asset
+> UPnP.
 
 ## Overview
 
-`vibin` sits between the Vibin UI (`vibinui`) and the music streamer, NAS, etc.
+`vibin` sits between the Vibin UI (`vibinui`) and the hardware devices (such as the music streamer,
+NAS, etc).
 
 ## Developers
 
@@ -203,6 +205,8 @@ vibin serve --help
 `vibin` exposes a REST API. When `vibin serve` is running, the REST API documentation can be found
 at `http://hostname:8080/docs`. The API documentation is interactive.
 
+![Swagger]
+
 ### WebSocket server
 
 `vibin` also exposes a WebSocket server. Connected clients will receive messages describing updates
@@ -254,3 +258,4 @@ The following message types are sent by `vibin`:
 [//]: # "--- Images ------------------------------------------------------------------------------"
 
 [Vibin Overview]: media/vibin_overview.svg
+[Swagger]: media/vibin_swagger.png

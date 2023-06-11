@@ -66,13 +66,12 @@ The project structure is broadly laid out as follows:
 ├── server/                               The REST API, WebSocket server, and proxies (FastAPI)
 │   ├── dependencies.py                   Dependencies relied on by various routers
 │   ├── routers/                          API routers
+│   │   ├── active_playlist.py
 │   │   ├── albums.py
 │   │   ├── artists.py
 │   │   ├── browse.py
 │   │   ├── favorites.py
 │   │   ├── media_server_proxy.py
-│   │   ├── playlist.py
-│   │   ├── playlists.py
 │   │   ├── presets.py
 │   │   ├── stored_playlists.py
 │   │   ├── system.py
@@ -84,7 +83,7 @@ The project structure is broadly laid out as follows:
 │   │   └── websocket_server.py
 │   └── server.py
 ├── streamers/                         Streamer and its implementations (CXNv2)
-│   ├── cxnv2.py
+│   ├── streammagic.py
 │   └── streamer.py
 ├── models.py                          Application models
 ├── types.py                           Application types
@@ -101,11 +100,62 @@ The main hub of `vibin` is the `Vibin` class, which:
   media metadata, etc.
 * Provides access to the information received from external services (such as lyrics, links, etc).
 * Persists information to TinyDB.
-* Announces any updates (such as playhead position updates, playlist updates, etc) to any interested
-  subscribers.
+* Announces any updates as messages over a WebSocket connection (such as playhead position updates,
+  playlist updates, etc) to any interested subscribers.
 
 The REST API is mostly a thin API layer that sits in front of `Vibin`. The WebSocket server
 subscribes to any `Vibin` updates, which it then passes on to any connected clients.
+
+#### WebSocket message types
+
+The following message types are published:
+
+* `CurrentlyPlaying`: Information about what's currently playing (current track, current playlist,
+   format details, stream details, etc).
+* `Favorites`: Information on Favorite Albums and Tracks.
+* `Position`: Playhead position.
+* `Presets`: Information on Presets (e.g. Internet Radio stations).
+* `StoredPlaylists`: Information on Stored Playlists.
+* `System`: Information about the hardware devices (streamer name, power status, audio sources,
+  device display details; media server name).
+* `TransportState`: Current state of the streamer transport (play state, active transport controls,
+  shuffle and repeat state, etc).
+* `UPnPProperties`: A general kitchen-sink message containing all the UPnP property values received
+* by the streamer and media server.
+* `VibinStatus`: Information about the Vibin back-end (start time, system information, connected
+  clients, etc).
+
+WebSocket messages can be viewed in the browser's Network pane. An example `TransportState` message
+is shown below:
+
+```json
+{
+    "id": "267c3e25-1f82-47ed-b711-3146511ad6d9",
+    "client_id": "51e668ad-bf18-44ba-a19d-5e67779be4e9",
+    "time": 1685764530636,
+    "type": "TransportState",
+    "payload": {
+        "play_state": "play",
+        "active_controls": [
+            "pause",
+            "stop",
+            "shuffle",
+            "repeat",
+            "next",
+            "previous",
+            "seek"
+        ],
+        "repeat": "all",
+        "shuffle": "off"
+    }
+}
+```
+
+#### REST API
+
+The REST API's interactive swagger is available at `http://hostname:8080/docs`.
+
+![Swagger]
 
 ### Supporting other hardware devices
 
@@ -119,6 +169,17 @@ The same issue applies to many of the models (`models.py`) and types (`types.py`
 
 If additional devices were to be supported then it's likely that the interfaces, models, and types,
 would need to be adjusted appropriately. It would be a learning adventure.
+
+Supporting additional media server devices would require implementing the `MediaServer` interface
+and is likely the simpler of the two.
+
+Supporting additional streamer devices would require implementing the `Streamer` interface. The
+implementation would also need to be sure to invoke the `on_update()` method (as passed in by
+`Vibin` when instantiating the implementation) for the following message types: `CurrentlyPlaying`,
+`Position`, and `TransportState`.
+
+Any implementation would need to ensure that the data owned by the media server or streamer is
+munged into the shape expected by the types and models specified by the interfaces.
 
 ### Tests
 
@@ -143,3 +204,4 @@ aspirational dev dependency.
 [//]: # "--- Images ------------------------------------------------------------------------------"
 
 [Architecture]: media/vibin_architecture.svg
+[Swagger]: media/vibin_swagger.png
