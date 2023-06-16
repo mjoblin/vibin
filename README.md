@@ -231,25 +231,36 @@ to the back-end as they happen.
 
 The following message types are sent by `vibin`:
 
-> These message types have evolved significantly over time, and would benefit from a cleanup pass.
-
-* `ActiveTransportControls`: Which transport controls are currently available (e.g. play, pause,
-  next track, etc). These will vary based on the current media source, and current player state.
-* `DeviceDisplay`: What is currently being displayed on the streamer's display.
-* `Favorites`: Information on Favorite Albums and Tracks.
-* `PlayState`: Information about the current player state (playing, paused, etc), and the currently-
-  playing media (including Album and Track IDs).
-* `Position`: Playhead position.
-* `Presets`: Information on Presets (e.g. Internet Radio stations).
-* `StateVars`: A general kitchen-sink message. Mostly used for extracting audio source information,
-  and some details on the current audio (including stream details like codec). **This message
-  type's usefulness has largely been replaced by other message types and should be deprecated (once
-  its remaining usefulness has been extracted)**.
-* `StoredPlaylists`: Information on Stored Playlists.
-* `System`: Information about the hardware devices (streamer name and power status; media server
-  name).
 * `VibinStatus`: Information about the Vibin back-end (start time, system information, connected
   clients, etc).
+* `System`: Information about the hardware devices (streamer name and power status; media server
+  name).
+* `TransportState`: Information about the current state of the transport (play state,
+  repeat/shuffle, currently-valid controls, etc).
+* `CurrentlyPlaying`: Information about what is currently playing (media IDs, stream, format, track
+  details, playlist details, etc).
+* `Position`: Playhead position.
+* `StoredPlaylists`: Information on Stored Playlists.
+* `Favorites`: Information on Favorite Albums and Tracks.
+* `Presets`: Information on Presets (e.g. Internet Radio stations).
+* `UPnPProperties`: Low-level per-device UPnP details.
+
+#### Example message
+
+Following is an example `Position` message. All message types adhere to the same format, although
+their `payload` shape will be different.
+
+```json
+{
+    "type": "Position",
+    "id": "ff84e0c9-28fd-4ab0-bde0-c6ec120f8872",
+    "client_id" : "ebf0fed8-cc04-40cf-8cff-a56c4cbfb2a4",
+    "time": 1681881973433,
+    "payload": {
+        "position": 16
+    }
+}
+```
 
 ## Database
 
