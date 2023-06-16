@@ -202,65 +202,19 @@ vibin serve --help
 
 ### REST API
 
-`vibin` exposes a REST API. When `vibin serve` is running, the REST API documentation can be found
-at `http://hostname:8080/docs`. The API documentation is interactive. The top-level REST routes
-include:
+> The REST API can be ignored by most users.
 
-| Route               | Description                                                                                    |
-|---------------------|------------------------------------------------------------------------------------------------|
-| `/vibin`            | Interact with the Vibin Server's top-level capabilities (settings, data cache, etc)            |
-| `/system`           | Interact with the system's Streamer and Media Server devices (power toggle, audio source, etc) |
-| `/artists`          | Interact with the Media Server's **Artists**                                                   |
-| `/albums`           | Interact with the Media Server's **Albums**                                                    |
-| `/tracks`           | Interact with the Media Server's **Tracks**                                                    |
-| `/browse`           | **Browse media** on the Media Server                                                           |
-| `/transport`        | Interact with the Streamer's **Transport** (pause, play, etc)                                  |
-| `/presets`          | Interact with the Streamer's **Presets** (internet radio, etc)                                 |
-| `/active_playlist`  | Interact with the Streamer's **Active Playlist**                                               |
-| `/stored_playlists` | Interact with Vibin's **Stored Playlists**                                                     |
-| `/favorites`        | Interact with Vibin's **Favorites** (favorited Albums and Tracks)                              |
+`vibin` exposes a REST API. When `vibin serve` is running, the REST API documentation can be found
+at `http://hostname:8080/docs`. The API documentation is interactive. 
 
 ![Swagger]
 
 ### WebSocket server
 
+> The WebSocket server can be ignored by most users.
+
 `vibin` also exposes a WebSocket server. Connected clients will receive messages describing updates
 to the back-end as they happen.
-
-#### Message types
-
-The following message types are sent by `vibin`:
-
-* `VibinStatus`: Information about the Vibin back-end (start time, system information, connected
-  clients, etc).
-* `System`: Information about the hardware devices (streamer name and power status; media server
-  name).
-* `TransportState`: Information about the current state of the transport (play state,
-  repeat/shuffle, currently-valid controls, etc).
-* `CurrentlyPlaying`: Information about what is currently playing (media IDs, stream, format, track
-  details, playlist details, etc).
-* `Position`: Playhead position.
-* `StoredPlaylists`: Information on Stored Playlists.
-* `Favorites`: Information on Favorite Albums and Tracks.
-* `Presets`: Information on Presets (e.g. Internet Radio stations).
-* `UPnPProperties`: Low-level per-device UPnP details.
-
-#### Example message
-
-Following is an example `Position` message. All message types adhere to the same format, although
-their `payload` shape will be different.
-
-```json
-{
-    "type": "Position",
-    "id": "ff84e0c9-28fd-4ab0-bde0-c6ec120f8872",
-    "client_id" : "ebf0fed8-cc04-40cf-8cff-a56c4cbfb2a4",
-    "time": 1681881973433,
-    "payload": {
-        "position": 16
-    }
-}
-```
 
 ## Database
 
