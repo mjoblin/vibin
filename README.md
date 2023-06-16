@@ -18,11 +18,11 @@
 `vibin` sits between the Vibin UI (`vibinui`) and the hardware devices (such as the music streamer,
 NAS, etc).
 
+![Vibin Overview]
+
 ## Developers
 
 See the [Developers README] for more information.
-
-![Vibin Overview]
 
 ## Installation
 
