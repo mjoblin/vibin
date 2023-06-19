@@ -46,7 +46,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections = {}
         self.message_queue = asyncio.Queue()
-        self.sender_task = None
+        self.message_broadcast_task = None
         self.registered_listener_with_vibin = False
 
     async def connect(self, websocket: WebSocket):
@@ -68,7 +68,7 @@ class ConnectionManager:
 
             # Start the coroutine for auto-broadcasting all vibin updates to
             # all connected clients.
-            self.sender_task = asyncio.create_task(self.auto_broadcast())
+            self.message_broadcast_task = asyncio.create_task(self.auto_broadcast())
 
             self.registered_listener_with_vibin = True
 
@@ -90,7 +90,11 @@ class ConnectionManager:
         All Vibin update messages are put on a queue for later sending to all
         connected clients.
         """
-        # TODO: Don't override state_vars queue for both state vars and websocket updates.
+        # Don't add message to the queue if there's no task running to process
+        # the message queue.
+        if self.message_broadcast_task is None:
+            return
+
         self.message_queue.put_nowait(
             item=UpdateMessage(message_type=message_type, payload=data)
         )
@@ -121,7 +125,7 @@ class ConnectionManager:
 
     def build_message(
         self,
-        messageType: UpdateMessageType,
+        message_type: UpdateMessageType,
         message_payload_str: str,
         client_ws: WebSocket = None,
     ) -> str:
@@ -145,11 +149,11 @@ class ConnectionManager:
             "id": str(uuid.uuid4()),
             "client_id": self.active_connections[client_ws]["id"],
             "time": int(time.time() * 1000),
-            "type": messageType,
+            "type": message_type,
             "payload": None,
         }
 
-        if messageType == "System":
+        if message_type == "System":
             # TODO: Fix this hack. We're assuming we're getting a streamer
             #   system update, but it might be a media_source update.
             # message["payload"] = {
@@ -173,7 +177,7 @@ class ConnectionManager:
                 message["payload"] = message_payload_str
 
         # Some messages contain media server urls that we may want to proxy.
-        if is_proxy_for_media_server() and messageType in [
+        if is_proxy_for_media_server() and message_type in [
             "DeviceDisplay",
             "Favorites",
             "PlayState",
@@ -190,25 +194,28 @@ class ConnectionManager:
         """
         Send any new message on the message queue to all connected clients.
 
-        This is effectively an automatic broadcast of all messages reveived on
-        the queue to all connected clients.
+        This executes as a never-ending coroutine, which processes new messages
+        as they appear on the queue.
         """
         while True:
             to_send: UpdateMessage = await self.message_queue.get()
 
             try:
                 message_payload_str = self.message_payload_to_str(to_send.payload)
-            except VibinError as e:
-                logger.warning(f"Could not send message over Websocket: {e}")
-                return
 
-            for client_websocket in self.active_connections.keys():
-                await client_websocket.send_text(
-                    self.build_message(
-                        to_send.message_type,
-                        message_payload_str,
-                        client_websocket,
+                for client_websocket in self.active_connections.keys():
+                    await client_websocket.send_text(
+                        self.build_message(
+                            to_send.message_type,
+                            message_payload_str,
+                            client_websocket,
+                        )
                     )
+            except VibinError as e:
+                logger.warning(f"Could not send message over WebSocket: {e}")
+            except Exception as e:
+                logger.warning(
+                    f"Unexpected error attempting to send message to WebSocket clients: {e}"
                 )
 
     async def single_client_send(
@@ -252,8 +259,8 @@ class ConnectionManager:
 
     def shutdown(self):
         """Handle a shutdown request of the WebSocket server."""
-        if self.sender_task:
-            self.sender_task.cancel()
+        if self.message_broadcast_task:
+            self.message_broadcast_task.cancel()
 
 
 # -----------------------------------------------------------------------------
