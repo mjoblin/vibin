@@ -1,5 +1,4 @@
 import concurrent.futures
-import uuid
 import functools
 from functools import lru_cache
 import json
@@ -12,6 +11,7 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Callable
+import uuid
 
 import requests
 from tinydb import TinyDB, Query
@@ -23,13 +23,13 @@ from vibin import (
     VibinError,
     VibinNotFoundError,
     VibinMissingDependencyError,
-    __version__,
 )
 from vibin.constants import (
     DB_ROOT,
     DEFAULT_ALL_ALBUMS_PATH,
     DEFAULT_ALL_ARTISTS_PATH,
     DEFAULT_NEW_ALBUMS_PATH,
+    VIBIN_VER,
 )
 from vibin.device_resolution import (
     determine_media_server_class,
@@ -88,7 +88,7 @@ class Vibin:
         discovery_timeout: int = 5,
         subscribe_callback_base: str | None = None,  # TODO: Rename upnp_subscription_callback_base
     ):
-        logger.info("Initializing Vibin")
+        logger.info(f"Initializing Vibin v{VIBIN_VER}")
 
         self._on_update_handlers: list[UpdateMessageHandler] = []
         self._last_played_id = None
@@ -281,8 +281,7 @@ class Vibin:
     def _add_external_service(self, service_class, token_env_var=None):
         try:
             service_instance = service_class(
-                # TODO: Change user agent to Vibin
-                user_agent=f"ExampleApplication/{__version__}",
+                user_agent=f"vibin/{VIBIN_VER}",
                 token=os.environ[token_env_var] if token_env_var else None,
             )
 
