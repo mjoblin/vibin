@@ -17,7 +17,7 @@ import requests
 
 from vibin import VibinError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
-from .logger import logger
+from vibin.logger import logger
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60

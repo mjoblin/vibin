@@ -6,7 +6,7 @@ import requests
 import upnpclient
 
 from vibin import VibinError
-from .logger import logger
+from vibin.logger import logger
 import vibin.mediaservers as mediaservers
 from vibin.mediaservers import MediaServer, model_to_media_server
 import vibin.streamers as streamers

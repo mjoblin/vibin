@@ -22,8 +22,8 @@ from upnpclient.marshal import marshal_value
 import websockets
 import xmltodict
 
-from ..logger import logger
-from vibin import VibinDeviceError
+from vibin import utils, VibinDeviceError
+from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     ActivePlaylist,
@@ -55,9 +55,7 @@ from vibin.types import (
     UPnPProperties,
     UPnPPropertyChangeHandlers,
 )
-
 from vibin.streamers import Streamer
-from .. import utils
 
 
 # See Streamer interface for method documentation.
