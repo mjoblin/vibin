@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from vibin import VibinError
-from vibin.constants import VIBIN_PORT
+from vibin.constants import VIBIN_PORT, VIBIN_VER
 from vibin.logger import logger
 from vibin.server.dependencies import (
     get_vibin_instance,
@@ -134,7 +134,7 @@ def server_start(
     vibin_app = FastAPI(
         title="vibin",
         description="REST API for the vibin backend. A WebSocket server is also available at `/ws`.",
-        # version=__version__,  # TODO: Get version from pyproject.toml
+        version=VIBIN_VER,
         openapi_tags=tags_metadata,
         lifespan=api_lifespan,
     )
@@ -208,7 +208,7 @@ def server_start(
     # -------------------------------------------------------------------------
 
     logger.info(f"Starting REST API and WebSocket server")
-    logger.info(f"API docs: http://{local_ip}:{port}{vibin_app.docs_url}")
+    logger.info(f"REST API docs: http://{local_ip}:{port}{vibin_app.docs_url}")
 
     uvicorn.config.LOGGING_CONFIG["formatters"]["default"][
         "fmt"

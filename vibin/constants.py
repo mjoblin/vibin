@@ -1,6 +1,8 @@
+import importlib.metadata
 import os.path
 from pathlib import Path
 
+VIBIN_VER = importlib.metadata.version("vibin")
 VIBIN_PORT = 8080
 
 # These media path defaults come from Asset UPnP DLNA. They can be overridden
