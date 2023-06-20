@@ -18,7 +18,7 @@ from vibin.models import (
     Track,
     UPnPServiceSubscriptions,
 )
-from vibin.types import MediaMetadata, UpdateMessageHandler, UPnPProperties
+from vibin.types import UpdateMessageHandler, UPnPProperties
 
 
 # -----------------------------------------------------------------------------

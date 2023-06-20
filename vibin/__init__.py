@@ -1,4 +1,4 @@
-from .exceptions import (
+from vibin.exceptions import (
     VibinDeviceError,
     VibinError,
     VibinNotFoundError,

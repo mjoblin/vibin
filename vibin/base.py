@@ -31,8 +31,14 @@ from vibin.constants import (
     DEFAULT_ALL_ARTISTS_PATH,
     DEFAULT_NEW_ALBUMS_PATH,
 )
+from vibin.device_resolution import (
+    determine_media_server_class,
+    determine_streamer_and_media_server,
+    determine_streamer_class,
+)
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
+from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     ActivePlaylistEntry,
@@ -54,14 +60,8 @@ from vibin.models import (
     UpdateMessage,
     VibinSettings,
 )
-from .types import UpdateMessageHandler, UPnPDeviceType, UpdateMessageType
 from vibin.streamers import Streamer
-from .device_resolution import (
-    determine_media_server_class,
-    determine_streamer_and_media_server,
-    determine_streamer_class,
-)
-from .logger import logger
+from vibin.types import UpdateMessageHandler, UPnPDeviceType, UpdateMessageType
 
 
 def requires_media(return_val=None):
