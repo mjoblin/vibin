@@ -40,6 +40,19 @@ The various components and how they broadly interact is shown below:
 
 ![Architecture]
 
+## Installation
+
+To install vibin for development:
+
+```bash
+git clone https://github.com/mjoblin/vibin.git
+cd vibin
+python3 -m venv venv-vibin
+source venv-vibin/bin/activate
+pip install -e .
+pip install -e '.[dev]'
+```
+
 ## Project structure
 
 The project structure is broadly laid out as follows:
