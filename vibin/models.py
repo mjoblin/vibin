@@ -60,6 +60,7 @@ class VibinSettings(BaseModel):
 class VibinStatus(BaseModel):
     """Vibin system status."""
 
+    vibin_version: str
     start_time: float
     system_node: str
     system_platform: str
