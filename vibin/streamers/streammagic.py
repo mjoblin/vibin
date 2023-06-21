@@ -204,7 +204,28 @@ class StreamMagic(Streamer):
         # Keep track of last seen ("currently playing") track and album IDs.
         # This is done to facilitate injecting this information into payloads
         # which want it, but it isn't already there when sent from the streamer.
+        # Future updates to the track and album IDs come in via UPnP updates
+        # (see self._determine_current_media_ids()).
         self._set_last_seen_media_ids(None, None)
+
+        try:
+            # See if current IDs can be determined at startup time.
+            response = device.UuVolControl.GetPlaybackDetails(
+                NavigatorId=self.navigator_name
+            )
+
+            # Determine the currently-streamed URL, and use it to extract IDs.
+            stream_url = untangle.parse(
+                response["RetPlaybackXML"]
+            ).reciva.playback_details.stream.url.cdata
+
+            this_album_id, this_track_id = self._album_and_track_ids_from_file(stream_url)
+
+            logger.info(f"Found currently-playing local media IDs")
+            self._set_last_seen_media_ids(this_album_id, this_track_id)
+        except Exception:
+            # TODO: Investigate which exceptions to handle
+            logger.info(f"No currently-playing local media IDs found")
 
     @property
     def name(self):
@@ -593,10 +614,12 @@ class StreamMagic(Streamer):
     # -------------------------------------------------------------------------
     # State setters
 
-    def _set_current_playback_details(self, details):
-        """Set current playback details from an incoming `details` UPnP event.
+    def _determine_current_media_ids(self, details):
+        """Set current media ids from an incoming `details` UPnP event.
 
-        This exists only to set the last seen track and album IDs.
+        This exists only to set the last seen track and album IDs, which are
+        extracted from the current streaming filename. This assumes that the
+        filename being streamed contains these IDs.
 
         TODO: Can the last seen track and album IDs be set from information
             coming in from the WebSocket instead.
@@ -968,7 +991,7 @@ class StreamMagic(Streamer):
         # TODO: Can this be removed once last seen track and album IDs are
         #   extracted from a StreamMagic WebSocket update.
         try:
-            self._set_current_playback_details(
+            self._determine_current_media_ids(
                 self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
                     "playback-details"
                 ]
