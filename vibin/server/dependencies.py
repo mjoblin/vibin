@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import httpx
 
 from vibin import Vibin, VibinError
+from vibin.constants import VIBIN_VER
 from vibin.logger import logger
 from vibin.models import VibinStatus, WebSocketClientDetails
 from vibin.utils import replace_media_server_urls_with_proxy
@@ -140,6 +141,7 @@ def server_status(
     global _system_version
 
     return VibinStatus(
+        vibin_version=VIBIN_VER,
         start_time=_start_time,
         system_node=_system_node,
         system_platform=_system_platform,
