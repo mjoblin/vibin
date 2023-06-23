@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 import dataclasses
 from distutils.version import StrictVersion
+import functools
 import json
 import math
 import os
@@ -15,7 +16,7 @@ import zipfile
 from pydantic import BaseModel
 import requests
 
-from vibin import VibinError
+from vibin import VibinError, VibinMissingDependencyError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from vibin.logger import logger
 
@@ -117,6 +118,40 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
         return item
 
     return transform(payload)
+
+
+def requires_media_server(return_val=None):
+    def decorator_requires_media_server(func):
+        @functools.wraps(func)
+        def wrapper_requires_media_server(*args, **kwargs):
+            if (
+                hasattr(args[0], "media_server") and args[0].media_server is not None
+            ) or (
+                hasattr(args[0], "_media_server") and args[0]._media_server is not None
+            ):
+                return func(*args, **kwargs)
+            else:
+                return return_val
+
+        return wrapper_requires_media_server
+
+    return decorator_requires_media_server
+
+
+def requires_external_service_token(func):
+    """Decorator to return VibinMissingDependencyError if the service has no token.
+
+    This decorator assumes it is being used on a method of a class, where the
+    class instance defines self._external_service (an ExternalService instance).
+    """
+    @functools.wraps(func)
+    def wrapper_requires_external_service_token(*args, **kwargs):
+        if args[0]._external_service.token is not None:
+            return func(*args, **kwargs)
+        else:
+            raise VibinMissingDependencyError("External service token")
+
+    return wrapper_requires_external_service_token
 
 
 def install_vibinui():

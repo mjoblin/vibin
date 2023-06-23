@@ -48,7 +48,7 @@ class Streamer(metaclass=ABCMeta):
     Manage a network streamer for Vibin.
 
         * `device`: The `upnp.Device` instance for the streamer to be managed.
-        * `subscribe_callback_base`: The REST API base URL to use when
+        * `upnp_subscription_callback_base`: The REST API base URL to use when
             subscribing to streamer-related UPnP service events. Events will be
             passed to the implementation's `on_upnp_event()`.
         * `on_update`: A callback to invoke when a message is ready to be sent
@@ -64,7 +64,7 @@ class Streamer(metaclass=ABCMeta):
     def __init__(
         self,
         device: upnpclient.Device,
-        subscribe_callback_base: str | None = None,
+        upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
         on_playlist_modified: PlaylistModifiedHandler | None = None,
     ):

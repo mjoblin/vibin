@@ -10,7 +10,7 @@ from vibin.models import ExternalServiceLink, LyricsChunk
 class Genius(ExternalService):
     service_name = "Genius"
 
-    def __init__(self, user_agent: str, token: str):
+    def __init__(self, user_agent: str, token: str | None):
         self._user_agent = user_agent
         self._token = token
 
@@ -22,6 +22,10 @@ class Genius(ExternalService):
     @property
     def name(self) -> str:
         return self.service_name
+
+    @property
+    def token(self):
+        return self._token
 
     def links(
         self,

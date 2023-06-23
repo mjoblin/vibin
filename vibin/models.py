@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 import upnpclient
 
 from vibin.types import (
+    FavoriteType,
     MediaId,
     PlaylistModifyAction,
     PlayStatus,
@@ -314,8 +315,8 @@ class ActiveTrack(BaseModel):
 class CurrentlyPlaying(BaseModel):
     """The state of what is currently playing, track and playlist."""
 
-    album_media_id: str | None
-    track_media_id: str | None
+    album_media_id: MediaId | None
+    track_media_id: MediaId | None
     active_track: ActiveTrack = ActiveTrack()
     playlist: ActivePlaylist = ActivePlaylist()
     format: MediaFormat = MediaFormat()
@@ -352,8 +353,8 @@ class StoredPlaylists(BaseModel):
 class Favorite(BaseModel):
     """A single stored favorite."""
 
-    type: str
-    media_id: str
+    type: FavoriteType
+    media_id: MediaId
     when_favorited: float | None
     media: Album | Track | None = None
 
@@ -386,7 +387,7 @@ class Lyrics(BaseModel):
     """Lyrics for a single Media Id."""
 
     lyrics_id: str
-    media_id: str | None
+    media_id: MediaId | None
     is_valid: bool
     chunks: list[LyricsChunk]
 
@@ -412,7 +413,7 @@ class ExternalServiceLink(BaseModel):
 class Links(BaseModel):
     """All links to an external service for a Media Id."""
 
-    media_id: str | None
+    media_id: MediaId | None
     links: dict[str, list[ExternalServiceLink]]
 
 

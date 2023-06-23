@@ -5,12 +5,17 @@ from vibin.models import ExternalServiceLink
 
 class ExternalService(metaclass=ABCMeta):
     @abstractmethod
-    def __init__(self, user_agent: str, token: str):
+    def __init__(self, user_agent: str, token: str | None):
         pass
 
     @property
     @abstractmethod
     def name(self):
+        pass
+
+    @property
+    @abstractmethod
+    def token(self):
         pass
 
     @abstractmethod

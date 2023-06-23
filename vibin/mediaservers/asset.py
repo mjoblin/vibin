@@ -36,7 +36,7 @@ class Asset(MediaServer):
     def __init__(
         self,
         device: upnpclient.Device,
-        subscribe_callback_base: str | None = None,
+        upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
         self._device: upnpclient.Device = device

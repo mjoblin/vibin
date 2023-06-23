@@ -17,6 +17,10 @@ MediaMetadata = dict  # Local media server metadata
 
 PowerState = Literal["on", "off"]
 
+WaveformFormat = Literal["dat", "json", "png"]
+
+FavoriteType = Literal["album", "track"]
+
 # Modifications that can be made to the active streamer playlist
 PlaylistModifyAction = Literal[
     # Add to the end of the playlist. Track or Album.

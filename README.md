@@ -1,6 +1,6 @@
 # `vibin`
 
-`vibin` is the back-end for [`vibinui`](https://github.com/mjoblin/vibinui). It:
+`vibin` is the backend for [`vibinui`](https://github.com/mjoblin/vibinui). It:
 
 * Talks to [StreamMagic] audio streamers.
 * Talks to NAS media servers running [Asset UPnP].
@@ -80,11 +80,27 @@ vibin serve
 1. Attempt to find (via the streamer) any connected local media.
 1. Serve the Web UI (if installed).
 
-This behavior can be modified using command line parameters. See `vibin serve --help` for more
-information.
+This behavior can be modified using command line options. See `vibin serve --help` for more
+information. The supported options include:
 
-The logging output will show links to the UI and the REST API documentation. For example, if the
-server is running on `192.168.1.100` then the following URLs will be available:
+```bash
+  -h, --host HOST               Host to listen on.  [default: 0.0.0.0]
+  -p, --port PORT               Port to listen on.  [default: 8080]
+  -s, --streamer NAME           Streamer (hostname, UPnP friendly name, or UPnP location URL).
+  --streamer-type TYPE          Streamer type (e.g. StreamMagic). Usually not required.
+  -m, --media-server NAME       Media server (UPnP friendly name, or UPnP location URL).
+  --media-server-type TYPE      Media server type (e.g. Asset). Usually not required.
+  --no-media-server             Ignore any local media servers.
+  -t, --discovery-timeout SECS  UPnP discovery timeout (seconds).  [default: 5]
+  -u, --vibinui DIR             Path to Web UI static files; use 'auto' to find 'vibin installui'
+                                location.  [default: auto]
+  --no-vibinui                  Do not serve the Web UI.
+  -o, --proxy-media-server      Act as a proxy for the media server.
+  --help                        Show this message and exit.
+```
+
+Once running, the logging output will show links to the UI and the REST API documentation. For
+example, if the server is running on `192.168.1.100` then the following URLs will be available:
 
 * `http://192.168.1.100:8080/ui`: The Web user interface ([vibinui]).
 * `http://192.168.1.100:8080/docs`: The REST API documentation.
@@ -214,7 +230,7 @@ at `http://hostname:8080/docs`. The API documentation is interactive.
 > The WebSocket server can be ignored by most users.
 
 `vibin` also exposes a WebSocket server. Connected clients will receive messages describing updates
-to the back-end as they happen.
+to the backend as they happen.
 
 ## Database
 

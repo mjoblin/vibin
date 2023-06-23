@@ -26,7 +26,7 @@ def get_vibin_instance(
     media_server=None,
     media_server_type=None,
     discovery_timeout=5,
-    subscribe_callback_base="",
+    upnp_subscription_callback_base="",
     proxy_media_server=False,
     ui_static_root=None,
 ) -> Vibin:
@@ -51,7 +51,7 @@ def get_vibin_instance(
             media_server=media_server,
             media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
-            subscribe_callback_base=subscribe_callback_base,
+            upnp_subscription_callback_base=upnp_subscription_callback_base,
         )
 
         if _vibin.media_server is not None:

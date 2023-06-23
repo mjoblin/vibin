@@ -77,7 +77,7 @@ def server_start(
             media_server=media_server,
             media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
-            subscribe_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
+            upnp_subscription_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
             proxy_media_server=proxy_media_server,
             ui_static_root=vibinui,
         )
