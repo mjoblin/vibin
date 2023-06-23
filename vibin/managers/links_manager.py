@@ -1,6 +1,7 @@
 import concurrent.futures
 
 from tinydb import Query
+from tinydb.table import Table
 from tinyrecord import transaction
 import xml
 import xmltodict
@@ -26,7 +27,7 @@ class LinksManager:
 
     def __init__(
         self,
-        db,
+        db: Table,
         media_server: MediaServer,
         external_services: dict[str, ExternalService],
     ):

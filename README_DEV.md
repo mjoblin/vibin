@@ -27,7 +27,8 @@ The main responsibilities of `vibin` are:
    * **A REST API**.
      * To retrieve media metadata.
      * To perform actions on the streamer and media server.
-     * To receive UPnP events from the streamer, to forward on to the interface implementation.
+     * To receive UPnP events from the streamer or media server, to then forward on to the interface
+       implementation.
    * **A WebSocket server** (to send live updates to any connected clients).
    * **The UI's static files** (see [vibinui]).
    * **A proxy for the media server** (mostly for album art).
@@ -59,26 +60,32 @@ The project structure is broadly laid out as follows:
 
 ```
 .
-├── _data/                                Persisted data (TinyDB)
-├── _webui/                               The web UI's static files (once installed)
-├── base.py                               The main Vibin class
-├── cli/                                  The command line interface
-├── constants.py                          Application constants
-├── device_resolution.py                  UPnP device discovery
-├── exceptions.py                         Application exceptions
-├── external_services/                    ExternalService and its implentations
+├── _data/                             Persisted data (TinyDB)
+├── _webui/                            The web UI's static files (once installed)
+├── base.py                            The main Vibin class
+├── cli/                               The command line interface
+├── constants.py                       Application constants
+├── device_resolution.py               UPnP device discovery
+├── exceptions.py                      Application exceptions
+├── external_services/                 ExternalService and its implentations
 │   ├── discogs.py
 │   ├── external_service.py
 │   ├── genius.py
 │   ├── rateyourmusic.py
 │   └── wikipedia.py
-├── logger.py                             Application logger
-├── mediasources/                         MediaSource and its implementations (Asset)
+├── logger.py                          Application logger
+├── managers                           Feature managers (used by the main Vibin class)
+│   ├── favorites_manager.py
+│   ├── links_manager.py
+│   ├── lyrics_manager.py
+│   ├── playlists_manager.py
+│   └── waveform_manager.py
+├── mediasources/                      MediaSource ABC and its implementations (Asset)
 │   ├── asset.py
 │   └── mediasource.py
-├── server/                               The REST API, WebSocket server, and proxies (FastAPI)
-│   ├── dependencies.py                   Dependencies relied on by various routers
-│   ├── routers/                          API routers
+├── server/                            The REST API, WebSocket server, and proxies (FastAPI)
+│   ├── dependencies.py                Dependencies relied on by various routers
+│   ├── routers/                       REST API routers
 │   │   ├── active_playlist.py
 │   │   ├── albums.py
 │   │   ├── artists.py
@@ -95,7 +102,7 @@ The project structure is broadly laid out as follows:
 │   │   ├── vibin.py
 │   │   └── websocket_server.py
 │   └── server.py
-├── streamers/                         Streamer and its implementations (CXNv2)
+├── streamers/                         Streamer ABC and its implementations (StreamMagic)
 │   ├── streammagic.py
 │   └── streamer.py
 ├── models.py                          Application models
@@ -111,8 +118,7 @@ The main hub of `vibin` is the `Vibin` class, which:
 * Instantiates and manages any `ExternalService` implementations (such as Wikipedia, etc).
 * Exposes all capabilities of the streamer and media server, such as transport controls, retrieving
   media metadata, etc.
-* Provides access to the information received from external services (such as lyrics, links, etc).
-* Persists information to TinyDB.
+* Acts as a hub for all the feature managers (Favorites, Links, Lyrics, etc).
 * Announces any updates as messages over a WebSocket connection (such as playhead position updates,
   playlist updates, etc) to any interested subscribers.
 

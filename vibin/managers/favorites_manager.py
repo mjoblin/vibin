@@ -2,6 +2,7 @@ import time
 from typing import Callable
 
 from tinydb import Query
+from tinydb.table import Table
 from tinyrecord import transaction
 
 from vibin import VibinNotFoundError
@@ -22,31 +23,11 @@ class FavoritesManager:
     """
 
     def __init__(
-        self, db, media_server: MediaServer, updates_handler: UpdateMessageHandler
+        self, db: Table, media_server: MediaServer, updates_handler: UpdateMessageHandler
     ):
         self._db = db
         self._media_server = media_server
         self._updates_handler = updates_handler
-
-    @requires_media_server(return_val=[])
-    def _favorites_getter(
-        self, requested_types: list[FavoriteType] | None = None
-    ) -> list[Favorite]:
-        media_hydrators: dict[str, Callable[[str], Album | Track]] = {
-            "album": self._media_server.album,
-            "track": self._media_server.track,
-        }
-
-        return [
-            Favorite(
-                type=favorite["type"],
-                media_id=favorite["media_id"],
-                when_favorited=favorite["when_favorited"],
-                media=media_hydrators[favorite["type"]](favorite["media_id"]),
-            )
-            for favorite in self._db.all()
-            if requested_types is None or favorite["type"] in requested_types
-        ]
 
     @property
     def all(self) -> list[Favorite]:
@@ -119,3 +100,23 @@ class FavoritesManager:
     @requires_media_server()
     def _send_update(self):
         self._updates_handler("Favorites", FavoritesPayload(favorites=self.all))
+
+    @requires_media_server(return_val=[])
+    def _favorites_getter(
+        self, requested_types: list[FavoriteType] | None = None
+    ) -> list[Favorite]:
+        media_hydrators: dict[str, Callable[[str], Album | Track]] = {
+            "album": self._media_server.album,
+            "track": self._media_server.track,
+        }
+
+        return [
+            Favorite(
+                type=favorite["type"],
+                media_id=favorite["media_id"],
+                when_favorited=favorite["when_favorited"],
+                media=media_hydrators[favorite["type"]](favorite["media_id"]),
+            )
+            for favorite in self._db.all()
+            if requested_types is None or favorite["type"] in requested_types
+        ]

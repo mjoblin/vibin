@@ -278,9 +278,8 @@ def determine_streamer_and_media_server(
     media_server_input: str | bool | None,
     discovery_timeout: int = 5,
 ) -> (upnpclient.Device, upnpclient.Device | None):
-    """
-    Attempt to locate a streamer and (optionally) a media server on the network.
-    """
+    """Attempt to locate a streamer and (optionally) a media server on the network."""
+
     streamer_device = _determine_streamer_device(streamer_input, discovery_timeout)
 
     media_server_device = None
@@ -299,8 +298,8 @@ def determine_streamer_class(streamer_device, streamer_type):
     """
 
     """
-    # Build a list of all known Streamer implementations; and a map of
-    # device model name to Streamer implementation.
+    # Build a list of all known Streamer implementations; and a map of device
+    # model name to Streamer implementation.
     known_streamers = []
     known_streamers_by_model: dict[str, Streamer] = {}
 

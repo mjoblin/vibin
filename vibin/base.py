@@ -1,15 +1,12 @@
 import json
-import operator
 import os
 from pathlib import Path
-import time
 from typing import Any
-import uuid
 
-from tinydb import TinyDB, Query
+from tinydb import TinyDB
 from tinyrecord import transaction
 
-from vibin import VibinError, VibinNotFoundError
+from vibin import VibinError
 from vibin.constants import (
     DB_ROOT,
     DEFAULT_ALL_ALBUMS_PATH,
@@ -29,7 +26,7 @@ from vibin.managers import (
     FavoritesManager,
     LinksManager,
     LyricsManager,
-    StoredPlaylistsManager,
+    PlaylistsManager,
     WaveformManager,
 )
 from vibin.mediaservers import MediaServer
@@ -40,9 +37,6 @@ from vibin.models import (
     FavoritesPayload,
     MediaBrowseSingleLevel,
     UPnPServiceSubscriptions,
-    StoredPlaylist,
-    StoredPlaylists,
-    StoredPlaylistStatus,
     SystemState,
     Track,
     UpdateMessage,
@@ -51,7 +45,6 @@ from vibin.models import (
 from vibin.streamers import Streamer
 from vibin.types import (
     MediaId,
-    PlaylistModifyAction,
     UpdateMessageHandler,
     UPnPDeviceType,
     UpdateMessageType,
@@ -95,9 +88,6 @@ class Vibin:
         self._add_external_service(external_services.RateYourMusic, None)
         self._add_external_service(external_services.Wikipedia, None)
 
-        self._stored_playlist_status = StoredPlaylistStatus()
-        self._ignore_playlist_updates = False
-        self._cached_stored_playlist: StoredPlaylist | None = None
         self._init_db()
 
         # Set up the Streamer and MediaServer instances
@@ -120,7 +110,7 @@ class Vibin:
             device=streamer_device,
             upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/streamer",
             on_update=self._on_streamer_update,
-            on_playlist_modified=self._on_playlist_modified,
+            on_playlist_modified=self._on_streamer_playlist_modified,
         )
 
         logger.info(
@@ -175,16 +165,17 @@ class Vibin:
             db=self._lyrics_db, genius_service=self._external_services.get("Genius")
         )
 
-        self.stored_playlists_manager = StoredPlaylistsManager(
+        self.playlists_manager = PlaylistsManager(
             db=self._playlists_db,
             media_server=self.media_server,
+            streamer=self.streamer,
             updates_handler=self._send_update,
         )
 
         self.waveform_manager = WaveformManager(media_server=self.media_server)
 
         # Additional initialization
-        self._check_for_active_playlist_in_store()
+        self.playlists_manager.check_for_streamer_playlist_in_store()
         self._subscribe_to_upnp_events()
 
     def __str__(self):
@@ -253,7 +244,10 @@ class Vibin:
                 payload=FavoritesPayload(favorites=self.favorites_manager.all),
             ),
             UpdateMessage(message_type="Presets", payload=self.streamer.presets),
-            UpdateMessage(message_type="StoredPlaylists", payload=self.stored_playlists),
+            UpdateMessage(
+                message_type="StoredPlaylists",
+                payload=self.playlists_manager.stored_playlists,
+            ),
         ]
 
     @property
@@ -277,51 +271,71 @@ class Vibin:
         self.play_id(track.id)
 
     @requires_media_server()
-    def play_id(self, id: MediaId):
+    # TODO: PLAYLIST!!
+    def play_id(self, media_id: MediaId):
         """Play the provided media ID. This replaces the active streamer playlist."""
-        self._reset_stored_playlist_status(send_update=True)
-        self.streamer.modify_playlist(self.media_server.get_metadata(id))
-        self._last_played_id = id
+        # self._reset_stored_playlist_status(send_update=True)
+        # self.streamer.modify_playlist(self.media_server.get_metadata(id))
+        self.playlists_manager.modify_streamer_playlist_with_id(media_id)
+        self._last_played_id = media_id
 
     @requires_media_server()
+    # TODO: PLAYLIST!!
     def play_ids(self, media_ids: list[MediaId], max_count: int = 10):
         """Play the provided media IDs. This replaces the active streamer playlist."""
-        self._reset_stored_playlist_status(send_update=True)
-        self.streamer.playlist_clear()
+        # self._reset_stored_playlist_status(send_update=True)
+        # self.streamer.playlist_clear()
+        self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for media_id in media_ids[:max_count]:
-            self.modify_playlist(media_id, "APPEND")
+            # self.modify_playlist(media_id, "APPEND")
+            self.playlists_manager.modify_streamer_playlist_with_id(
+                media_id, "APPEND", ignore_stored_playlist_impact=True
+            )
 
         if len(media_ids) > 0:
-            self.streamer.play_playlist_index(0)
+            # self.streamer.play_playlist_index(0)
+            self.playlists_manager.play_streamer_playlist_index(0)
             self._last_played_id = media_ids[0]
         else:
             self._last_played_id = None
 
     @requires_media_server()
+    # TODO: PLAYLIST!!
     def play_favorite_albums(self, max_count: int = 10):
         """Play all favorited Albums (up to max_count)."""
-        self._reset_stored_playlist_status(send_update=True)
-        self.streamer.playlist_clear()
+        # self._reset_stored_playlist_status(send_update=True)
+        # self.streamer.playlist_clear()
+        self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            self.modify_playlist(album["media_id"], "APPEND")
+            # self.modify_playlist(album["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_playlist_with_id(
+                album["media_id"], "APPEND", ignore_stored_playlist_impact=True
+            )
 
-        self.streamer.play_playlist_index(0)
+        # self.streamer.play_playlist_index(0)
+        self.playlists_manager.play_streamer_playlist_index(0)
 
     @requires_media_server()
+    # TODO: PLAYLIST!!
     def play_favorite_tracks(self, max_count: int = 100):
         """Play all favorited Tracks (up to max_count)."""
-        self._reset_stored_playlist_status(send_update=True)
-        self.streamer.playlist_clear()
+        # self._reset_stored_playlist_status(send_update=True)
+        # self.streamer.playlist_clear()
+        self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            self.modify_playlist(track["media_id"], "APPEND")
+            # self.modify_playlist(track["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_playlist_with_id(
+                track["media_id"], "APPEND", ignore_stored_playlist_impact=True
+            )
 
-        self.streamer.play_playlist_index(0)
+        # self.streamer.play_playlist_index(0)
+        self.playlists_manager.play_streamer_playlist_index(0)
 
     def on_update(self, handler: UpdateMessageHandler):
         """Register a handler to receive system update messages.
@@ -463,7 +477,7 @@ class Vibin:
             self.media_server.subscribe_to_upnp_events()
 
     # -------------------------------------------------------------------------
-    # Private methods
+    # Additional Private methods
 
     def _on_streamer_update(self, message_type: UpdateMessageType, data: Any):
         # Forward streamer updates directly to all update subscribers.
@@ -473,304 +487,10 @@ class Vibin:
         # Forward media server updates directly to all update subscribers.
         self._send_update(message_type, data)
 
+    def _on_streamer_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
+        if hasattr(self, "playlists_manager"):
+            self.playlists_manager.on_streamer_playlist_modified(playlist_entries)
+
     def _send_update(self, message_type: UpdateMessageType, data: Any):
         for handler in self._on_update_handlers:
             handler(message_type, data)
-
-    # -------------------------------------------------------------------------
-
-    def _reset_stored_playlist_status(
-        self,
-        active_id=None,
-        is_synced=False,
-        is_activating=False,
-        send_update=False,
-    ):
-        self._stored_playlist_status.active_id = active_id
-        self._stored_playlist_status.is_active_synced_with_store = is_synced
-        self._stored_playlist_status.is_activating_playlist = is_activating
-
-        if send_update:
-            self._send_stored_playlists_update()
-
-    def _check_for_active_playlist_in_store(self):
-        # See if the current streamer playlist matches a stored playlist
-        # streamer_playlist = self.streamer.playlist(call_handler_on_sync_loss)
-        streamer_playlist_entries = self.streamer.playlist.entries
-
-        if len(streamer_playlist_entries) <= 0:
-            # self._active_stored_playlist_id = None
-            # self._active_playlist_synced_with_store = False
-            self._reset_stored_playlist_status(send_update=True)
-            return
-
-        # See if there's a stored playlist which matches the currently-active
-        # streamer playlist (same media ids in the same order). If there's more
-        # than one, then pick the one most recently updated.
-        active_playlist_media_ids = [
-            entry.trackMediaId for entry in streamer_playlist_entries
-        ]
-
-        stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._playlists_db.all()]
-
-        try:
-            stored_playlist_matching_active = sorted(
-                [
-                    playlist
-                    for playlist in stored_playlists_as_dicts
-                    if playlist.entry_ids == active_playlist_media_ids
-                ],
-                key=operator.attrgetter("updated"),
-                reverse=True,
-            )[0]
-
-            # self._active_stored_playlist_id = stored_playlist_matching_active.id
-            # self._active_playlist_synced_with_store = True
-            self._stored_playlist_status.active_id = stored_playlist_matching_active.id
-            self._stored_playlist_status.is_active_synced_with_store = True
-            self._cached_stored_playlist = stored_playlist_matching_active
-        except IndexError:
-            # self._active_playlist_synced_with_store = False
-            #
-            # if no_active_if_not_found:
-            #     self._active_stored_playlist_id = None
-            self._reset_stored_playlist_status(send_update=False)
-            self._cached_stored_playlist = None
-
-        self._send_stored_playlists_update()
-
-    @requires_media_server()
-    def _send_stored_playlists_update(self):
-        self._send_update("StoredPlaylists", self.stored_playlists)
-
-    @requires_media_server()
-    def modify_playlist(
-        self,
-        id: MediaId,
-        action: PlaylistModifyAction = "REPLACE",
-        insert_index: int | None = None,
-    ):
-        """Modify the streamer's active playlist."""
-        self.streamer.modify_playlist(self.media_server.get_metadata(id), action, insert_index)
-
-        if action == "REPLACE":
-            self._reset_stored_playlist_status(send_update=True)
-
-    @property
-    def stored_playlists(self) -> StoredPlaylists:
-        return StoredPlaylists(
-            status=self._stored_playlist_status,
-            playlists=[StoredPlaylist(**playlist) for playlist in self._playlists_db.all()],
-        )
-
-    def _streamer_playlist_matches_stored(
-        self, streamer_playlist: list[ActivePlaylistEntry]
-    ):
-        if not self._cached_stored_playlist:
-            return False
-
-        streamer_playlist_ids = [entry.trackMediaId for entry in streamer_playlist]
-        stored_playlist_ids = self._cached_stored_playlist.entry_ids
-
-        return streamer_playlist_ids == stored_playlist_ids
-
-    def _on_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
-        if (
-            not self._ignore_playlist_updates
-            and self._stored_playlist_status.active_id
-            and self.streamer
-        ):
-            # The playlist has been modified. If a stored playlist is active
-            # then compare this playlist against the stored playlist and
-            # set the status appropriately. The goal here is to ensure that
-            # we catch the playlist differing from the stored playlist, or
-            # matching the stored playlist (which can happen during playlist
-            # editing when entries are moved, deleted, added, etc).
-
-            # NOTE:
-            #
-            # If Vibin is tracking an active stored playlist, and another app
-            # replaces the streamer playlist, then Vibin will treat that
-            # replacement as an *update to the active stored playlist* rather
-            # than a "replace playlist and no longer consider this an active
-            # stored playlist" action. The playlist changes won't actually be
-            # persisted unless the user requests it, but the behavior might
-            # feel inconsistent.
-
-            if self._stored_playlist_status.active_id:
-                prior_sync_state = (
-                    self._stored_playlist_status.is_active_synced_with_store
-                )
-
-                self._stored_playlist_status.is_active_synced_with_store = (
-                    self._streamer_playlist_matches_stored(playlist_entries)
-                )
-
-                if (
-                    self._stored_playlist_status.is_active_synced_with_store
-                    != prior_sync_state
-                ):
-                    self._send_stored_playlists_update()
-
-    def playlists(self) -> list[StoredPlaylist]:
-        return [StoredPlaylist(**playlist_dict) for playlist_dict in self._playlists_db.all()]
-
-    def get_playlist(self, playlist_id) -> StoredPlaylist:
-        PlaylistQuery = Query()
-        playlist_dict = self._playlists_db.get(PlaylistQuery.id == playlist_id)
-
-        if playlist_dict is None:
-            raise VibinNotFoundError()
-
-        return StoredPlaylist(**playlist_dict)
-
-    @requires_media_server()
-    def set_active_playlist(self, playlist_id: str) -> StoredPlaylist:
-        self._reset_stored_playlist_status(is_activating=True, send_update=True)
-
-        PlaylistQuery = Query()
-        playlist_dict = self._playlists_db.get(PlaylistQuery.id == playlist_id)
-
-        if playlist_dict is None:
-            raise VibinNotFoundError()
-
-        playlist = StoredPlaylist(**playlist_dict)
-        self._cached_stored_playlist = playlist
-
-        # Add each playlist entry to the streamer's active playlist. Ideally
-        # this could be batched in one request, but it looks like they need to
-        # be added individually. Adding entries individually means we'll get
-        # notified by the streamer for every newly added entry, which in turn
-        # triggers us notifying any connected clients. This could result in
-        # many superfluous notifications going out to the clients, so we hack
-        # in an "ignore playlist updates" boolean while entries are added. This
-        # isn't clean, and the boolean will be set back to False again before
-        # the system has fully dealt with adding entries to the active playlist
-        # -- but it's better than doing nothing.
-        self.streamer.playlist_clear()
-
-        self._ignore_playlist_updates = True
-
-        for entry_id in playlist.entry_ids:
-            self.streamer.modify_playlist(
-                self.media_server.get_metadata(entry_id), action="APPEND"
-            )
-
-        self._ignore_playlist_updates = False
-
-        self._reset_stored_playlist_status(
-            active_id=playlist_id, is_synced=True, is_activating=False, send_update=True
-        )
-
-        return StoredPlaylist(**playlist_dict)
-
-    @requires_media_server()
-    def store_active_playlist(
-        self,
-        metadata: dict[str, any] | None = None,
-        replace: bool = True,
-    ) -> StoredPlaylist:
-        active_playlist = self.streamer.playlist
-        now = time.time()
-        new_playlist_id = str(uuid.uuid4())
-
-        if self._stored_playlist_status.active_id is None or replace is False:
-            # Brand new stored playlist
-            playlist_data = StoredPlaylist(
-                id=new_playlist_id,
-                name=metadata["name"] if metadata and "name" in metadata else "Unnamed",
-                created=now,
-                updated=now,
-                entry_ids=[entry.trackMediaId for entry in active_playlist.entries],
-            )
-
-            with transaction(self._playlists_db) as tr:
-                tr.insert(playlist_data.dict())
-
-            self._cached_stored_playlist = playlist_data
-
-            self._reset_stored_playlist_status(
-                active_id=new_playlist_id,
-                is_synced=True,
-                is_activating=False,
-                send_update=True,
-            )
-        else:
-            # Updates to an existing playlist
-            updates = {
-                "updated": now,
-                "entry_ids": [entry.trackMediaId for entry in active_playlist.entries],
-            }
-
-            if metadata and "name" in metadata:
-                updates["name"] = metadata["name"]
-
-            PlaylistQuery = Query()
-
-            try:
-                with transaction(self._playlists_db) as tr:
-                    doc_id = tr.update(
-                        updates,
-                        PlaylistQuery.id == self._stored_playlist_status.active_id,
-                    )[0]
-
-                playlist_data = StoredPlaylist(**self._playlists_db.get(doc_id=doc_id))
-                self._cached_stored_playlist = playlist_data
-            except IndexError:
-                self._reset_stored_playlist_status(
-                    active_id=None,
-                    is_synced=False,
-                    is_activating=False,
-                    send_update=True,
-                )
-
-                raise VibinError(
-                    f"Could not update Playlist Id: {self._stored_playlist_status.active_id}"
-                )
-
-            self._reset_stored_playlist_status(
-                active_id=self._stored_playlist_status.active_id,
-                is_synced=True,
-                is_activating=False,
-                send_update=True,
-            )
-
-        return playlist_data
-
-    @requires_media_server()
-    def delete_playlist(self, playlist_id: str):
-        PlaylistQuery = Query()
-        playlist_to_delete = self._playlists_db.get(PlaylistQuery.id == playlist_id)
-
-        if playlist_to_delete is None:
-            raise VibinNotFoundError()
-
-        with transaction(self._playlists_db) as tr:
-            tr.remove(doc_ids=[playlist_to_delete.doc_id])
-
-        self._send_stored_playlists_update()
-
-    def update_playlist_metadata(
-        self, playlist_id: str, metadata: dict[str, any]
-    ) -> StoredPlaylist:
-        now = time.time()
-        PlaylistQuery = Query()
-
-        try:
-            with transaction(self._playlists_db) as tr:
-                updated_ids = tr.update(
-                    {
-                        "updated": now,
-                        "name": metadata["name"],
-                    },
-                    PlaylistQuery.id == playlist_id,
-                )
-
-            if updated_ids is None or len(updated_ids) <= 0:
-                raise VibinNotFoundError()
-
-            self._send_stored_playlists_update()
-
-            return StoredPlaylist(**self._playlists_db.get(doc_id=updated_ids[0]))
-        except IndexError:
-            raise VibinError(f"Could not update Playlist Id: {playlist_id}")

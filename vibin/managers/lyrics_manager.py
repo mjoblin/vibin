@@ -1,6 +1,7 @@
 import re
 
 from tinydb import Query
+from tinydb.table import Table
 from tinyrecord import transaction
 import xml
 import xmltodict
@@ -22,7 +23,7 @@ class LyricsManager:
     The provided db is expected to be a TinyDB table.
     """
 
-    def __init__(self, db, genius_service: ExternalService | None = None):
+    def __init__(self, db: Table, genius_service: ExternalService | None = None):
         self._db = db
         self._external_service = genius_service
 
