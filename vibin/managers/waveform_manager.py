@@ -23,10 +23,7 @@ class WaveformManager:
     installed and in the PATH.
     """
 
-    def __init__(
-        self,
-        media_server: MediaServer,
-    ):
+    def __init__(self, media_server: MediaServer):
         self._media_server = media_server
 
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than

@@ -162,7 +162,9 @@ class Vibin:
         )
 
         self._lyrics_manager = LyricsManager(
-            db=self._lyrics_db, genius_service=self._external_services.get("Genius")
+            db=self._lyrics_db,
+            media_server=self.media_server,
+            genius_service=self._external_services.get("Genius"),
         )
 
         self._playlists_manager = PlaylistsManager(

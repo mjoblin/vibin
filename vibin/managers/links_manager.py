@@ -68,6 +68,9 @@ class LinksManager:
         #   caller, rather than empty {} results.
 
         if media_id:
+            if self._media_server is None:
+                return {}
+
             try:
                 media_info = xmltodict.parse(self._media_server.get_metadata(media_id))
                 didl = media_info["DIDL-Lite"]

@@ -56,7 +56,6 @@ class FavoritesManager:
         # Check that favorite media_id exists
         media_hydrators = {
             "album": self._media_server.album,
-            # "artist": self.media.artist,
             "track": self._media_server.track,
         }
 

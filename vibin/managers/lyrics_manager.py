@@ -9,9 +9,10 @@ import xmltodict
 from vibin import VibinError, VibinNotFoundError
 from vibin.external_services import ExternalService
 from vibin.logger import logger
+from vibin.mediaservers import MediaServer
 from vibin.models import Lyrics
 from vibin.types import MediaId
-from vibin.utils import requires_external_service_token
+from vibin.utils import requires_external_service_token, requires_media_server
 
 
 class LyricsManager:
@@ -21,11 +22,18 @@ class LyricsManager:
     supports lyrics search.
     """
 
-    def __init__(self, db: Table, genius_service: ExternalService | None = None):
+    def __init__(
+            self,
+            db: Table,
+            media_server: MediaServer,
+            genius_service: ExternalService | None = None,
+    ):
         self._db = db
+        self._media_server = media_server
         self._external_service = genius_service
 
     @requires_external_service_token
+    @requires_media_server()
     def lyrics_for_track(
         self,
         update_cache=False,
@@ -66,7 +74,7 @@ class LyricsManager:
         if track_id:
             # Extract artist and title from the media metadata
             try:
-                track_info = xmltodict.parse(self.media_server.get_metadata(track_id))
+                track_info = xmltodict.parse(self._media_server.get_metadata(track_id))
 
                 artist = track_info["DIDL-Lite"]["item"]["dc:creator"]
                 title = track_info["DIDL-Lite"]["item"]["dc:title"]
