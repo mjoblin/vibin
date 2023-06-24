@@ -19,8 +19,6 @@ class LyricsManager:
 
     Manages the retrieval (from Genius) and local storage of lyrics. Also
     supports lyrics search.
-
-    The provided db is expected to be a TinyDB table.
     """
 
     def __init__(self, db: Table, genius_service: ExternalService | None = None):

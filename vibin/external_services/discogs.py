@@ -5,6 +5,11 @@ from vibin.models import ExternalServiceLink
 
 
 class Discogs(ExternalService):
+    """External service handler for Discogs.
+
+    https://www.discogs.com
+    """
+
     service_name = "Discogs"
 
     def __init__(self, user_agent: str, token: str | None):

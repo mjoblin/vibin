@@ -21,8 +21,6 @@ class LinksManager:
 
     Example links: Wikipedia artist page, album page, track page; Genius
     lyrics link; etc.
-
-    The provided db is expected to be a TinyDB table.
     """
 
     def __init__(

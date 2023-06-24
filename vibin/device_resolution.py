@@ -15,10 +15,15 @@ from vibin.streamers import model_to_streamer, Streamer
 _upnp_devices = None
 
 
-def _discover_upnp_devices(timeout: int):
-    """Perform a UPnP discovery on the local network.
+# =============================================================================
+# UPnP device discovery; Streamer/MediaServer class instance determination
+# =============================================================================
 
-    Found devices are cached in case this gets called more than once.
+def _discover_upnp_devices(timeout: int):
+    """Perform a UPnP discovery of all devices on the local network.
+
+    Found devices are cached in case this gets called more than once. This
+    discovers all devices regardless of type.
     """
     global _upnp_devices
 
@@ -295,9 +300,8 @@ def determine_streamer_and_media_server(
 
 
 def determine_streamer_class(streamer_device, streamer_type):
-    """
+    """Determine which Streamer implementation matches the streamer_device."""
 
-    """
     # Build a list of all known Streamer implementations; and a map of device
     # model name to Streamer implementation.
     known_streamers = []
@@ -340,9 +344,8 @@ def determine_streamer_class(streamer_device, streamer_type):
 
 
 def determine_media_server_class(media_server_device, media_server_type):
-    """
+    """Determine which MediaServer implementation matches the media_server_device."""
 
-    """
     # Build a list of all known MediaServer implementations; and a map of
     # device model name to MediaServer implementation.
     known_media_servers = []

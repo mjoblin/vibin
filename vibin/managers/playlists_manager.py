@@ -62,8 +62,6 @@ class PlaylistsManager:
     The playlists manager also tracks whether a stored playlist is being
     activated; whether the active playlist has drifted from matching a stored
     playlist; etc. See self._stored_playlist_status.
-
-    The provided db is expected to be a TinyDB table.
     """
 
     def __init__(

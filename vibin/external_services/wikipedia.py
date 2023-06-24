@@ -5,6 +5,10 @@ from vibin.models import ExternalServiceLink
 
 
 class Wikipedia(ExternalService):
+    """External service handler for Wikipedia.
+
+    https://wikipedia.org
+    """
     service_name = "Wikipedia"
 
     def __init__(self, user_agent: str, token: str | None):

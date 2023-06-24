@@ -3,6 +3,10 @@ from vibin.models import ExternalServiceLink
 
 
 class RateYourMusic(ExternalService):
+    """External service handler for RateYourMusic.
+
+    https://rateyourmusic.com
+    """
     service_name = "RateYourMusic"
 
     def __init__(self, user_agent: str, token: str | None):

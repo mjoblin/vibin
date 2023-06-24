@@ -149,30 +149,30 @@ class Vibin:
             )
 
         # Initialize the managers for features like favorites, playlists, etc.
-        self.favorites_manager = FavoritesManager(
+        self._favorites_manager = FavoritesManager(
             db=self._favorites_db,
             media_server=self.media_server,
             updates_handler=self._send_update,
         )
 
-        self.links_manager = LinksManager(
+        self._links_manager = LinksManager(
             db=self._links_db,
             media_server=self.media_server,
             external_services=self._external_services,
         )
 
-        self.lyrics_manager = LyricsManager(
+        self._lyrics_manager = LyricsManager(
             db=self._lyrics_db, genius_service=self._external_services.get("Genius")
         )
 
-        self.playlists_manager = PlaylistsManager(
+        self._playlists_manager = PlaylistsManager(
             db=self._playlists_db,
             media_server=self.media_server,
             streamer=self.streamer,
             updates_handler=self._send_update,
         )
 
-        self.waveform_manager = WaveformManager(media_server=self.media_server)
+        self._waveform_manager = WaveformManager(media_server=self.media_server)
 
         # Additional initialization
         self.playlists_manager.check_for_streamer_playlist_in_store()
@@ -194,6 +194,31 @@ class Vibin:
     def media_server(self) -> MediaServer:
         """The MediaServer instance. Provides access to MediaServer capabilities."""
         return self._current_media_server
+
+    @property
+    def favorites_manager(self) -> FavoritesManager:
+        """The Favorites manager."""
+        return self._favorites_manager
+
+    @property
+    def links_manager(self) -> LinksManager:
+        """The Links manager."""
+        return self._links_manager
+
+    @property
+    def lyrics_manager(self) -> LyricsManager:
+        """The Lyrics manager."""
+        return self._lyrics_manager
+
+    @property
+    def playlists_manager(self) -> PlaylistsManager:
+        """The Playlists manager."""
+        return self._playlists_manager
+
+    @property
+    def waveform_manager(self) -> WaveformManager:
+        """The Waveform manager."""
+        return self._waveform_manager
 
     @property
     def settings(self) -> VibinSettings:
@@ -271,70 +296,52 @@ class Vibin:
         self.play_id(track.id)
 
     @requires_media_server()
-    # TODO: PLAYLIST!!
     def play_id(self, media_id: MediaId):
         """Play the provided media ID. This replaces the active streamer playlist."""
-        # self._reset_stored_playlist_status(send_update=True)
-        # self.streamer.modify_playlist(self.media_server.get_metadata(id))
         self.playlists_manager.modify_streamer_playlist_with_id(media_id)
         self._last_played_id = media_id
 
     @requires_media_server()
-    # TODO: PLAYLIST!!
     def play_ids(self, media_ids: list[MediaId], max_count: int = 10):
         """Play the provided media IDs. This replaces the active streamer playlist."""
-        # self._reset_stored_playlist_status(send_update=True)
-        # self.streamer.playlist_clear()
         self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for media_id in media_ids[:max_count]:
-            # self.modify_playlist(media_id, "APPEND")
             self.playlists_manager.modify_streamer_playlist_with_id(
                 media_id, "APPEND", ignore_stored_playlist_impact=True
             )
 
         if len(media_ids) > 0:
-            # self.streamer.play_playlist_index(0)
             self.playlists_manager.play_streamer_playlist_index(0)
             self._last_played_id = media_ids[0]
         else:
             self._last_played_id = None
 
     @requires_media_server()
-    # TODO: PLAYLIST!!
     def play_favorite_albums(self, max_count: int = 10):
         """Play all favorited Albums (up to max_count)."""
-        # self._reset_stored_playlist_status(send_update=True)
-        # self.streamer.playlist_clear()
         self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            # self.modify_playlist(album["media_id"], "APPEND")
             self.playlists_manager.modify_streamer_playlist_with_id(
                 album["media_id"], "APPEND", ignore_stored_playlist_impact=True
             )
 
-        # self.streamer.play_playlist_index(0)
         self.playlists_manager.play_streamer_playlist_index(0)
 
     @requires_media_server()
-    # TODO: PLAYLIST!!
     def play_favorite_tracks(self, max_count: int = 100):
         """Play all favorited Tracks (up to max_count)."""
-        # self._reset_stored_playlist_status(send_update=True)
-        # self.streamer.playlist_clear()
         self.playlists_manager.clear_streamer_playlist()
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            # self.modify_playlist(track["media_id"], "APPEND")
             self.playlists_manager.modify_streamer_playlist_with_id(
                 track["media_id"], "APPEND", ignore_stored_playlist_impact=True
             )
 
-        # self.streamer.play_playlist_index(0)
         self.playlists_manager.play_streamer_playlist_index(0)
 
     def on_update(self, handler: UpdateMessageHandler):
@@ -480,17 +487,23 @@ class Vibin:
     # Additional Private methods
 
     def _on_streamer_update(self, message_type: UpdateMessageType, data: Any):
-        # Forward streamer updates directly to all update subscribers.
+        """Handle an incoming update message from the streamer."""
         self._send_update(message_type, data)
 
     def _on_media_server_update(self, message_type: UpdateMessageType, data: Any):
-        # Forward media server updates directly to all update subscribers.
+        """Handle an incoming update message from the media server."""
         self._send_update(message_type, data)
 
     def _on_streamer_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
+        """Handle information on a change to the streamer's active playlist."""
+
+        # Forward the change information to the playlist manager. Note that
+        # it's possible for this handler to be called before the playlist
+        # manager has been initialized, so check first.
         if hasattr(self, "playlists_manager"):
             self.playlists_manager.on_streamer_playlist_modified(playlist_entries)
 
     def _send_update(self, message_type: UpdateMessageType, data: Any):
+        """Send an update message to all registered update handlers."""
         for handler in self._on_update_handlers:
             handler(message_type, data)

@@ -25,7 +25,16 @@ ONE_MIN_IN_SECS = 60
 HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
 
 
+# =============================================================================
+# General utilities
+# =============================================================================
+
 class StoppableThread(threading.Thread):
+    """A Thread class which allows for external stopping.
+
+    The thread can be stopped externally by calling thread.stop(). Requires the
+    thread target to frequently check whether stop_event is set.
+    """
     def __init__(self, *args, **kwargs):
         super(StoppableThread, self).__init__(*args, **kwargs)
         self.stop_event = threading.Event()
@@ -37,7 +46,9 @@ class StoppableThread(threading.Thread):
         return self.stop_event.is_set()
 
 
-def get_local_ip():
+def get_local_ip() -> str:
+    """Determine the IP address of the local host."""
+
     # https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -54,10 +65,12 @@ def get_local_ip():
 
 
 def is_hmmss(input: str) -> bool:
+    """True if the given input string matches "h:mm:ss(.ms)"."""
     return bool(HMMSS_MATCH.match(input))
 
 
 def secs_to_hmmss(input_secs: int) -> str:
+    """Converts the given number of input seconds to "h:mm:ss"."""
     hours = math.floor(input_secs / ONE_HOUR_IN_SECS)
     mins = math.floor((input_secs - hours * ONE_HOUR_IN_SECS) / ONE_MIN_IN_SECS)
     secs = input_secs - (hours * ONE_HOUR_IN_SECS) - (mins * ONE_MIN_IN_SECS)
@@ -66,6 +79,7 @@ def secs_to_hmmss(input_secs: int) -> str:
 
 
 def hmmss_to_secs(input_hmmss: str) -> int:
+    """Converts the given "h:mm:ss" string to a number of whole seconds."""
     if not is_hmmss(input_hmmss):
         raise TypeError("Time must be in h:mm:ss format")
 
@@ -75,6 +89,15 @@ def hmmss_to_secs(input_hmmss: str) -> int:
 
 
 def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
+    """Replace all media server URLs in the payload with a proxy URL.
+
+    The given payload is expected to be a REST response payload or WebSocket
+    message being sent to a client (e.g. the UI). The payload is checked to see
+    if it includes anything that looks ike a URL referring to the media server.
+    Matching URLs are then modified to instead point to the proxy. If the client
+    later accesses the proxied URL then the proxy will retrieve the data from
+    the media server and send it back to the client.
+    """
     def transform(item):
         item_is_iterable = isinstance(item, Iterable)
 
@@ -120,7 +143,19 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
     return transform(payload)
 
 
+# -----------------------------------------------------------------------------
+# Decorators
+
 def requires_media_server(return_val=None):
+    """Decorator to only allow the call if the object has a media server reference.
+
+    This decorator assumes it is being used on a method of a class. The class
+    instance is checked to ensure that it has a self.media_server or
+    self._media_server before the call is allowed to proceed.
+
+    If a media server is not available then return_val is returned as the result
+    of the call.
+    """
     def decorator_requires_media_server(func):
         @functools.wraps(func)
         def wrapper_requires_media_server(*args, **kwargs):
@@ -154,7 +189,20 @@ def requires_external_service_token(func):
     return wrapper_requires_external_service_token
 
 
+# -----------------------------------------------------------------------------
+# UI installation
+
 def install_vibinui():
+    """Install the Vibin Web UI's static files.
+
+    This installs the static files of the Web UI locally so they can be served
+    by the vibin backend. Installing the UI involves:
+
+        * Determine the latest UI release version from GitHub.
+        * Create a directory to store the files.
+        * Download the UI archive from GitHub.
+        * Extract the build/ directory (i.e. static files) from the archive.
+    """
     logger.info(f"Installing the Web UI into: {UI_ROOT}")
 
     # Create the UI root directory if it doesn't already exist
@@ -225,6 +273,11 @@ def install_vibinui():
 
 
 def get_ui_install_dir() -> Path | None:
+    """Determine which local directory to install the UI.
+
+    Directory will be under the project root, named something like
+    _webui/vibinui-1.0.0/.
+    """
     try:
         candidates = [
             uidir

@@ -18,8 +18,6 @@ class FavoritesManager:
     Manages the marking/unmarking and retrieval of favorite Albums and Tracks.
     Sends "Favorites" updates when favorites are changed. Favorites are stored
     in the local db.
-
-    The provided db is expected to be a TinyDB table.
     """
 
     def __init__(
