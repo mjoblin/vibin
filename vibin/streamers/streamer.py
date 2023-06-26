@@ -58,7 +58,6 @@ class Streamer(metaclass=ABCMeta):
     """
 
     model_name = "VibinStreamer"
-    navigator_name = "vibin"
 
     @abstractmethod
     def __init__(
