@@ -169,9 +169,13 @@ class LinksManager:
                 # We have an array of artists, so look for AlbumArtist (others
                 # might be Composer, etc).
                 for upnp_artist in upnp_artist_info:
-                    if upnp_artist["@role"] == "AlbumArtist":
-                        artist = upnp_artist["#text"]
+                    if type(upnp_artist) == str:
+                        artist = upnp_artist
                         break
+                    else:
+                        if upnp_artist["@role"] == "AlbumArtist":
+                            artist = upnp_artist["#text"]
+                            break
         except KeyError:
             pass
 
