@@ -163,13 +163,22 @@ To generate a Discogs token:
 #### Passing tokens to `vibin`
 
 `vibin` uses environment variables to find tokens. One way to do this is to specify them when
-running `vibin serve`:
+running `vibin serve` (e.g. on MacOS or Linux):
 
 ```bash
 GENIUS_ACCESS_TOKEN=<genius_token> DISCOGS_ACCESS_TOKEN=<discogs_token> vibin serve
 ```
 
 Replace `<genius_token>` and `<discogs_token>` with the previously-generated tokens.
+
+A similar approach can be taken in PowerShell on Windows:
+
+```powershell
+$Env:GENIUS_ACCESS_TOKEN = "<genius_token>"
+$Env:DISCOGS_ACCESS_TOKEN = "<discogs_token>"
+
+vibin serve
+```
 
 ### Waveform generation
 
