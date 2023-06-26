@@ -219,9 +219,16 @@ def track_waveform(
     tags=["Tracks"],
 )
 def track_rms(track_id: str):
-    waveform = get_vibin_instance().waveform_manager.waveform_for_track(
-        track_id, data_format="json"
-    )
+
+    try:
+        waveform = get_vibin_instance().waveform_manager.waveform_for_track(
+            track_id, data_format="json"
+        )
+    except VibinMissingDependencyError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot calculate RMS due to missing dependency: {e}",
+        )
 
     samples = waveform["data"]
     squared_samples = [sample**2 for sample in samples]
