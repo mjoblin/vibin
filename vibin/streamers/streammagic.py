@@ -2,6 +2,7 @@ import array
 import asyncio
 import atexit
 import base64
+import functools
 import json
 import math
 import pathlib
@@ -10,6 +11,7 @@ import sys
 import time
 from typing import Literal
 from urllib.parse import urlparse
+import uuid
 import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
@@ -74,6 +76,32 @@ from vibin.streamers import Streamer
 # TODO: Can end up with multiple UPnP subscriptions to each service.
 
 
+class StreamMagicBadNavigatorError(Exception):
+    pass
+
+
+def retry_on_bad_navigator(method):
+    """Decorator to retry the method call on StreamMagicBadNavigatorError."""
+    @functools.wraps(method)
+    def wrapper_retry_on_bad_navigator(self, *method_args, **method_kwargs):
+        try:
+            # Invoke the decorated method.
+            return method(self, *method_args, **method_kwargs)
+        except StreamMagicBadNavigatorError:
+            # If the decorated method raised StreamMagicBadNavigatorError then
+            # attempt to acquire a fresh navigator from the streamer. Only try
+            # this once.
+            logger.info("Attempting to re-acquire StreamMagic navigator")
+            self._initialize_navigator()
+
+            try:
+                return method(self, *method_args, **method_kwargs)
+            except StreamMagicBadNavigatorError:
+                raise VibinDeviceError(f"Could not re-acquire StreamMagic navigator")
+
+    return wrapper_retry_on_bad_navigator
+
+
 class StreamMagic(Streamer):
     model_name = "StreamMagic"
 
@@ -127,7 +155,6 @@ class StreamMagic(Streamer):
         self._disconnected = False
         self._media_server: MediaServer | None = None
         self._instance_id = 0  # StreamMagic implements a static AVTransport instance
-        self._navigator_id = None
         self._upnp_subscriptions: UPnPServiceSubscriptions = {}
         self._upnp_subscription_renewal_thread = None
         self._websocket_thread = None
@@ -148,25 +175,17 @@ class StreamMagic(Streamer):
         ET.register_namespace("upnp", "urn:schemas-upnp-org:metadata-1-0/upnp/")
         ET.register_namespace("dlna", "urn:schemas-dlna-org:metadata-1-0/")
 
-        # Configure navigator.
-        nav_check = device.UuVolControl.IsRegisteredNavigatorName(
-            NavigatorName=self.navigator_name
-        )
-
-        if nav_check["IsRegistered"]:
-            self._navigator_id = nav_check["RetNavigatorId"]
-        else:
-            try:
-                new_nav = device.UuVolControl.RegisterNamedNavigator(
-                    NewNavigatorName=self.navigator_name
-                )
-                self._navigator_id = new_nav["RetNavigatorId"]
-            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-                logger.error(
-                    "Could not acquire StreamMagic navigator. If device is in "
-                    + "standby, power it on and try again."
-                )
-                raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
+        # This unique navigator name ensures that multiple vibins can run
+        # concurrently. This unique-navigator approach is done because vibin
+        # releases the navigator when it shuts down, which can cause problems
+        # for other still-running vibins which might have been using that
+        # navigator. This may or me not be how navigators are intended to be
+        # used. This approach also assumes the streamer is automatically
+        # cleaning up old navigators (if vibin's navigator release fails for
+        # some reason).
+        self._navigator_name = f"vibin-{str(uuid.uuid4())[:8]}"
+        self._navigator_id = None
+        self._initialize_navigator()
 
         atexit.register(self.on_shutdown)
 
@@ -209,9 +228,9 @@ class StreamMagic(Streamer):
         self._set_last_seen_media_ids(None, None)
 
         try:
-            # See if current IDs can be determined at startup time.
+            # See if any currently-playing media IDs can be found at startup
             response = device.UuVolControl.GetPlaybackDetails(
-                NavigatorId=self.navigator_name
+                NavigatorId=self._navigator_id
             )
 
             # Determine the currently-streamed URL, and use it to extract IDs.
@@ -257,12 +276,7 @@ class StreamMagic(Streamer):
         logger.info("StreamMagic disconnect requested")
         self._disconnected = True
 
-        # Clean up the navigator.
-        try:
-            logger.info("Releasing navigator")
-            self._uu_vol_control.ReleaseNavigator(NavigatorId=self._navigator_id)
-        except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-            logger.error(f"Could not release navigator: {e}")
+        self._release_navigator()
 
         # Clean up any UPnP subscriptions.
         self._cancel_subscriptions()
@@ -414,6 +428,7 @@ class StreamMagic(Streamer):
     def playlist(self) -> ActivePlaylist:
         return self._currently_playing.playlist
 
+    @retry_on_bad_navigator
     def modify_playlist(
         self,
         metadata: str,
@@ -424,18 +439,22 @@ class StreamMagic(Streamer):
             if action == "INSERT":
                 # INSERT. This works for Tracks only (not Albums).
                 # TODO: Add check to ensure metadata is for a Track.
-                self._uu_vol_control.InsertPlaylistTrack(
+                result = self._uu_vol_control.InsertPlaylistTrack(
                     InsertPosition=insert_index, TrackData=metadata
                 )
             else:
                 # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-                self._uu_vol_control.QueueFolder(
+                queue_folder_response = self._uu_vol_control.QueueFolder(
                     ServerUDN=self._media_server.device_udn,
                     Action=action,
                     NavigatorId=self._navigator_id,
                     ExtraInfo="",
                     DIDL=metadata,
                 )
+
+                if queue_folder_response["Result"] == "BAD_NAVIGATOR":
+                    logger.warning("StreamMagic navigator is bad")
+                    raise StreamMagicBadNavigatorError()
         except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
             # TODO: Look at using VibinDeviceError wherever things like
             #   _uu_vol_control are being used.
@@ -561,6 +580,61 @@ class StreamMagic(Streamer):
     # =========================================================================
     # Additional helpers (not part of Streamer interface).
     # =========================================================================
+
+    def _initialize_navigator(self):
+        """Initialize the StreamMagic navigator.
+
+        The navigator appears to be a unique identifier required to invoke some
+        UPnP calls on the StreamMagic streamer; specifically UuVolControl calls.
+        This method requests a navigator from the streamer, supplying vibin's
+        navigator name and receiving a unique navigator ID in return. This
+        navigator ID is then used for some streamer calls.
+        """
+        nav_check = self.device.UuVolControl.IsRegisteredNavigatorName(
+            NavigatorName=self._navigator_name
+        )
+
+        if nav_check["IsRegistered"]:
+            # Navigator is already registered.
+            self._navigator_id = nav_check["RetNavigatorId"]
+        else:
+            # Need to request a navigator.
+            self._navigator_id = None
+
+            try:
+                new_nav = self.device.UuVolControl.RegisterNamedNavigator(
+                    NewNavigatorName=self._navigator_name
+                )
+
+                try:
+                    self._navigator_id = new_nav["RetNavigatorId"]
+                except KeyError:
+                    raise VibinDeviceError(
+                        f"Could not acquire StreamMagic navigator: {new_nav}"
+                    )
+
+                logger.info(
+                    f"StreamMagic navigator name: {self._navigator_name} "
+                    + f"id: {self._navigator_id}"
+                )
+            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+                logger.error(
+                    "Could not acquire StreamMagic navigator. If device is in "
+                    + "standby, power it on and try again."
+                )
+                raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
+
+    def _release_navigator(self):
+        """Release the StreamMagic navigator."""
+        if self._navigator_id is not None:
+            try:
+                logger.info(
+                    f"Releasing StreamMagic navigator; name: {self._navigator_name} " +
+                    f"id: {self._navigator_id}"
+                )
+                self._uu_vol_control.ReleaseNavigator(NavigatorId=self._navigator_id)
+            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+                logger.error(f"Could not release StreamMagic navigator: {e}")
 
     # -------------------------------------------------------------------------
     # Static
@@ -1010,70 +1084,89 @@ class StreamMagic(Streamer):
         continue to process messages as they come in, until told to stop
         (probably because the system is shutting down).
         """
-
         async def async_websocket_manager():
             uri = f"ws://{self._device_hostname}:80/smoip"
             logger.info(f"Connecting to {self.name} WebSocket server on {uri}")
 
-            async with websockets.connect(
-                uri,
-                ssl=None,
-                extra_headers={
-                    "Origin": "vibin",
-                },
-            ) as websocket:
-                logger.info(f"Successfully connected to {self.name} WebSocket server")
+            wait_for_message = True
 
-                # Request playhead position updates (these arrive one per sec).
-                await websocket.send(
-                    '{"path": "/zone/play_state/position", "params": {"update": 1}}'
-                )
+            # TODO: Handle condition where the uri is technically valid, but the
+            #   connection cannot be established.
 
-                # Request now-playing updates, so the "controls" information can
-                # be used to track active transport controls for TransportState
-                # messages.
-                await websocket.send(
-                    '{"path": "/zone/now_playing", "params": {"update": 1}}'
-                )
-
-                # Request play state updates (these arrive one per track change).
-                await websocket.send(
-                    '{"path": "/zone/play_state", "params": {"update": 1}}'
-                )
-
-                # Request preset updates.
-                await websocket.send(
-                    '{"path": "/presets/list", "params": {"update": 1}}'
-                )
-
-                # Request power updates (on/off).
-                await websocket.send(
-                    '{"path": "/system/power", "params": {"update": 100}}'
-                )
-
-                wait_for_message = True
-
-                while wait_for_message:
+            try:
+                # The "for" iteration automatically takes care of reconnects.
+                async for websocket in websockets.connect(
+                    uri,
+                    ssl=None,
+                    extra_headers={
+                        "Origin": "vibin",
+                    },
+                ):
                     try:
-                        # Wait for an incoming message
-                        update = await asyncio.wait_for(
-                            websocket.recv(), timeout=self._websocket_timeout
+                        logger.info(f"Successfully connected to {self.name} WebSocket server")
+
+                        # Request playhead position updates (these arrive one per sec).
+                        await websocket.send(
+                            '{"path": "/zone/play_state/position", "params": {"update": 1}}'
                         )
-                    except asyncio.TimeoutError:
-                        if not self._websocket_thread.stop_event.is_set():
-                            # Keep listening for incoming messages
-                            continue
 
-                        # The thread we're running in has been told to stop
-                        wait_for_message = False
+                        # Request now-playing updates, so the "controls" information can
+                        # be used to track active transport controls for TransportState
+                        # messages.
+                        await websocket.send(
+                            '{"path": "/zone/now_playing", "params": {"update": 1}}'
+                        )
 
-                    try:
-                        self._process_streamer_message(json.loads(update))
-                    except (KeyError, json.decoder.JSONDecodeError) as e:
-                        # TODO: This currently quietly ignores unexpected
-                        #   payload formats or missing keys. Consider adding
-                        #   error handling if errors need to be announced.
-                        pass
+                        # Request play state updates (these arrive one per track change).
+                        await websocket.send(
+                            '{"path": "/zone/play_state", "params": {"update": 1}}'
+                        )
+
+                        # Request preset updates.
+                        await websocket.send(
+                            '{"path": "/presets/list", "params": {"update": 1}}'
+                        )
+
+                        # Request power updates (on/off).
+                        await websocket.send(
+                            '{"path": "/system/power", "params": {"update": 100}}'
+                        )
+
+                        while wait_for_message:
+                            try:
+                                # Wait for an incoming message
+                                update = await asyncio.wait_for(
+                                    websocket.recv(), timeout=self._websocket_timeout
+                                )
+                            except asyncio.TimeoutError:
+                                if not self._websocket_thread.stop_event.is_set():
+                                    # Keep listening for incoming messages
+                                    continue
+
+                                # The thread we're running in has been told to stop
+                                wait_for_message = False
+
+                            try:
+                                self._process_streamer_message(json.loads(update))
+                            except (KeyError, json.decoder.JSONDecodeError) as e:
+                                # TODO: This currently quietly ignores unexpected
+                                #   payload formats or missing keys. Consider adding
+                                #   error handling if errors need to be announced.
+                                pass
+
+                        logger.info(f"WebSocket connection to {self.name} closed by vibin")
+                        return
+                    except websockets.ConnectionClosed:
+                        # Attempt a re-connect when the streamer drops the connection
+                        logger.warning(
+                            f"Lost connection to {self.name} WebSocket server; " +
+                            "attempting reconnect"
+                        )
+
+                        # Continue the "for" loop, which will trigger a reconnect.
+                        continue
+            except websockets.WebSocketException as e:
+                logger.error(f"WebSocket error from {self.name}: {e}")
 
         asyncio.run(async_websocket_manager())
 

@@ -30,6 +30,12 @@ It is recommended to install and run `vibin` on an always-on device which mainta
 network connection at all times, such as a Raspberry Pi. It will still run on other devices (like a
 laptop), but may need to be restarted when the device comes out of sleep.
 
+`vibin` has been tested on:
+
+* Ubuntu 22.10 on a Raspberry Pi (Python 3.10)
+* MacOS 13.4 (Python 3.11)
+* Windows 11 (Python 3.11)
+
 ### Installing `vibin`
 
 `vibin` requires [Python 3.10] or higher.
