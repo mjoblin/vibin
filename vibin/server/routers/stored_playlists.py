@@ -16,7 +16,7 @@ stored_playlists_router = APIRouter(prefix="/stored_playlists")
     "", summary="Retrieve details on all Stored Playlists", tags=["Stored Playlists"]
 )
 def playlists() -> list[StoredPlaylist]:
-    return get_vibin_instance().playlists()
+    return get_vibin_instance().playlists_manager.stored_playlists.playlists
 
 
 @stored_playlists_router.post(
@@ -29,7 +29,7 @@ def playlists_current_store(
 ) -> StoredPlaylist:
     metadata = {"name": name} if name else None
 
-    return get_vibin_instance().store_active_playlist(
+    return get_vibin_instance().playlists_manager.store_streamer_playlist(
         metadata=metadata, replace=replace
     )
 
@@ -40,7 +40,7 @@ def playlists_current_store(
     tags=["Stored Playlists"],
 )
 def playlists_id(playlist_id: str) -> StoredPlaylist:
-    playlist = get_vibin_instance().get_playlist(playlist_id)
+    playlist = get_vibin_instance().playlists_manager.get_stored_playlist(playlist_id)
 
     if playlist is None:
         raise HTTPException(
@@ -57,7 +57,7 @@ def playlists_id_update(playlist_id: str, name: str | None = None) -> StoredPlay
     metadata = {"name": name} if name else None
 
     try:
-        return get_vibin_instance().update_playlist_metadata(
+        return get_vibin_instance().playlists_manager.update_stored_playlist_metadata(
             playlist_id=playlist_id, metadata=metadata
         )
     except VibinNotFoundError:
@@ -75,7 +75,9 @@ def playlists_id_update(playlist_id: str, name: str | None = None) -> StoredPlay
 )
 def playlists_id_delete(playlist_id: str):
     try:
-        get_vibin_instance().delete_playlist(playlist_id=playlist_id)
+        get_vibin_instance().playlists_manager.delete_stored_playlist(
+            playlist_id=playlist_id
+        )
     except VibinNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Playlist not found: {playlist_id}"
@@ -95,7 +97,7 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
     # TODO: Is it possible to configure FastAPI to always treat
     #   VibinNotFoundError as a 404 and VibinDeviceError as a 503?
     try:
-        return get_vibin_instance().set_active_playlist(playlist_id)
+        return get_vibin_instance().playlists_manager.set_streamer_playlist(playlist_id)
     except VibinNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Playlist not found: {playlist_id}"

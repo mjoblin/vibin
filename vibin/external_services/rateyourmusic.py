@@ -3,9 +3,13 @@ from vibin.models import ExternalServiceLink
 
 
 class RateYourMusic(ExternalService):
+    """External service handler for RateYourMusic.
+
+    https://rateyourmusic.com
+    """
     service_name = "RateYourMusic"
 
-    def __init__(self, user_agent: str, token: str):
+    def __init__(self, user_agent: str, token: str | None):
         self._user_agent = user_agent
         self._token = token
 
@@ -14,6 +18,10 @@ class RateYourMusic(ExternalService):
     @property
     def name(self) -> str:
         return self.service_name
+
+    @property
+    def token(self):
+        return self._token
 
     def _rym_friendly_path(self, path: str) -> str:
         return path.lower().replace(" ", "-")

@@ -5,9 +5,13 @@ from vibin.models import ExternalServiceLink
 
 
 class Wikipedia(ExternalService):
+    """External service handler for Wikipedia.
+
+    https://wikipedia.org
+    """
     service_name = "Wikipedia"
 
-    def __init__(self, user_agent: str, token: str):
+    def __init__(self, user_agent: str, token: str | None):
         # These are unused for Wikipedia.
         self._user_agent = user_agent
         self._token = token
@@ -15,6 +19,10 @@ class Wikipedia(ExternalService):
     @property
     def name(self) -> str:
         return self.service_name
+
+    @property
+    def token(self):
+        return self._token
 
     def links(
         self,

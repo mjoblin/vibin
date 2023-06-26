@@ -18,7 +18,7 @@ presets_router = APIRouter(prefix="/presets")
 @presets_router.get("", summary="Retrieve all Preset details", tags=["Presets"])
 @transform_media_server_urls_if_proxying
 def presets() -> Presets:
-    return get_vibin_instance().presets
+    return get_vibin_instance().streamer.presets
 
 
 @presets_router.get(
@@ -29,7 +29,7 @@ def preset_by_id(preset_id: int) -> Preset:
     preset = next(
         (
             preset
-            for preset in get_vibin_instance().presets.presets
+            for preset in get_vibin_instance().streamer.presets.presets
             if preset.id == preset_id
         ),
         None,

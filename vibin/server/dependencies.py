@@ -20,16 +20,23 @@ _media_server_proxy_client = None
 _ui_static_root = None
 
 
+# NOTE: The vibin server relies on singleton instance of the Vibin class. This
+#   instance is retrieved by any REST endpoint which needs to communicate with
+#   the Vibin backend. The singleton instance is first created when the API
+#   is initialized (see server.py), before the API is ready to receive incoming
+#   requests.
+
 def get_vibin_instance(
     streamer=None,
     streamer_type=None,
     media_server=None,
     media_server_type=None,
     discovery_timeout=5,
-    subscribe_callback_base="",
+    upnp_subscription_callback_base="",
     proxy_media_server=False,
     ui_static_root=None,
 ) -> Vibin:
+    """Return the Vibin singleton instance."""
     global _vibin
     global _is_proxy_for_media_server
     global _media_server_proxy_target
@@ -51,7 +58,7 @@ def get_vibin_instance(
             media_server=media_server,
             media_server_type=media_server_type,
             discovery_timeout=discovery_timeout,
-            subscribe_callback_base=subscribe_callback_base,
+            upnp_subscription_callback_base=upnp_subscription_callback_base,
         )
 
         if _vibin.media_server is not None:
@@ -84,6 +91,14 @@ def get_vibin_instance(
 
 
 def is_proxy_for_media_server():
+    """Is the vibin server acting as a proxy for the media server.
+
+    Clients accessing the vibin server will usually be on the same network as
+    the vibin server, and will also be able to directly access the media server
+    (say to retrieve album art). Sometimes however a client won't be able to
+    access the media server directly, in which case the vibin server can act as
+    a proxy. See the --proxy-media-server flag for "vibin serve".
+    """
     return _is_proxy_for_media_server
 
 
@@ -100,6 +115,13 @@ def get_ui_static_root():
 
 
 def transform_media_server_urls_if_proxying(func):
+    """Decorator to transform any media server URLs to point to the proxy.
+
+    This decorator is intended to be attached to functions which are returning
+    an arbitrary payload to the calling client. If the vibin server is proxying
+    the media server, then the payload has its URLs transformed to point to the
+    proxy.
+    """
     @functools.wraps(func)
     def wrapper_transform_media_server_urls_if_proxying(*args, **kwargs):
         if _is_proxy_for_media_server:
@@ -113,6 +135,7 @@ def transform_media_server_urls_if_proxying(func):
 
 
 def requires_media(func):
+    """Decorator to return a 404 if the vibin server does not have a media server."""
     @functools.wraps(func)
     def wrapper_requires_media(*args, **kwargs):
         if _vibin is None or _vibin.media_server is None:
@@ -135,6 +158,8 @@ _system_version = platform.version()
 def server_status(
     websocket_clients: list[WebSocketClientDetails] | None = None,
 ) -> VibinStatus:
+    """Return a VibinStatus instance describing the vibin server."""
+
     global _start_time
     global _system_node
     global _system_platform

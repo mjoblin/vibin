@@ -63,4 +63,4 @@ def album_tracks(album_id: str) -> list[Track]:
 )
 @requires_media
 def album_links(album_id: str, all_types: bool = False):
-    return get_vibin_instance().media_links(album_id, all_types)
+    return get_vibin_instance().links_manager.media_links(album_id, all_types)

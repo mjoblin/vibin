@@ -80,12 +80,12 @@ class StreamMagic(Streamer):
     def __init__(
         self,
         device: upnpclient.Device,
-        subscribe_callback_base: str | None = None,
+        upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
         on_playlist_modified: PlaylistModifiedHandler | None = None,
     ):
         self._device = device
-        self._subscribe_callback_base = subscribe_callback_base
+        self._upnp_subscription_callback_base = upnp_subscription_callback_base
         self._on_update = on_update
         self._on_playlist_modified = on_playlist_modified
 
@@ -438,7 +438,7 @@ class StreamMagic(Streamer):
                 )
         except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
             # TODO: Look at using VibinDeviceError wherever things like
-            #  _uu_vol_control are being used.
+            #   _uu_vol_control are being used.
             raise VibinDeviceError(e)
 
     def play_playlist_index(self, index: int):
@@ -491,11 +491,11 @@ class StreamMagic(Streamer):
         # Clean up any existing subscriptions before making new ones.
         self._cancel_subscriptions()
 
-        if self._subscribe_callback_base:
+        if self._upnp_subscription_callback_base:
             for service in self._subscribed_services:
                 now = int(time.time())
                 (subscription_id, timeout) = service.subscribe(
-                    callback_url=(f"{self._subscribe_callback_base}/{service.name}")
+                    callback_url=(f"{self._upnp_subscription_callback_base}/{service.name}")
                 )
 
                 self._upnp_subscriptions[service] = UPnPSubscription(

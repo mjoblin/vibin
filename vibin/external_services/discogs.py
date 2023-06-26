@@ -5,9 +5,14 @@ from vibin.models import ExternalServiceLink
 
 
 class Discogs(ExternalService):
+    """External service handler for Discogs.
+
+    https://www.discogs.com
+    """
+
     service_name = "Discogs"
 
-    def __init__(self, user_agent: str, token: str):
+    def __init__(self, user_agent: str, token: str | None):
         self._user_agent = user_agent
         self._token = token
 
@@ -19,6 +24,10 @@ class Discogs(ExternalService):
     @property
     def name(self) -> str:
         return self.service_name
+
+    @property
+    def token(self):
+        return self._token
 
     def links(
         self,
