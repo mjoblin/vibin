@@ -6,8 +6,13 @@
 * [FastAPI] (for the REST API, WebSocket server, and proxies)
 * [Pydantic] (for data models)
 * [TinyDB] (for local persistence)
+  * **NOTE:** TinyDB explicitly
+    [does not support concurrency and/or HTTP server environments](https://tinydb.readthedocs.io/en/latest/intro.html#why-not-use-tinydb).
+    As a result, Vibin experiences occasional database corruption issues. An alternative persistence
+    solution should be found.
 * [uPnPclient] (for communicating with UPnP devices)
 * [untangle] (for XML parsing)
+* [websockets] (for communicating with the StreamMagic streamer)
 
 And [Black] for code formatting.
 
