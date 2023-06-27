@@ -106,9 +106,17 @@ def track_by_id(track_id: str) -> Track:
     "/{track_id}/lyrics", summary="Retrieve lyrics for a Track", tags=["Tracks"]
 )
 def track_lyrics_by_track_id(track_id: str, update_cache: bool | None = False):
-    lyrics = get_vibin_instance().lyrics_manager.lyrics_for_track(
-        track_id=track_id, update_cache=update_cache
-    )
+    try:
+        lyrics = get_vibin_instance().lyrics_manager.lyrics_for_track(
+            track_id=track_id, update_cache=update_cache
+        )
+    except VibinMissingDependencyError as e:
+        logger.warning(f"Cannot retrieve lyrics due to missing dependency: {e}")
+
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cannot retrieve lyrics due to missing dependency: {e}",
+        )
 
     if lyrics is None:
         raise HTTPException(status_code=404, detail="Lyrics not found")

@@ -468,7 +468,10 @@ class Vibin:
 
             logger.info(f"Registered external service: {service_instance.name}")
         except KeyError:
-            pass
+            logger.warning(
+                f"Not registering external service: {service_class.__name__}. "
+                + f"Missing required token env var {token_env_var}?"
+            )
 
     def _subscribe_to_upnp_events(self):
         """Instruct the streamer and media server to subscribe to UPnP events.
