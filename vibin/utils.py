@@ -158,13 +158,13 @@ def requires_media_server(return_val=None):
     """
     def decorator_requires_media_server(func):
         @functools.wraps(func)
-        def wrapper_requires_media_server(*args, **kwargs):
+        def wrapper_requires_media_server(self, *args, **kwargs):
             if (
-                hasattr(args[0], "media_server") and args[0].media_server is not None
+                hasattr(self, "media_server") and self.media_server is not None
             ) or (
-                hasattr(args[0], "_media_server") and args[0]._media_server is not None
+                hasattr(self, "_media_server") and self._media_server is not None
             ):
-                return func(*args, **kwargs)
+                return func(self, *args, **kwargs)
             else:
                 return return_val
 
@@ -179,10 +179,14 @@ def requires_external_service_token(func):
     This decorator assumes it is being used on a method of a class, where the
     class instance defines self._external_service (an ExternalService instance).
     """
+
     @functools.wraps(func)
-    def wrapper_requires_external_service_token(*args, **kwargs):
-        if args[0]._external_service.token is not None:
-            return func(*args, **kwargs)
+    def wrapper_requires_external_service_token(self, *args, **kwargs):
+        if (
+            self._external_service is not None
+            and self._external_service.token is not None
+        ):
+            return func(self, *args, **kwargs)
         else:
             raise VibinMissingDependencyError("External service token")
 
@@ -260,7 +264,8 @@ def install_vibinui():
 
             logger.info(f"Web UI {latest_tag} installed into: {ui_install_dir}")
             logger.info(
-                f"Specify '--vibinui auto' when running 'vibin serve' to serve this UI instance"
+                f"Web UI {latest_tag} will be served automatically with 'vibin serve'; "
+                + "or override with '--vibinui'"
             )
     except requests.RequestException as e:
         raise VibinError(
