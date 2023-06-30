@@ -73,15 +73,37 @@ class ConnectionManager:
             self.registered_listener_with_vibin = True
 
         # Add the new connection's details to the list of active connections.
-        self.active_connections[websocket] = {
+        client_info = {
             "id": str(uuid.uuid4()),
             "when_connected": time.time(),
             "websocket": websocket,
         }
 
+        self.active_connections[websocket] = client_info
+
+        logger.info(
+            f"Added WebSocket client {client_info['id']}, connected at "
+            + f"{client_info['when_connected']}"
+        )
+
     def disconnect(self, websocket: WebSocket):
         """Handle a client disconnect."""
-        del self.active_connections[websocket]
+        self._remove_client(websocket)
+
+    def _remove_client(self, websocket: WebSocket):
+        """Remove a client connection from the active client connections."""
+        try:
+            client_info = self.active_connections[websocket]
+
+            logger.info(
+                f"Removing WebSocket client {client_info['id']}, connected at "
+                + f"{client_info['when_connected']}"
+            )
+            del self.active_connections[websocket]
+        except KeyError:
+            logger.warning(
+                "Could not find WebSocket client for removal in active connections"
+            )
 
     def vibin_update_handler(self, message_type: UpdateMessageType, data: Any):
         """
@@ -204,16 +226,23 @@ class ConnectionManager:
                 message_payload_str = self.message_payload_to_str(to_send.payload)
 
                 for client_websocket in self.active_connections.keys():
-                    await client_websocket.send_text(
-                        self.build_message(
-                            to_send.message_type,
-                            message_payload_str,
-                            client_websocket,
+                    try:
+                        await client_websocket.send_text(
+                            self.build_message(
+                                to_send.message_type,
+                                message_payload_str,
+                                client_websocket,
+                            )
                         )
-                    )
+                    except RuntimeError as e:
+                        logger.warning(
+                            f"Error sending broadcast message to WebSocket client: {e}"
+                        )
+                        self._remove_client(client_websocket)
             except VibinError as e:
                 logger.warning(f"Could not send message over WebSocket: {e}")
             except Exception as e:
+                # TODO: Reconsider this "except Exception" approach; it's heavy-handed
                 logger.warning(
                     f"Unexpected error attempting to send message to WebSocket clients: {e}"
                 )
@@ -231,9 +260,20 @@ class ConnectionManager:
             logger.warning(f"Could not send message over Websocket: {e}")
             return
 
-        await websocket.send_text(
-            self.build_message(message_type, message_str, websocket)
-        )
+        if websocket not in self.active_connections:
+            logger.warning(
+                "Not performing a single-client WebSocket send (target WebSocket "
+                + "client not found in client list)"
+            )
+            return
+
+        try:
+            await websocket.send_text(
+                self.build_message(message_type, message_str, websocket)
+            )
+        except RuntimeError as e:
+            logger.warning(f"Error performing single-client WebSocket send: {e}")
+            self._remove_client(websocket)
 
     def client_details(self) -> list[WebSocketClientDetails]:
         """Return information on each of the currently-connected clients."""
