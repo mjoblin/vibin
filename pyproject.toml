@@ -8,7 +8,7 @@ exclude = ["media"]
 
 [project]
 name = "vibin"
-version = "1.0.2"
+version = "1.0.3"
 description = "The Vibin music server"
 authors = [
     { name = "Mike Joblin", email = "mjoblin@users.noreply.github.com" },
