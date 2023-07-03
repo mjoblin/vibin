@@ -6,19 +6,23 @@ import json
 import math
 import os
 from pathlib import Path
+import queue
 import re
 import shutil
 import socket
 import tempfile
 import threading
+import time
 import zipfile
 
 from pydantic import BaseModel
 import requests
+import upnpclient
 
 from vibin import VibinError, VibinMissingDependencyError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from vibin.logger import logger
+from vibin.models import UPnPServiceSubscriptions, UPnPSubscription
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
@@ -28,6 +32,9 @@ HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
 # =============================================================================
 # General utilities
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# Classes
 
 class StoppableThread(threading.Thread):
     """A Thread class which allows for external stopping.
@@ -45,6 +52,176 @@ class StoppableThread(threading.Thread):
     def stopped(self):
         return self.stop_event.is_set()
 
+
+class UPnPSubscriptionManagerThread(StoppableThread):
+    def __init__(
+        self,
+        device: upnpclient.Device,
+        cmd_queue: queue.Queue,
+        subscription_callback_base: str,
+        services: list[upnpclient.Service],
+        *args,
+        **kwargs,
+    ):
+        """Thread to manage UPnP subscription initialization and renewals.
+
+        Initializes UPnP subscriptions to all provided UPnP services, and
+        instructs them to send events to the subscription_callback_base URL.
+        Handles subscription renewal on timeout.
+
+        Valid commands on cmd_queue:
+
+            * "SUBSCRIBE": Initialize the UPnP subscriptions.
+            * "SHUTDOWN": Stop managing UPnP subscriptions and shut down.
+
+        Managed UPnP service subscriptions are exposed on the subscriptions
+        property.
+
+        Note: This class does not act on incoming UPnP events. It merely handles
+        the UPnP subscriptions to ensure that they are initialized and renewed
+        when necessary. Incoming UPnP events (resulting from the subscriptions)
+        are expected to be handled elsewhere.
+        """
+        super().__init__(*args, **kwargs)
+
+        self.name = "UPnP-SubManagerThread"
+
+        self._device = device
+        self._cmd_queue = cmd_queue
+        self._services = services
+        self._subscription_callback_base = subscription_callback_base
+
+        self._subscriptions: UPnPServiceSubscriptions = {}
+        self._cmd_queue_timeout = 1
+        self._device_name = self._device.friendly_name
+
+    def run(self):
+        while True:
+            try:
+                cmd = self._cmd_queue.get(timeout=self._cmd_queue_timeout)
+
+                if cmd == "SUBSCRIBE":
+                    self.subscribe_to_upnp_events()
+                elif cmd == "SHUTDOWN":
+                    logger.info(
+                        f"UPnP subscription manager thread for {self._device_name} "
+                        + "shutting down"
+                    )
+                    self.cancel_subscriptions()
+                    logger.info(
+                        f"UPnP subscription manager thread for {self._device_name} ended"
+                    )
+                    return
+            except queue.Empty:
+                if self.stop_event.is_set():
+                    logger.info(
+                        f"UPnP subscription manager thread for {self._device_name} ended"
+                    )
+                    return
+
+                # Check if any subscriptions have timed out and need renewal
+                self.renew_subscriptions_if_required()
+
+    @property
+    def subscriptions(self) -> UPnPServiceSubscriptions:
+        """All managed UPnP subscriptions."""
+        return self._subscriptions
+
+    def subscribe_to_upnp_events(self) -> None:
+        """Subscribe to UPnP events for all provided UPnP services."""
+        for service in self._services:
+            now = int(time.time())
+
+            try:
+                (subscription_id, timeout) = service.subscribe(
+                    callback_url=f"{self._subscription_callback_base}/{service.name}"
+                )
+            except requests.RequestException as e:
+                logger.warning(
+                    f"Could not subscribe to {self._device_name} UPnP events "
+                    + f"for {service.name}: {e}"
+                )
+                return
+
+            self._subscriptions[service] = UPnPSubscription(
+                id=subscription_id,
+                timeout=timeout,
+                next_renewal=(now + timeout) if timeout else None,
+            )
+
+            logger.info(
+                f"Subscribed to {self._device_name} UPnP events from {service.name} "
+                + f"with timeout {timeout}s"
+            )
+
+    def renew_subscriptions_if_required(self):
+        """Renew the subscriptions to the streamer's UPnP services.
+
+        Subscriptions need to be renewed after their timeout has expired.
+        """
+        renewal_buffer = 10
+        renew_retry_delay = 10
+
+        for service, subscription in self._subscriptions.items():
+            now = int(time.time())
+
+            if (subscription.timeout is not None) and (
+                now > (subscription.next_renewal - renewal_buffer)
+            ):
+                logger.info(
+                    f"Renewing {self._device_name} UPnP subscription for {service.name}"
+                )
+
+                try:
+                    timeout = service.renew_subscription(subscription.id)
+                    subscription.timeout = timeout
+                    subscription.next_renewal = (now + timeout) if timeout else None
+                except requests.RequestException:
+                    logger.warning(
+                        f"Could not renew {self._device_name} UPnP subscription for "
+                        + f"{service.name}. Will attempt a cancel and re-subscribe "
+                        + f"of all subscriptions in {renew_retry_delay} seconds."
+                    )
+
+                    time.sleep(renew_retry_delay)
+                    self.cancel_subscriptions()
+                    self.subscribe_to_upnp_events()
+
+    def cancel_subscriptions(self):
+        """Cancel all subscriptions to the streamer's UPnP services.
+
+        Subscription cancellation is treated as non-essential (the assumption is
+        that the streamer will clean up old/unused subscriptions). The attempt
+        to unsubscribe is made, but problems are ignored aside from some logging
+        to announce the issue.
+        """
+        for service, subscription in self._subscriptions.items():
+            try:
+                logger.info(
+                    f"Canceling {self._device_name} UPnP subscription for {service.name}"
+                )
+                service.cancel_subscription(subscription.id)
+            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+                logger.warning(
+                    f"Could not cancel {self._device_name} UPnP subscription for "
+                    + f"{service.name}: {e}"
+                )
+            except requests.RequestException as e:
+                fail_message = (
+                    f"Could not cancel {self._device_name} UPnP subscription for "
+                    + f"{service.name} [{e.response.status_code}]"
+                )
+
+                if e.response.status_code == 412:
+                    fail_message += " (subscription appears to have expired)"
+
+                logger.warning(f"fail_message: {e}")
+
+        self._subscriptions = {}
+
+
+# -----------------------------------------------------------------------------
+# Functions
 
 def get_local_ip() -> str:
     """Determine the IP address of the local host."""
