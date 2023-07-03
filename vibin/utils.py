@@ -178,8 +178,8 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                 except requests.RequestException:
                     logger.warning(
                         f"Could not renew {self._device_name} UPnP subscription for "
-                        + f"{service.name}. Will attempt a cancel and re-subscribe "
-                        + f"of all subscriptions in {renew_retry_delay} seconds."
+                        + f"{service.name}; will attempt a cancel and re-subscribe "
+                        + f"of all subscriptions in {renew_retry_delay} seconds"
                     )
 
                     time.sleep(renew_retry_delay)
