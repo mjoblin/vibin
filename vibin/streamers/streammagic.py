@@ -293,7 +293,7 @@ class StreamMagic(Streamer):
         self._upnp_subscription_manager_queue.put_nowait("SHUTDOWN")
 
         if self._websocket_thread:
-            logger.info("Stopping streamer WebSocket thread")
+            logger.info(f"Stopping WebSocket thread for {self.name}")
             self._websocket_thread.stop()
             self._websocket_thread.join()
 
@@ -1065,7 +1065,7 @@ class StreamMagic(Streamer):
                                 #   error handling if errors need to be announced.
                                 pass
 
-                        logger.info(f"WebSocket connection to {self.name} closed by vibin")
+                        logger.info(f"WebSocket connection to {self.name} closed by Vibin")
                         return
                     except websockets.ConnectionClosed:
                         # Attempt a re-connect when the streamer drops the connection

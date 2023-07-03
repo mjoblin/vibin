@@ -104,18 +104,17 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                     self.subscribe_to_upnp_events()
                 elif cmd == "SHUTDOWN":
                     logger.info(
-                        f"UPnP subscription manager thread for {self._device_name} "
-                        + "shutting down"
+                        f"Stopping UPnP subscription manager thread for {self._device_name}"
                     )
                     self.cancel_subscriptions()
                     logger.info(
-                        f"UPnP subscription manager thread for {self._device_name} ended"
+                        f"UPnP subscription manager thread for {self._device_name} stopped"
                     )
                     return
             except queue.Empty:
                 if self.stop_event.is_set():
                     logger.info(
-                        f"UPnP subscription manager thread for {self._device_name} ended"
+                        f"UPnP subscription manager thread for {self._device_name} stopped"
                     )
                     return
 
@@ -198,7 +197,7 @@ class UPnPSubscriptionManagerThread(StoppableThread):
         for service, subscription in self._subscriptions.items():
             try:
                 logger.info(
-                    f"Canceling {self._device_name} UPnP subscription for {service.name}"
+                    f"Cancelling {self._device_name} UPnP subscription for {service.name}"
                 )
                 service.cancel_subscription(subscription.id)
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
