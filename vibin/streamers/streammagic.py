@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 from deepdiff import DeepDiff
 from lxml import etree
 import requests
-from requests.exceptions import HTTPError
+from requests.exceptions import RequestException
 import untangle
 import upnpclient
 from upnpclient.marshal import marshal_value
@@ -510,44 +510,48 @@ class StreamMagic(Streamer):
         # Clean up any existing subscriptions before making new ones.
         self._cancel_subscriptions()
 
-        if self._upnp_subscription_callback_base:
-            for service in self._subscribed_services:
-                now = int(time.time())
+        if self._upnp_subscription_callback_base is None:
+            return
+
+        # Subscribe to UPnP events for each UPnP service. Each subscription has
+        # a timeout, after which the subscription needs to be renewed.
+        for service in self._subscribed_services:
+            now = int(time.time())
+
+            try:
                 (subscription_id, timeout) = service.subscribe(
                     callback_url=(f"{self._upnp_subscription_callback_base}/{service.name}")
                 )
+            except RequestException as e:
+                logger.warning(f"Could not subscribe to UPnP events for {service.name}: {e}")
+                return
 
-                self._upnp_subscriptions[service] = UPnPSubscription(
-                    id=subscription_id,
-                    timeout=timeout,
-                    next_renewal=(now + timeout) if timeout else None,
-                )
-
-                logger.info(
-                    f"Streamer subscribed to UPnP events from {service.name} "
-                    + f"with timeout {timeout}"
-                )
-
-            if self._upnp_subscription_renewal_thread:
-                logger.warning("Stopping streamer UPnP subscription renewal thread")
-
-                try:
-                    self._upnp_subscription_renewal_thread.stop()
-                    self._upnp_subscription_renewal_thread.join()
-                except RuntimeError as e:
-                    logger.warning(
-                        f"Cannot stop streamer's UPnP subscription renewal thread: {e}"
-                    )
-                finally:
-                    self._upnp_subscription_renewal_thread = None
-
-            self._upnp_subscription_renewal_thread = utils.StoppableThread(
-                target=self._renew_upnp_subscriptions
+            self._upnp_subscriptions[service] = UPnPSubscription(
+                id=subscription_id,
+                timeout=timeout,
+                next_renewal=(now + timeout) if timeout else None,
             )
 
-            # TODO: This seems to be invoked multiple times
-            logger.info("Starting streamer's UPnP subscription renewal thread")
-            self._upnp_subscription_renewal_thread.start()
+            logger.info(
+                f"Streamer subscribed to UPnP events from {service.name} with timeout {timeout} "
+            )
+
+        if self._upnp_subscription_renewal_thread:
+            logger.warning("Stopping streamer UPnP subscription renewal thread")
+
+            try:
+                self._upnp_subscription_renewal_thread.stop()
+                # self._upnp_subscription_renewal_thread.join()
+            except RuntimeError as e:
+                logger.warning(f"Cannot stop streamer's UPnP subscription renewal thread: {e}")
+
+        self._upnp_subscription_renewal_thread = utils.StoppableThread(
+            target=self._renew_upnp_subscriptions
+        )
+
+        # TODO: This seems to be invoked multiple times
+        logger.info("Starting streamer's UPnP subscription renewal thread")
+        self._upnp_subscription_renewal_thread.start()
 
     @property
     def upnp_properties(self) -> UPnPProperties:
@@ -896,6 +900,7 @@ class StreamMagic(Streamer):
         Subscriptions need to be renewed after their timeout has expired.
         """
         renewal_buffer = 10
+        renew_retry_delay = 10
 
         while not self._upnp_subscription_renewal_thread.stop_event.is_set():
             time.sleep(1)
@@ -912,36 +917,40 @@ class StreamMagic(Streamer):
                         timeout = service.renew_subscription(subscription.id)
                         subscription.timeout = timeout
                         subscription.next_renewal = (now + timeout) if timeout else None
-                    except HTTPError:
+                    except RequestException:
                         logger.warning(
-                            "Could not renew UPnP subscription. Attempting "
-                            + "re-subscribe of all subscriptions."
+                            f"Could not renew UPnP subscription for {service.name}. Will "
+                            + "attempt a re-subscribe of all subscriptions in "
+                            + f"{renew_retry_delay} seconds."
                         )
+                        time.sleep(renew_retry_delay)
+
                         # TODO: This is the renewal thread, but subscribe_to_upnp_events()
                         #   attempts to stop the thread; and can't join itself.
                         self.subscribe_to_upnp_events()
+                        return
 
     def _cancel_subscriptions(self):
         """Cancel all subscriptions to the streamer's UPnP services."""
         # Clean up any UPnP subscriptions.
         for service, subscription in self._upnp_subscriptions.items():
             try:
-                logger.info(
-                    f"Canceling streamer's UPnP subscription for {service.name}"
-                )
+                logger.info(f"Canceling streamer's UPnP subscription for {service.name}")
                 service.cancel_subscription(subscription.id)
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
                 logger.error(
                     f"Could not cancel streamer's UPnP subscription for {service.name}: {e}"
                 )
-            except HTTPError as e:
+            except RequestException as e:
+                fail_message = (
+                    f"Could not cancel streamer's UPnP subscription for {service.name} "
+                    + f"[{e.response.status_code}]"
+                )
+
                 if e.response.status_code == 412:
-                    logger.warning(
-                        f"Could not unsubscribe from {service.name} events; "
-                        + f"subscription appears to have expired"
-                    )
-                else:
-                    raise
+                    fail_message += " (subscription appears to have expired)"
+
+                logger.warning(f"fail_message: {e}")
 
         self._upnp_subscriptions = {}
 
