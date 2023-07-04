@@ -207,14 +207,21 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                 )
             except requests.RequestException as e:
                 fail_message = (
-                    f"Could not cancel {self._device_name} UPnP subscription for "
-                    + f"{service.name} [{e.response.status_code}]"
+                    f"Could not cancel {self._device_name} UPnP subscription "
+                    + f"for {service.name} "
                 )
 
-                if e.response.status_code == 412:
-                    fail_message += " (subscription appears to have expired)"
+                try:
+                    # Add more details if status_code is available
+                    status_code = e.response.status_code
+                    fail_message += f" [{status_code}]"
 
-                logger.warning(f"fail_message: {e}")
+                    if status_code == 412:
+                        fail_message += " (subscription appears to have expired)"
+                except AttributeError:
+                    pass
+
+                logger.warning(f"{fail_message}: {e}")
 
         self._subscriptions = {}
 
