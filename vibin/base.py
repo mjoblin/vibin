@@ -417,7 +417,7 @@ class Vibin:
         * Closing the database connection.
         * Disconnecting from the Streamer.
         """
-        logger.info("Vibin is shutting down")
+        logger.info("Vibin instance is shutting down")
 
         logger.info("Closing database")
         self._db.close()
@@ -426,7 +426,7 @@ class Vibin:
             logger.info(f"Disconnecting from {self._current_streamer.name}")
             self._current_streamer.on_shutdown()
 
-        logger.info("Vibin shutdown complete")
+        logger.info("Vibin instance shutdown complete")
 
     # -------------------------------------------------------------------------
     # Initialization helpers

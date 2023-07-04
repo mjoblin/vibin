@@ -6,9 +6,9 @@ import functools
 import json
 import math
 import pathlib
+import queue
 import re
 import sys
-import time
 from typing import Literal
 from urllib.parse import urlparse
 import uuid
@@ -17,7 +17,6 @@ import xml.etree.ElementTree as ET
 from deepdiff import DeepDiff
 from lxml import etree
 import requests
-from requests.exceptions import HTTPError
 import untangle
 import upnpclient
 from upnpclient.marshal import marshal_value
@@ -46,7 +45,6 @@ from vibin.models import (
     TransportShuffleState,
     TransportState,
     UPnPServiceSubscriptions,
-    UPnPSubscription,
 )
 from vibin.types import (
     SeekTarget,
@@ -58,6 +56,7 @@ from vibin.types import (
     UPnPPropertyChangeHandlers,
 )
 from vibin.streamers import Streamer
+from vibin.utils import UPnPSubscriptionManagerThread
 
 
 # See Streamer interface for method documentation.
@@ -112,6 +111,7 @@ class StreamMagic(Streamer):
         on_update: UpdateMessageHandler | None = None,
         on_playlist_modified: PlaylistModifiedHandler | None = None,
     ):
+        """Implement the Streamer interface for StreamMagic streamers."""
         self._device = device
         self._upnp_subscription_callback_base = upnp_subscription_callback_base
         self._on_update = on_update
@@ -131,6 +131,16 @@ class StreamMagic(Streamer):
         self._transport_state: TransportState = TransportState()
         self._device_display_raw = {}
         self._cached_playlist_entries: list[ActivePlaylistEntry] = []
+
+        self._disconnected = False
+        self._media_server: MediaServer | None = None
+        self._instance_id = 0  # StreamMagic implements a static AVTransport instance
+        self._websocket_thread = None
+        self._websocket_timeout = 1
+
+        self._uu_vol_control = device.UuVolControl
+        self._av_transport = device.AVTransport
+        self._playlist_extension = device.PlaylistExtension
 
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
@@ -152,23 +162,26 @@ class StreamMagic(Streamer):
             ): self._upnp_current_playback_event_handler,
         }
 
-        self._disconnected = False
-        self._media_server: MediaServer | None = None
-        self._instance_id = 0  # StreamMagic implements a static AVTransport instance
-        self._upnp_subscriptions: UPnPServiceSubscriptions = {}
-        self._upnp_subscription_renewal_thread = None
-        self._websocket_thread = None
-        self._websocket_timeout = 1
+        # Configure thread for managing UPnP subscriptions
+        self._upnp_subscription_manager_queue = queue.Queue()
 
-        self._uu_vol_control = device.UuVolControl
-        self._av_transport = device.AVTransport
-        self._playlist_extension = device.PlaylistExtension
-
-        self._subscribed_services = [
-            self._av_transport,
-            self._playlist_extension,
-            self._uu_vol_control,
-        ]
+        if self._upnp_subscription_callback_base is None:
+            self._upnp_subscription_manager_thread = None
+            logger.warning(
+                "No UPnP subscription base provided; cannot subscribe to UPnP events"
+            )
+        else:
+            self._upnp_subscription_manager_thread = UPnPSubscriptionManagerThread(
+                device=self._device,
+                cmd_queue=self._upnp_subscription_manager_queue,
+                subscription_callback_base=self._upnp_subscription_callback_base,
+                services=[
+                    self._av_transport,
+                    self._playlist_extension,
+                    self._uu_vol_control,
+                ],
+            )
+            self._upnp_subscription_manager_thread.start()
 
         ET.register_namespace("", "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/")
         ET.register_namespace("dc", "http://purl.org/dc/elements/1.1/")
@@ -277,17 +290,10 @@ class StreamMagic(Streamer):
         self._disconnected = True
 
         self._release_navigator()
-
-        # Clean up any UPnP subscriptions.
-        self._cancel_subscriptions()
-
-        if self._upnp_subscription_renewal_thread:
-            logger.info("Stopping UPnP subscription renewal thread")
-            self._upnp_subscription_renewal_thread.stop()
-            self._upnp_subscription_renewal_thread.join()
+        self._upnp_subscription_manager_queue.put_nowait("SHUTDOWN")
 
         if self._websocket_thread:
-            logger.info("Stopping streamer WebSocket thread")
+            logger.info(f"Stopping WebSocket thread for {self.name}")
             self._websocket_thread.stop()
             self._websocket_thread.join()
 
@@ -507,47 +513,7 @@ class StreamMagic(Streamer):
     # UPnP
 
     def subscribe_to_upnp_events(self) -> None:
-        # Clean up any existing subscriptions before making new ones.
-        self._cancel_subscriptions()
-
-        if self._upnp_subscription_callback_base:
-            for service in self._subscribed_services:
-                now = int(time.time())
-                (subscription_id, timeout) = service.subscribe(
-                    callback_url=(f"{self._upnp_subscription_callback_base}/{service.name}")
-                )
-
-                self._upnp_subscriptions[service] = UPnPSubscription(
-                    id=subscription_id,
-                    timeout=timeout,
-                    next_renewal=(now + timeout) if timeout else None,
-                )
-
-                logger.info(
-                    f"Streamer subscribed to UPnP events from {service.name} "
-                    + f"with timeout {timeout}"
-                )
-
-            if self._upnp_subscription_renewal_thread:
-                logger.warning("Stopping streamer UPnP subscription renewal thread")
-
-                try:
-                    self._upnp_subscription_renewal_thread.stop()
-                    self._upnp_subscription_renewal_thread.join()
-                except RuntimeError as e:
-                    logger.warning(
-                        f"Cannot stop streamer's UPnP subscription renewal thread: {e}"
-                    )
-                finally:
-                    self._upnp_subscription_renewal_thread = None
-
-            self._upnp_subscription_renewal_thread = utils.StoppableThread(
-                target=self._renew_upnp_subscriptions
-            )
-
-            # TODO: This seems to be invoked multiple times
-            logger.info("Starting streamer's UPnP subscription renewal thread")
-            self._upnp_subscription_renewal_thread.start()
+        self._upnp_subscription_manager_queue.put_nowait("SUBSCRIBE")
 
     @property
     def upnp_properties(self) -> UPnPProperties:
@@ -555,7 +521,7 @@ class StreamMagic(Streamer):
 
     @property
     def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
-        return self._upnp_subscriptions
+        return self._upnp_subscription_manager_thread.subscriptions
 
     def on_upnp_event(self, service_name: UPnPServiceName, event: str):
         logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")
@@ -890,61 +856,6 @@ class StreamMagic(Streamer):
     # UPnP event handling
     # -------------------------------------------------------------------------
 
-    def _renew_upnp_subscriptions(self):
-        """Renew the subscriptions to the streamer's UPnP services.
-
-        Subscriptions need to be renewed after their timeout has expired.
-        """
-        renewal_buffer = 10
-
-        while not self._upnp_subscription_renewal_thread.stop_event.is_set():
-            time.sleep(1)
-
-            for service, subscription in self._upnp_subscriptions.items():
-                now = int(time.time())
-
-                if (subscription.timeout is not None) and (
-                    now > (subscription.next_renewal - renewal_buffer)
-                ):
-                    logger.info(f"Renewing UPnP subscription for {service.name}")
-
-                    try:
-                        timeout = service.renew_subscription(subscription.id)
-                        subscription.timeout = timeout
-                        subscription.next_renewal = (now + timeout) if timeout else None
-                    except HTTPError:
-                        logger.warning(
-                            "Could not renew UPnP subscription. Attempting "
-                            + "re-subscribe of all subscriptions."
-                        )
-                        # TODO: This is the renewal thread, but subscribe_to_upnp_events()
-                        #   attempts to stop the thread; and can't join itself.
-                        self.subscribe_to_upnp_events()
-
-    def _cancel_subscriptions(self):
-        """Cancel all subscriptions to the streamer's UPnP services."""
-        # Clean up any UPnP subscriptions.
-        for service, subscription in self._upnp_subscriptions.items():
-            try:
-                logger.info(
-                    f"Canceling streamer's UPnP subscription for {service.name}"
-                )
-                service.cancel_subscription(subscription.id)
-            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-                logger.error(
-                    f"Could not cancel streamer's UPnP subscription for {service.name}: {e}"
-                )
-            except HTTPError as e:
-                if e.response.status_code == 412:
-                    logger.warning(
-                        f"Could not unsubscribe from {service.name} events; "
-                        + f"subscription appears to have expired"
-                    )
-                else:
-                    raise
-
-        self._upnp_subscriptions = {}
-
     def _upnp_last_change_event_handler(
         self,
         service_name: UPnPServiceName,
@@ -1154,7 +1065,7 @@ class StreamMagic(Streamer):
                                 #   error handling if errors need to be announced.
                                 pass
 
-                        logger.info(f"WebSocket connection to {self.name} closed by vibin")
+                        logger.info(f"WebSocket connection to {self.name} closed by Vibin")
                         return
                     except websockets.ConnectionClosed:
                         # Attempt a re-connect when the streamer drops the connection
