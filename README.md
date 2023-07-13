@@ -26,9 +26,9 @@ See the [Developers README] for more information.
 
 ## Installation
 
-It is recommended to install and run `vibin` on an always-on device which maintains an active
-network connection at all times, such as a Raspberry Pi. It will still run on other devices (like a
-laptop), but may need to be restarted when the device comes out of sleep.
+`vibin` can be installed on any device with Python available, although for extended use it is
+recommended to install on an always-on device which maintains an active network connection at all
+times -- such as a Raspberry Pi or a server.
 
 `vibin` has been tested on:
 
