@@ -200,10 +200,10 @@ class ConnectionManager:
 
         # Some messages contain media server urls that we may want to proxy.
         if is_proxy_for_media_server() and message_type in [
-            "DeviceDisplay",
+            "CurrentlyPlaying",
             "Favorites",
-            "PlayState",
             "Presets",
+            "System",
             "UPnPProperties",
         ]:
             message = replace_media_server_urls_with_proxy(
