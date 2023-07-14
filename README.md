@@ -46,7 +46,7 @@ times -- such as a Raspberry Pi or a server.
 To install `vibin` inside a Python virtual environment:
 
 ```
-$ git clone https://github.com/mjoblin/vibin.git
+git clone https://github.com/mjoblin/vibin.git
 cd vibin
 python3 -m venv venv-vibin
 source venv-vibin/bin/activate
