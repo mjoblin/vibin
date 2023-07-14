@@ -45,7 +45,7 @@ times -- such as a Raspberry Pi or a server.
 
 To install `vibin` inside a Python virtual environment:
 
-```bash
+```
 git clone https://github.com/mjoblin/vibin.git
 cd vibin
 python3 -m venv venv-vibin
@@ -63,7 +63,7 @@ vibin --help
 
 The CLI can then be used to install the Vibin Web UI:
 
-```bash
+```
 vibin installui
 ```
 
@@ -75,7 +75,7 @@ server will then serve to the browser.
 
 Once installed, run the `vibin` server with:
 
-```bash
+```
 vibin serve
 ```
 
@@ -89,7 +89,7 @@ vibin serve
 This behavior can be modified using command line options. See `vibin serve --help` for more
 information. The supported options include:
 
-```bash
+```
   -h, --host HOST               Host to listen on.  [default: 0.0.0.0]
   -p, --port PORT               Port to listen on.  [default: 8080]
   -s, --streamer NAME           Streamer (hostname, UPnP friendly name, or UPnP location URL).
@@ -165,7 +165,7 @@ To generate a Discogs token:
 `vibin` uses environment variables to find tokens. One way to do this is to specify them when
 running `vibin serve` (e.g. on MacOS or Linux):
 
-```bash
+```
 GENIUS_ACCESS_TOKEN=<genius_token> DISCOGS_ACCESS_TOKEN=<discogs_token> vibin serve
 ```
 
@@ -173,7 +173,7 @@ Replace `<genius_token>` and `<discogs_token>` with the previously-generated tok
 
 A similar approach can be taken in PowerShell on Windows:
 
-```powershell
+```
 $Env:GENIUS_ACCESS_TOKEN = "<genius_token>"
 $Env:DISCOGS_ACCESS_TOKEN = "<discogs_token>"
 
@@ -201,7 +201,7 @@ waveforms will be automatically generated from local media on play.
 
 The `vibin` CLI is command-based. To see all available commands:
 
-```bash
+```
 vibin --help
 ```
 
@@ -221,13 +221,13 @@ serve      Start the Vibin server.
 
 To get help on a single command:
 
-```bash
+```
 vibin <command> --help
 ```
 
 e.g.:
 
-```bash
+```
 vibin serve --help
 ```
 
