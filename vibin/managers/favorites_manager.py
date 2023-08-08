@@ -11,6 +11,8 @@ from vibin.models import Album, Favorite, FavoritesPayload, Track
 from vibin.types import FavoriteType, MediaId, UpdateMessageHandler
 from vibin.utils import requires_media_server
 
+from .shared import DB_READ_LOCK
+
 
 class FavoritesManager:
     """Favorites manager.
@@ -48,7 +50,9 @@ class FavoritesManager:
 
         # Check for existing favorite with this media_id
         FavoritesQuery = Query()
-        existing_favorite = self._db.get(FavoritesQuery.media_id == media_id)
+
+        with DB_READ_LOCK:
+            existing_favorite = self._db.get(FavoritesQuery.media_id == media_id)
 
         if existing_favorite:
             return
@@ -84,7 +88,9 @@ class FavoritesManager:
         """Remove the given media_id from favorites."""
 
         FavoritesQuery = Query()
-        favorite_to_delete = self._db.get(FavoritesQuery.media_id == media_id)
+
+        with DB_READ_LOCK:
+            favorite_to_delete = self._db.get(FavoritesQuery.media_id == media_id)
 
         if favorite_to_delete is None:
             raise VibinNotFoundError()
@@ -107,13 +113,24 @@ class FavoritesManager:
             "track": self._media_server.track,
         }
 
-        return [
-            Favorite(
-                type=favorite["type"],
-                media_id=favorite["media_id"],
-                when_favorited=favorite["when_favorited"],
-                media=media_hydrators[favorite["type"]](favorite["media_id"]),
-            )
-            for favorite in self._db.all()
-            if requested_types is None or favorite["type"] in requested_types
-        ]
+        favorites = []
+
+        with DB_READ_LOCK:
+            for favorite in self._db.all():
+                if requested_types is None or favorite["type"] in requested_types:
+                    try:
+                        favorites.append(
+                            Favorite(
+                                type=favorite["type"],
+                                media_id=favorite["media_id"],
+                                when_favorited=favorite["when_favorited"],
+                                media=media_hydrators[favorite["type"]](favorite["media_id"]),
+                            )
+                        )
+                    except VibinNotFoundError:
+                        # TODO: VibinNotFoundError can be raised when the
+                        #   favorite's MediaId is no longer valid. Consider
+                        #   removing the favorite, or making it as invalid.
+                        pass
+
+        return favorites
