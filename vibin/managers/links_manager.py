@@ -12,6 +12,8 @@ from vibin.mediaservers import MediaServer
 from vibin.models import ExternalServiceLink, Links
 from vibin.types import MediaId
 
+from .shared import DB_READ_LOCK
+
 
 class LinksManager:
     """Links manager.
@@ -56,7 +58,9 @@ class LinksManager:
         # Check if links are already stored
         if media_id:
             StoredLinksQuery = Query()
-            stored_links = self._db.get(StoredLinksQuery.media_id == media_id)
+
+            with DB_READ_LOCK:
+                stored_links = self._db.get(StoredLinksQuery.media_id == media_id)
 
             if stored_links is not None:
                 links_data = Links(**stored_links)

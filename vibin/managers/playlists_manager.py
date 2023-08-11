@@ -18,6 +18,8 @@ from vibin.streamers import Streamer
 from vibin.types import MediaId, PlaylistModifyAction, UpdateMessageHandler
 from vibin.utils import requires_media_server
 
+from .shared import DB_READ_LOCK
+
 
 class PlaylistsManager:
     """Playlists manager.
@@ -131,15 +133,20 @@ class PlaylistsManager:
     @property
     def stored_playlists(self) -> StoredPlaylists:
         """Details on all stored playlists."""
-        return StoredPlaylists(
-            status=self._stored_playlist_status,
-            playlists=[StoredPlaylist(**playlist) for playlist in self._db.all()],
-        )
+        with DB_READ_LOCK:
+            playlists = StoredPlaylists(
+                status=self._stored_playlist_status,
+                playlists=[StoredPlaylist(**playlist) for playlist in self._db.all()],
+            )
+
+        return playlists
 
     def get_stored_playlist(self, playlist_id) -> StoredPlaylist:
         """Details on a single stored playlist."""
         PlaylistQuery = Query()
-        playlist_dict = self._db.get(PlaylistQuery.id == playlist_id)
+
+        with DB_READ_LOCK:
+            playlist_dict = self._db.get(PlaylistQuery.id == playlist_id)
 
         if playlist_dict is None:
             raise VibinNotFoundError()
@@ -152,7 +159,9 @@ class PlaylistsManager:
         self._reset_stored_playlist_status(is_activating=True, send_update=True)
 
         PlaylistQuery = Query()
-        playlist_dict = self._db.get(PlaylistQuery.id == stored_playlist_id)
+
+        with DB_READ_LOCK:
+            playlist_dict = self._db.get(PlaylistQuery.id == stored_playlist_id)
 
         if playlist_dict is None:
             raise VibinNotFoundError()
@@ -238,7 +247,9 @@ class PlaylistsManager:
                         PlaylistQuery.id == self._stored_playlist_status.active_id,
                     )[0]
 
-                playlist_data = StoredPlaylist(**self._db.get(doc_id=doc_id))
+                with DB_READ_LOCK:
+                    playlist_data = StoredPlaylist(**self._db.get(doc_id=doc_id))
+
                 self._cached_stored_playlist = playlist_data
             except IndexError:
                 self._reset_stored_playlist_status(
@@ -265,7 +276,9 @@ class PlaylistsManager:
     def delete_stored_playlist(self, playlist_id: str):
         """Delete a stored playlist."""
         PlaylistQuery = Query()
-        playlist_to_delete = self._db.get(PlaylistQuery.id == playlist_id)
+
+        with DB_READ_LOCK:
+            playlist_to_delete = self._db.get(PlaylistQuery.id == playlist_id)
 
         if playlist_to_delete is None:
             raise VibinNotFoundError()
@@ -300,7 +313,10 @@ class PlaylistsManager:
 
             self._send_stored_playlists_update()
 
-            return StoredPlaylist(**self._db.get(doc_id=updated_ids[0]))
+            with DB_READ_LOCK:
+                playlist = StoredPlaylist(**self._db.get(doc_id=updated_ids[0]))
+
+            return playlist
         except IndexError:
             raise VibinError(f"Could not update Playlist Id: {playlist_id}")
 
@@ -319,7 +335,8 @@ class PlaylistsManager:
             entry.trackMediaId for entry in streamer_playlist_entries
         ]
 
-        stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._db.all()]
+        with DB_READ_LOCK:
+            stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._db.all()]
 
         try:
             stored_playlist_matching_active = sorted(

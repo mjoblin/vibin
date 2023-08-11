@@ -1,5 +1,6 @@
 import re
 
+import requests
 from tinydb import Query
 from tinydb.table import Table
 from tinyrecord import transaction
@@ -13,6 +14,8 @@ from vibin.mediaservers import MediaServer
 from vibin.models import Lyrics
 from vibin.types import MediaId
 from vibin.utils import requires_external_service_token, requires_media_server
+
+from .shared import DB_READ_LOCK
 
 
 class LyricsManager:
@@ -59,9 +62,11 @@ class LyricsManager:
 
         # Check if lyrics are already stored
         StoredLyricsQuery = Query()
-        stored_lyrics = self._db.get(
-            StoredLyricsQuery.lyrics_id == storage_id(track_id, artist, title)
-        )
+
+        with DB_READ_LOCK:
+            stored_lyrics = self._db.get(
+                StoredLyricsQuery.lyrics_id == storage_id(track_id, artist, title)
+            )
 
         if stored_lyrics is not None:
             if update_cache:
@@ -90,7 +95,10 @@ class LyricsManager:
             # empty chunk list -- this is done to prevent always looking for
             # lyrics every time the track is played (the caller can always
             # manually request a retry by specifying update_cache=True).
-            lyric_chunks = self._external_service.lyrics(artist, title)
+            try:
+                lyric_chunks = self._external_service.lyrics(artist, title)
+            except requests.exceptions.HTTPError as e:
+                raise VibinError(f"Error retrieving lyrics: {e}")
 
             lyric_data = Lyrics(
                 lyrics_id=storage_id(track_id, artist, title),
@@ -112,7 +120,9 @@ class LyricsManager:
         """Set whether the lyrics for the given lyrics_id are valid."""
 
         StoredLyricsQuery = Query()
-        stored_lyrics = self._db.get(StoredLyricsQuery.lyrics_id == lyrics_id)
+
+        with DB_READ_LOCK:
+            stored_lyrics = self._db.get(StoredLyricsQuery.lyrics_id == lyrics_id)
 
         if stored_lyrics is None:
             raise VibinNotFoundError(f"Could not find lyrics id: {lyrics_id}")
@@ -134,12 +144,13 @@ class LyricsManager:
         Lyrics = Query()
         Chunk = Query()
 
-        results = self._db.search(
-            Lyrics.chunks.any(
-                Chunk.header.search(search_query, flags=re.IGNORECASE)
-                | Chunk.body.test(matches_regex, search_query)
+        with DB_READ_LOCK:
+            results = self._db.search(
+                Lyrics.chunks.any(
+                    Chunk.header.search(search_query, flags=re.IGNORECASE)
+                    | Chunk.body.test(matches_regex, search_query)
+                )
             )
-        )
 
         # Only return stored lyrics which include a media id. This is because
         # we also store lyrics from sources like Airplay and don't want to
