@@ -224,6 +224,7 @@ class ConnectionManager:
 
             try:
                 message_payload_str = self.message_payload_to_str(to_send.payload)
+                defunct_clients = []
 
                 for client_websocket in self.active_connections.keys():
                     try:
@@ -236,9 +237,13 @@ class ConnectionManager:
                         )
                     except RuntimeError as e:
                         logger.warning(
-                            f"Error sending broadcast message to WebSocket client: {e}"
+                            "Error sending broadcast message to WebSocket client "
+                            + f"(client will be removed): {e}"
                         )
-                        self._remove_client(client_websocket)
+                        defunct_clients.append(client_websocket)
+
+                for defunct_client in defunct_clients:
+                    self._remove_client(defunct_client)
             except VibinError as e:
                 logger.warning(f"Could not send message over WebSocket: {e}")
             except Exception as e:
