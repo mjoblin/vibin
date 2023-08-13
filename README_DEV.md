@@ -6,10 +6,6 @@
 * [FastAPI] (for the REST API, WebSocket server, and proxies)
 * [Pydantic] (for data models)
 * [TinyDB] (for local persistence)
-  * **NOTE:** TinyDB explicitly
-    [does not support concurrency and/or HTTP server environments](https://tinydb.readthedocs.io/en/latest/intro.html#why-not-use-tinydb).
-    As a result, Vibin experiences occasional database corruption issues. An alternative persistence
-    solution should be found.
 * [uPnPclient] (for communicating with UPnP devices)
 * [untangle] (for XML parsing)
 * [websockets] (for communicating with the StreamMagic streamer)
@@ -197,6 +193,14 @@ The top-level REST routes include:
 | `/stored_playlists` | Interact with Vibin's **Stored Playlists**                                                     |
 | `/favorites`        | Interact with Vibin's **Favorites** (favorited Albums and Tracks)                              |
 
+### A note on concurrent database access
+
+TinyDB explicitly [does not support concurrency and/or HTTP server environments]. As a result, Vibin
+uses a thread lock whenever reading from or writing to the database -- and assumes that all
+DB-related FastAPI endpoints will be run in a thread pool not as a coroutine (i.e. `def` not
+`async def` endpoint handlers). This approach seems to fend off concurrent DB access issues, but an
+alternative persistence solution should probably be found.
+
 ### Supporting other hardware devices
 
 The intent behind the `Streamer` and `MediaServer` interfaces is that they would be general enough
@@ -240,6 +244,7 @@ aspirational dev dependency.
 [websockets]: https://github.com/python-websockets/websockets
 [Black]: https://github.com/psf/black
 [pytest]: https://pytest.org
+[does not support concurrency and/or HTTP server environments]: https://tinydb.readthedocs.io/en/latest/intro.html#why-not-use-tinydb
 
 [//]: # "--- Images ------------------------------------------------------------------------------"
 
