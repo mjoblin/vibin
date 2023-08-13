@@ -37,7 +37,7 @@ class WaveformManager:
         data_format: WaveformFormat = "json",
         width: int = 800,
         height: int = 250,
-    ) -> str | bytes | None:
+    ) -> dict | str | bytes | None:
         """Generate the waveform for a track.
 
         The waveform can be an image (png) or raw text data (json or dat). The

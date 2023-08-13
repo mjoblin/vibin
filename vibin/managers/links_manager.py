@@ -2,7 +2,6 @@ import concurrent.futures
 
 from tinydb import Query
 from tinydb.table import Table
-from tinyrecord import transaction
 import xml
 import xmltodict
 
@@ -11,8 +10,7 @@ from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import ExternalServiceLink, Links
 from vibin.types import MediaId
-
-from .shared import DB_READ_LOCK
+from vibin.utils import DB_ACCESS_LOCK
 
 
 class LinksManager:
@@ -59,7 +57,7 @@ class LinksManager:
         if media_id:
             StoredLinksQuery = Query()
 
-            with DB_READ_LOCK:
+            with DB_ACCESS_LOCK:
                 stored_links = self._db.get(StoredLinksQuery.media_id == media_id)
 
             if stored_links is not None:
@@ -142,8 +140,8 @@ class LinksManager:
                 links=results,
             )
 
-            with transaction(self._db) as tr:
-                tr.insert(link_data.dict())
+            with DB_ACCESS_LOCK:
+                self._db.insert(link_data.dict())
 
         return results
 
