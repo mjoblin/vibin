@@ -3,15 +3,12 @@ from typing import Callable
 
 from tinydb import Query
 from tinydb.table import Table
-from tinyrecord import transaction
 
 from vibin import VibinNotFoundError
 from vibin.mediaservers import MediaServer
 from vibin.models import Album, Favorite, FavoritesPayload, Track
 from vibin.types import FavoriteType, MediaId, UpdateMessageHandler
-from vibin.utils import requires_media_server
-
-from .shared import DB_READ_LOCK
+from vibin.utils import DB_ACCESS_LOCK, requires_media_server
 
 
 class FavoritesManager:
@@ -51,7 +48,7 @@ class FavoritesManager:
         # Check for existing favorite with this media_id
         FavoritesQuery = Query()
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             existing_favorite = self._db.get(FavoritesQuery.media_id == media_id)
 
         if existing_favorite:
@@ -77,8 +74,8 @@ class FavoritesManager:
             when_favorited=time.time(),
         )
 
-        with transaction(self._db) as tr:
-            tr.insert(favorite_data.dict())
+        with DB_ACCESS_LOCK:
+            self._db.insert(favorite_data.dict())
 
         self._send_update()
 
@@ -89,14 +86,14 @@ class FavoritesManager:
 
         FavoritesQuery = Query()
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             favorite_to_delete = self._db.get(FavoritesQuery.media_id == media_id)
 
         if favorite_to_delete is None:
             raise VibinNotFoundError()
 
-        with transaction(self._db) as tr:
-            tr.remove(doc_ids=[favorite_to_delete.doc_id])
+        with DB_ACCESS_LOCK:
+            self._db.remove(doc_ids=[favorite_to_delete.doc_id])
 
         self._send_update()
 
@@ -115,7 +112,7 @@ class FavoritesManager:
 
         favorites = []
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             for favorite in self._db.all():
                 if requested_types is None or favorite["type"] in requested_types:
                     try:

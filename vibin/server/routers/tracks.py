@@ -46,7 +46,7 @@ def track_lyrics_validate(artist: str, title: str, is_valid: bool):
     lyrics = track_lyrics(artist=artist, title=title)
 
     get_vibin_instance().lyrics_manager.set_is_valid(
-        lyrics_id=lyrics["id"], is_valid=is_valid
+        lyrics_id=lyrics.lyrics_id, is_valid=is_valid
     )
 
     return track_lyrics(artist=artist, title=title)

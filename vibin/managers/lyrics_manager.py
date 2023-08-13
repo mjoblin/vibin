@@ -3,7 +3,6 @@ import re
 import requests
 from tinydb import Query
 from tinydb.table import Table
-from tinyrecord import transaction
 import xml
 import xmltodict
 
@@ -13,9 +12,11 @@ from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import Lyrics
 from vibin.types import MediaId
-from vibin.utils import requires_external_service_token, requires_media_server
-
-from .shared import DB_READ_LOCK
+from vibin.utils import (
+    DB_ACCESS_LOCK,
+    requires_external_service_token,
+    requires_media_server,
+)
 
 
 class LyricsManager:
@@ -63,15 +64,15 @@ class LyricsManager:
         # Check if lyrics are already stored
         StoredLyricsQuery = Query()
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             stored_lyrics = self._db.get(
                 StoredLyricsQuery.lyrics_id == storage_id(track_id, artist, title)
             )
 
         if stored_lyrics is not None:
             if update_cache:
-                with transaction(self._db) as tr:
-                    tr.remove(doc_ids=[stored_lyrics.doc_id])
+                with DB_ACCESS_LOCK:
+                    self._db.remove(doc_ids=[stored_lyrics.doc_id])
             else:
                 lyrics_data = Lyrics(**stored_lyrics)
                 return lyrics_data
@@ -107,8 +108,8 @@ class LyricsManager:
                 chunks=lyric_chunks if lyric_chunks is not None else [],
             )
 
-            with transaction(self._db) as tr:
-                tr.insert(lyric_data.dict())
+            with DB_ACCESS_LOCK:
+                self._db.insert(lyric_data.dict())
 
             return lyric_data
         except VibinError as e:
@@ -121,14 +122,14 @@ class LyricsManager:
 
         StoredLyricsQuery = Query()
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             stored_lyrics = self._db.get(StoredLyricsQuery.lyrics_id == lyrics_id)
 
         if stored_lyrics is None:
             raise VibinNotFoundError(f"Could not find lyrics id: {lyrics_id}")
 
-        with transaction(self._db) as tr:
-            tr.update({"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id])
+        with DB_ACCESS_LOCK:
+            self._db.update({"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id])
 
     def search(self, search_query: str) -> list[MediaId]:
         """Search the local lyrics database for the given search_query string.
@@ -144,7 +145,7 @@ class LyricsManager:
         Lyrics = Query()
         Chunk = Query()
 
-        with DB_READ_LOCK:
+        with DB_ACCESS_LOCK:
             results = self._db.search(
                 Lyrics.chunks.any(
                     Chunk.header.search(search_query, flags=re.IGNORECASE)

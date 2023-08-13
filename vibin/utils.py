@@ -28,6 +28,22 @@ ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
 HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
 
+# Lock for use when accessing TinyDB.
+#
+# This is a somewhat dubious solution to TinyDB not supporting concurrency.
+# The solution here is a threading.Lock(), which is expected to be used by all
+# code that wishes to read from or write to the TinyDB database.
+#
+# This approach assumes that all code accessing the database is in a "def" not
+# "async def" (because it's a thread lock not a coroutine lock). This means the
+# DB-related endpoint functions in FastAPI (which call the vibin managers,
+# which make up the vast majority of database accesses) need to be "def" not
+# "async def" -- to ensure that FastAPI runs them in a thread not a coroutine.
+#
+# Ultimately the persistence solution should be reconsidered entirely, perhaps
+# preferring a solution which natively supports concurrent access.
+DB_ACCESS_LOCK = threading.Lock()
+
 
 # =============================================================================
 # General utilities

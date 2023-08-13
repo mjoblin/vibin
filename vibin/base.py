@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from tinydb import TinyDB
-from tinyrecord import transaction
 
 from vibin import VibinError
 from vibin.constants import (
@@ -49,7 +48,7 @@ from vibin.types import (
     UPnPDeviceType,
     UpdateMessageType,
 )
-from vibin.utils import requires_media_server
+from vibin.utils import DB_ACCESS_LOCK, requires_media_server
 
 
 class Vibin:
@@ -229,8 +228,8 @@ class Vibin:
 
     @settings.setter
     def settings(self, settings: VibinSettings):
-        with transaction(self._settings_db) as tr:
-            tr.update(settings.dict())
+        with DB_ACCESS_LOCK:
+            self._settings_db.update(settings.dict())
 
         self._current_media_server.all_albums_path = settings.all_albums_path
         self._current_media_server.new_albums_path = settings.new_albums_path
@@ -395,16 +394,12 @@ class Vibin:
 
     def db_get(self):
         """Retrieve the entire system database as a dict."""
-        # NOTE: TinyDB isn't thread safe, and this code doesn't use tinyrecord,
-        #   so it could in theory produce an incomplete result.
-        with open(self._db_file, "r") as fh:
+        with DB_ACCESS_LOCK, open(self._db_file, "r") as fh:
             return json.loads(fh.read())
 
     def db_set(self, data):
         """Set the entire system database from a dict."""
-        # NOTE: TinyDB isn't thread safe, and this code doesn't use tinyrecord,
-        #   so it could in theory corrupt the database.
-        with open(self._db_file, "w") as fh:
+        with DB_ACCESS_LOCK, open(self._db_file, "w") as fh:
             fh.write(json.dumps(data))
 
         self._init_db()
@@ -454,8 +449,8 @@ class Vibin:
                 all_artists_path=DEFAULT_ALL_ARTISTS_PATH,
             )
 
-            with transaction(self._settings_db) as tr:
-                tr.insert(settings.dict())
+            with DB_ACCESS_LOCK:
+                self._settings_db.insert(settings.dict())
 
     def _add_external_service(self, service_class, token_env_var=None):
         try:
