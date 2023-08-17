@@ -50,8 +50,12 @@ git clone https://github.com/mjoblin/vibin.git
 cd vibin
 python3 -m venv venv-vibin
 source venv-vibin/bin/activate
-pip install .
+pip install -e .
 ```
+
+> Note: The `-e` ("editable") flag for `pip install` is optional. If used, then the special
+> `vibin/_data/` and `vibin/_webui/` directories will be created where the git repository was
+> checked out, rather than under the virtual environment's `lib/` directory.
 
 The install can be validated by attempting to run the CLI:
 
@@ -249,7 +253,8 @@ to the backend as they happen.
 
 ## Database
 
-`vibin` maintains its own database for storing lyrics, favorites, playlists, etc.
+`vibin` maintains its own database for storing lyrics, favorites, playlists, etc. This is stored in
+`vibin/_data/`.
 
 
 [//]: # "--- Links -------------------------------------------------------------------------------"
