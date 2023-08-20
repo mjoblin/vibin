@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from vibin import VibinError
@@ -66,6 +68,57 @@ def system_streamer_audio_source(source: str):
 )
 def system_streamer_device_display() -> StreamerDeviceDisplay:
     return get_vibin_instance().streamer.device_display
+
+
+@system_router.get(
+    "/amplifier/volume",
+    summary="Get the Amplifier's volume",
+    tags=["Media System"],
+)
+def system_amplifier_volume() -> float:
+    try:
+        return get_vibin_instance().amplifier.volume
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
+
+
+@system_router.post(
+    "/amplifier/power_toggle",
+    summary="Toggle the Amplifier's power",
+    tags=["Media System"],
+    response_class=Response,
+)
+def system_amplifier_power_toggle():
+    try:
+        get_vibin_instance().amplifier.power_toggle()
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
+
+
+@system_router.post(
+    "/amplifier/volume",
+    summary="Set the Amplifier's volume",
+    tags=["Media System"],
+    response_class=Response,
+)
+def system_amplifier_volume_set(volume: Annotated[float, Query(ge=0.0, le=1.0)]):
+    try:
+        get_vibin_instance().amplifier.volume = volume
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
+
+
+@system_router.post(
+    "/amplifier/mute_toggle",
+    summary="Toggle the Amplifier's mute setting",
+    tags=["Media System"],
+    response_class=Response,
+)
+def system_amplifier_mute_toggle():
+    try:
+        get_vibin_instance().amplifier.mute_toggle()
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
 
 
 @system_router.get(

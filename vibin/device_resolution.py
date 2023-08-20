@@ -6,6 +6,8 @@ import requests
 import upnpclient
 
 from vibin import VibinError
+from vibin.amplifiers import model_to_amplifier, Amplifier
+import vibin.amplifiers as amplifiers
 from vibin.logger import logger
 import vibin.mediaservers as mediaservers
 from vibin.mediaservers import MediaServer, model_to_media_server
@@ -278,11 +280,94 @@ def _determine_media_server_device(
             )
 
 
-def determine_streamer_and_media_server(
+def _determine_amplifier_device(
+    amplifier_input: str | None,
+    discovery_timeout: int,
+    streamer_device: upnpclient.Device,
+) -> upnpclient.Device | None:
+    """Attempt to find an amplifier on the network.
+
+    Heuristic:
+
+    * If the caller provides no information about the amplifier then perform a
+      UPnP discovery and look specifically for a MediaRenderer device. If more
+      than one MediaRenderer is discovered, return the first which is not the
+      same as the streamer.
+    * If a UPnP location URL is provided then attempt to use that.
+    * If a UPnP friendly name was provided, attempt to discover a UPnP device
+      with that name.
+    """
+    if amplifier_input is None or amplifier_input == "":
+        # Nothing provided by the caller, so perform a UPnP discovery and
+        # attempt to find a MediaRenderer from Cambridge Audio.
+
+        logger.info(
+            "No amplifier specified, attempting to auto-discover a UPnP MediaRenderer"
+        )
+        devices = _discover_upnp_devices(discovery_timeout)
+
+        try:
+            media_renderers = [
+                device
+                for device in devices
+                if "MediaRenderer" in device.device_type
+                and device != streamer_device
+            ]
+
+            if len(media_renderers) == 1:
+                # This allows for the streamer device to also be the amplifier
+                # device if there's only one MediaRenderer.
+                return media_renderers[0]
+            else:
+                return [
+                    device
+                    for device in media_renderers
+                    if device != streamer_device
+                ][0]
+        except IndexError:
+            raise VibinError(
+                "Could not find a UPnP MediaRenderer device for the amplifier"
+            )
+
+    amplifier_input_as_url = urlparse(amplifier_input)
+
+    if amplifier_input_as_url.hostname is not None:
+        # Check UPnP location url
+        logger.info(
+            f"Attempting to find amplifier at provided URL: {amplifier_input}"
+        )
+
+        try:
+            return upnpclient.Device(amplifier_input)
+        except requests.RequestException:
+            raise VibinError(
+                f"Could not find a UPnP device at the provided amplifier URL: {amplifier_input}"
+            )
+    else:
+        # Check UPnP friendly name option
+        logger.info(
+            f"Attempting to find amplifier by UPnP friendly name: {amplifier_input}"
+        )
+        devices = _discover_upnp_devices(discovery_timeout)
+
+        try:
+            return [
+                device
+                for device in devices
+                if device.friendly_name == amplifier_input
+            ][0]
+        except IndexError:
+            raise VibinError(
+                f"Could not find a UPnP device with friendly name '{amplifier_input}'"
+            )
+
+
+def determine_devices(
     streamer_input: str | None,
     media_server_input: str | bool | None,
+    amplifier_input: str | bool | None,
     discovery_timeout: int = 5,
-) -> (upnpclient.Device, upnpclient.Device | None):
+) -> (upnpclient.Device, upnpclient.Device | None, upnpclient.Device | None):
     """Attempt to locate a streamer and (optionally) a media server on the network."""
 
     streamer_device = _determine_streamer_device(streamer_input, discovery_timeout)
@@ -296,7 +381,16 @@ def determine_streamer_and_media_server(
             streamer_device,
         )
 
-    return streamer_device, media_server_device
+    amplifier_device = None
+
+    if amplifier_input is not False:
+        amplifier_device = _determine_amplifier_device(
+            None if amplifier_input is True else amplifier_input,
+            discovery_timeout,
+            streamer_device,
+        )
+
+    return streamer_device, media_server_device, amplifier_device
 
 
 def determine_streamer_class(streamer_device, streamer_type):
@@ -387,3 +481,49 @@ def determine_media_server_class(media_server_device, media_server_type):
         )
 
     return media_server_class
+
+
+def determine_amplifier_class(amplifier_device, amplifier_type):
+    """Determine which Amplifier implementation matches the amplifier_device."""
+
+    # Build a list of all known Amplifier implementations; and a map of
+    # device model name to Amplifier implementation.
+    known_amplifiers = []
+    known_amplifiers_by_model: dict[str, Amplifier] = {}
+
+    for name, obj in inspect.getmembers(amplifiers):
+        if inspect.isclass(obj) and issubclass(obj, Amplifier):
+            known_amplifiers.append(obj)
+            known_amplifiers_by_model[obj.model_name] = obj
+
+    # Inject any additions/overrides
+    known_amplifiers_by_model.update(model_to_amplifier)
+
+    # Determine which Amplifier implementation to use
+    try:
+        if amplifier_type is None:
+            amplifier_class = known_amplifiers_by_model[
+                amplifier_device.model_name
+            ]
+        else:
+            # A specific Amplifier implementation was requested.
+            amplifier_class = next(
+                (
+                    amplifier for amplifier in known_amplifiers
+                    if amplifier.__name__ == amplifier_type
+                ),
+                None
+            )
+
+            if amplifier_class is None:
+                raise VibinError(
+                    f"Could not find Vibin implementation for requested "
+                    + f"amplifier type: {amplifier_type}"
+                )
+    except KeyError:
+        raise VibinError(
+            f"Could not find Vibin implementation for amplifier model "
+            + f"'{amplifier_device.model_name}'"
+        )
+
+    return amplifier_class

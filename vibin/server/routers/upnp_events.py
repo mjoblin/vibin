@@ -9,12 +9,12 @@ from vibin.server.dependencies import get_vibin_instance, UPNP_EVENTS_BASE_ROUTE
 #
 # Forward UPnP service events to the Vibin instance for handling.
 #
-# The Vibin instance manages UPnP device instance (for the streamer and media
-# server). These device instances can subscribe to UPnP events for zero or more
-# UPnP services (such as AVTransport and UuVolControl) associated with the
-# hardware device they talk to. Those subscriptions need to register an
-# endpoint to receive update events, and this is the endpoint that handles
-# those incoming events.
+# The Vibin instance manages UPnP device instance (for the streamer, media
+# server, and amplifier). These device instances can subscribe to UPnP events
+# for zero or more UPnP services (such as AVTransport and UuVolControl)
+# associated with the hardware device they talk to. Those subscriptions need to
+# register an endpoint to receive update events, and this is the endpoint that
+# handles those incoming events.
 #
 # Flow of UPnP events:
 #

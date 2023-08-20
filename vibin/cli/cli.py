@@ -92,6 +92,29 @@ def cli():
     default=False,
 )
 @click.option(
+    "--amplifier",
+    "-a",
+    help="Amplifier (UPnP friendly name, or UPnP location URL).",
+    metavar="NAME",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--amplifier-type",
+    help="Amplifier type (e.g. Hegel). Usually not required.",
+    metavar="TYPE",
+    type=click.STRING,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "--no-amplifier",
+    help="Ignore any amplifiers.",
+    is_flag=True,
+    default=False,
+)
+@click.option(
     "--discovery-timeout",
     "-t",
     help="UPnP discovery timeout (seconds).",
@@ -130,6 +153,9 @@ def serve(
     media_server,
     media_server_type,
     no_media_server,
+    amplifier,
+    amplifier_type,
+    no_amplifier,
     discovery_timeout,
     vibinui,
     no_vibinui,
@@ -141,10 +167,11 @@ def serve(
     VIBIN API
 
     The Vibin server exposes a REST API for interacting with the music streamer
-    and (when available) the local media server. This API is required for the
-    other Vibin CLI commands to work, as well as for use by the Web interface.
+    and (when available) the local media server and anplifier. This API is
+    required for the other Vibin CLI commands to work, as well as for use by
+    the Web interface.
 
-    STREAMER AND MUSIC SERVER
+    STREAMER
 
     The Vibin server needs to know which music streamer on the network to
     interact with. By default, it will attempt to auto-find a Cambridge Audio
@@ -155,10 +182,21 @@ def serve(
     Vibin currently expects the streamer to be a Cambridge Audio device
     supporting StreamMagic.
 
+    MUSIC SERVER
+
     If a local media server is also available on the network then it will be
     auto-detected from the Cambridge Audio streamer settings. Alternatively,
     the --media-server flag can be used to specify a media server UPnP friendly
-    name, or UPnP location URL.
+    name, or UPnP location URL. Currently only Asset media servers are
+    supported.
+
+    AMPLIFIER
+
+    If an amplifier is also available on the network then it will be
+    auto-detected. Alternatively, the --amplifier flag can be used to specify
+    an amplifier UPnP friendly name, or UPnP location URL. A supported
+    amplifier is required for volume control. Currently only Hegel amplifiers
+    are supported.
 
     WEB INTERFACE
 
@@ -172,7 +210,7 @@ def serve(
 
     EXAMPLES
 
-    To auto-discover the streamer and any local media server:
+    To auto-discover the streamer and any local media server or amplifier:
 
      $ vibin serve
 
@@ -180,9 +218,9 @@ def serve(
 
      $ vibin serve --streamer 192.168.1.100
 
-    To specify a streamer and media server by UPnP friendly name:
+    To specify a streamer, media server, and amplifier, by UPnP friendly name:
 
-     $ vibin serve --streamer MyStreamer --media-server MyMediaServer
+     $ vibin serve --streamer stream --media-server serve --amplifier amplify
 
     To serve the Web UI and act as a proxy for all media server URLs:
 
@@ -219,6 +257,8 @@ def serve(
             streamer_type=streamer_type,
             media_server=False if no_media_server else media_server,
             media_server_type=media_server_type,
+            amplifier=False if no_amplifier else amplifier,
+            amplifier_type=amplifier_type,
             discovery_timeout=discovery_timeout,
             vibinui=vibinui if not no_vibinui else None,
             proxy_media_server=proxy_media_server,

@@ -6,6 +6,7 @@ import upnpclient
 from vibin.types import (
     FavoriteType,
     MediaId,
+    MuteState,
     PlaylistModifyAction,
     PlayStatus,
     PowerState,
@@ -136,11 +137,21 @@ class MediaServerState(UPnPDeviceState):
     pass
 
 
+class AmplifierState(UPnPDeviceState):
+    """Amplifier hardware state."""
+
+    power: PowerState | None
+    mute: MuteState | None
+    volume: float | None
+    sources: AudioSources | None = AudioSources()
+
+
 class SystemState(BaseModel):
     """System hardware state."""
 
     streamer: StreamerState
     media: MediaServerState
+    amplifier: AmplifierState
 
 
 class SystemUPnPProperties(BaseModel):

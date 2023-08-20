@@ -14,8 +14,9 @@ from vibin.constants import (
     VIBIN_VER,
 )
 from vibin.device_resolution import (
+    determine_amplifier_class,
     determine_media_server_class,
-    determine_streamer_and_media_server,
+    determine_devices,
     determine_streamer_class,
 )
 import vibin.external_services as external_services
@@ -28,6 +29,7 @@ from vibin.managers import (
     PlaylistsManager,
     WaveformManager,
 )
+from vibin.amplifiers import Amplifier
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     ActivePlaylistEntry,
@@ -58,6 +60,8 @@ class Vibin:
         streamer_type: str | None = None,
         media_server: str | bool | None = None,
         media_server_type: str | None = None,
+        amplifier: str | bool | None = None,
+        amplifier_type: str | None = None,
         discovery_timeout: int = 5,
         upnp_subscription_callback_base: str | None = None,
     ):
@@ -93,8 +97,8 @@ class Vibin:
         self._current_streamer: Streamer | None = None
         self._current_media_server: MediaServer | None = None
 
-        streamer_device, media_server_device = determine_streamer_and_media_server(
-            streamer, media_server, discovery_timeout
+        streamer_device, media_server_device, amplifier_device = determine_devices(
+            streamer, media_server, amplifier, discovery_timeout
         )
 
         # Streamer
@@ -147,6 +151,25 @@ class Vibin:
                 "Not using a local media server; some features will be unavailable"
             )
 
+        # Amplifier
+        if amplifier_device:
+            amplifier_class = determine_amplifier_class(amplifier_device, amplifier_type)
+
+            # Create an instance of the Amplifier subclass which we can use to
+            # manage our amplifier
+            self._current_amplifier = amplifier_class(
+                device=amplifier_device,
+                upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/amplifier",
+                on_update=self._on_amplifier_update,
+            )
+
+            logger.info(
+                f"Using amplifier UPnP device: {self.amplifier.name} "
+                + f"({type(self.amplifier).__name__})"
+            )
+        else:
+            logger.warning("Not using an amplifier; some features will be unavailable")
+
         # Initialize the managers for features like favorites, playlists, etc.
         self._favorites_manager = FavoritesManager(
             db=self._favorites_db,
@@ -197,6 +220,11 @@ class Vibin:
         return self._current_media_server
 
     @property
+    def amplifier(self) -> Amplifier:
+        """The Amplifier instance. Provides access to Amplifier capabilities."""
+        return self._current_amplifier
+
+    @property
     def favorites_manager(self) -> FavoritesManager:
         """The Favorites manager."""
         return self._favorites_manager
@@ -241,6 +269,7 @@ class Vibin:
         return SystemState(
             streamer=self.streamer.device_state,
             media=self.media_server.device_state,
+            amplifier=self.amplifier.device_state,
         )
 
     @property
@@ -358,7 +387,7 @@ class Vibin:
     def on_upnp_event(self, device: UPnPDeviceType, service_name: str, event: str):
         """Handle an incoming UPnP event from one of the UPnP devices.
 
-        The device will be either the Streamer or the MediaServer. The
+        The device will be either the Streamer, MediaServer, or Amplifier. The
         service_name and event are UPnP concepts which will depend on what
         events the device has subscribed to.
         """
@@ -369,6 +398,8 @@ class Vibin:
             upnp_subscriptions = self.streamer.upnp_subscriptions
         elif device == "media_server":
             upnp_subscriptions = self.media_server.upnp_subscriptions
+        elif device == "amplifier":
+            upnp_subscriptions = self.amplifier.upnp_subscriptions
 
         if not upnp_subscriptions:
             logger.warning(
@@ -383,6 +414,8 @@ class Vibin:
                     self.streamer.on_upnp_event(service_name, event)
                 elif device == "media_server":
                     self.media_server.on_upnp_event(service_name, event)
+                elif device == "amplifier":
+                    self.amplifier.on_upnp_event(service_name, event)
             else:
                 logger.warning(
                     f"UPnP event received for device ({device}) with no subscription handler "
@@ -420,6 +453,14 @@ class Vibin:
         if self._current_streamer:
             logger.info(f"Disconnecting from {self._current_streamer.name}")
             self._current_streamer.on_shutdown()
+
+        if self._current_media_server:
+            logger.info(f"Disconnecting from {self._current_media_server.name}")
+            self._current_media_server.on_shutdown()
+
+        if self._current_amplifier:
+            logger.info(f"Disconnecting from {self._current_amplifier.name}")
+            self._current_amplifier.on_shutdown()
 
         logger.info("Vibin instance shutdown complete")
 
@@ -494,6 +535,10 @@ class Vibin:
         """Handle an incoming update message from the media server."""
         self._send_update(message_type, data)
 
+    def _on_amplifier_update(self, message_type: UpdateMessageType, data: Any):
+        """Handle an incoming update message from the amplifier."""
+        self._send_update(message_type, data)
+
     def _on_streamer_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
         """Handle information on a change to the streamer's active playlist."""
 
@@ -505,5 +550,14 @@ class Vibin:
 
     def _send_update(self, message_type: UpdateMessageType, data: Any):
         """Send an update message to all registered update handlers."""
+        if message_type == "System":
+            # A device might want to send a System message, but it only provides
+            # its own state. Intercept this and instead send a complete System
+            # state message (which will include the state of all devices; not
+            # just the one that wants to send the update).
+            # TODO: This feels a bit hacky. Perhaps devices should have
+            #   another way of announcing changes to their state.
+            data = self.system_state
+
         for handler in self._on_update_handlers:
             handler(message_type, data)

@@ -175,28 +175,16 @@ class ConnectionManager:
             "payload": None,
         }
 
-        if message_type == "System":
-            # TODO: Fix this hack. We're assuming we're getting a streamer
-            #   system update, but it might be a media_source update.
-            # message["payload"] = {
-            #     "streamer": message_payload_parsed,
-            # }
-            #
-            # TODO UPDATE: We now ignore the incoming data and just emit a
-            #   full system_state payload.
-            message["payload"] = get_vibin_instance().system_state.dict(by_alias=True)
-        else:
-            try:
-                message["payload"] = json.loads(message_payload_str)
-            except TypeError:
-                # Getting here is unexpected. If for some reason the
-                # message_str is not JSON-friendly then we just pass it on as
-                # raw text.
-                logger.warning(
-                    f"Message could not be parsed as JSON; sending as plain "
-                    + f"text: {message_payload_str}"
-                )
-                message["payload"] = message_payload_str
+        try:
+            message["payload"] = json.loads(message_payload_str)
+        except TypeError:
+            # Getting here is unexpected. If for some reason the message_str is
+            # not JSON-friendly then we just pass it on as raw text.
+            logger.warning(
+                f"Message could not be parsed as JSON; sending as plain "
+                + f"text: {message_payload_str}"
+            )
+            message["payload"] = message_payload_str
 
         # Some messages contain media server urls that we may want to proxy.
         if is_proxy_for_media_server() and message_type in [

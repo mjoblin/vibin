@@ -31,6 +31,8 @@ def get_vibin_instance(
     streamer_type=None,
     media_server=None,
     media_server_type=None,
+    amplifier=None,
+    amplifier_type=None,
     discovery_timeout=5,
     upnp_subscription_callback_base="",
     proxy_media_server=False,
@@ -57,6 +59,8 @@ def get_vibin_instance(
             streamer_type=streamer_type,
             media_server=media_server,
             media_server_type=media_server_type,
+            amplifier=amplifier,
+            amplifier_type=amplifier_type,
             discovery_timeout=discovery_timeout,
             upnp_subscription_callback_base=upnp_subscription_callback_base,
         )
@@ -142,6 +146,21 @@ def requires_media(func):
             raise HTTPException(
                 status_code=404,
                 detail="Feature unavailable (no local media server registered with Vibin)",
+            )
+
+        return func(*args, **kwargs)
+
+    return wrapper_requires_media
+
+
+def requires_amplifier(func):
+    """Decorator to return a 404 if the vibin server does not have an amplifier."""
+    @functools.wraps(func)
+    def wrapper_requires_media(*args, **kwargs):
+        if _vibin is None or _vibin.amplifier is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Feature unavailable (no amplifier registered with Vibin)",
             )
 
         return func(*args, **kwargs)

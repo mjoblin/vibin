@@ -17,6 +17,8 @@ MediaMetadata = dict  # Local media server metadata
 
 PowerState = Literal["on", "off"]
 
+MuteState = Literal["on", "off"]
+
 WaveformFormat = Literal["dat", "json", "png"]
 
 FavoriteType = Literal["album", "track"]
