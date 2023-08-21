@@ -55,6 +55,18 @@ class Hegel(Amplifier):
         self._upnp_properties: UPnPProperties = {}
         self._on_update = on_update
 
+        self._source_names = {
+            1: "Balanced",
+            2: "Analog 1",
+            3: "Analog 2",
+            4: "Coaxial",
+            5: "Optical 1",
+            6: "Optical 2",
+            7: "Optical 3",
+            8: "USB",
+            9: "Network",
+        }
+
         # Keep track of amplifier state. This will be updated as new messages
         # come in from the amplifier. This is a straight mapping of the Hegel
         # cmd/parameter pairs to a dict.
@@ -185,7 +197,10 @@ class Hegel(Amplifier):
         sources leave most AudioSource values as None.
         """
         return AudioSources(
-            available=[AudioSource(id=str(num), name=str(num)) for num in range(1, 10)],
+            available=[
+                AudioSource(id=str(num), name=self._source_name_by_id(num))
+                for num in range(1, 10)
+            ],
             active=self.audio_source,
         )
 
@@ -197,16 +212,16 @@ class Hegel(Amplifier):
         if current_source is None:
             return None
 
-        return AudioSource(id=current_source, name=current_source)
+        return AudioSource(id=current_source, name=self._source_name_by_id(int(current_source)))
 
     @audio_source.setter
     def audio_source(self, source: str) -> None:
         """Set the active Audio Source by name."""
         try:
-            source_num = int(source)
+            source_num = self._source_id_by_name(source)
 
-            if source_num < 1 or source_num > 9:
-                raise VibinDeviceError(f"Invalid source name (must be 1-9): {source}")
+            if source_num is None:
+                raise VibinDeviceError(f"Invalid source name: {source}")
         except TypeError:
             raise VibinDeviceError(f"Invalid source name (must be 1-9): {source}")
 
@@ -233,8 +248,22 @@ class Hegel(Amplifier):
         pass
 
     # -------------------------------------------------------------------------
-    # Manage the TCP socket connection to the amplifier.
+    # Helpers
+    def _source_name_by_id(self, source_id: int) -> str | None:
+        try:
+            return self._source_names[source_id]
+        except IndexError:
+            return None
+
+    def _source_id_by_name(self, source_name: str) -> int | None:
+        for this_id, this_name in self._source_names.items():
+            if this_name == source_name:
+                return this_id
+
+        return None
+
     # -------------------------------------------------------------------------
+    # Manage the TCP socket connection to the amplifier.
 
     def _handle_amp_communication(self):
         """Handle the TCP socket communication with the amplifier.

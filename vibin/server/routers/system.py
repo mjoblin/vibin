@@ -316,4 +316,7 @@ def system_amplifier_set_audio_source(source_name: str):
     try:
         get_vibin_instance().amplifier.audio_source = source_name
     except VibinError as e:
-        raise
+        if "Invalid source name" in e.args[0]:
+            raise HTTPException(status_code=400, detail=f"{e}")
+        else:
+            raise HTTPException(status_code=500, detail=f"{e}")
