@@ -72,7 +72,6 @@ def get_vibin_instance(
                 _media_server_proxy_client = httpx.AsyncClient(
                     base_url=_media_server_proxy_target
                 )
-
     except VibinError as e:
         logger.error(f"Vibin server start unsuccessful: {e}")
         raise

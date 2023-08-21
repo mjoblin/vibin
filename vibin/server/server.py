@@ -87,6 +87,7 @@ def server_start(
         )
     except VibinError as e:
         logger.error(f"Vibin server start unsuccessful: {e}")
+        logger.info("Vibin server start aborted")
         return
 
     @asynccontextmanager

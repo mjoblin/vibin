@@ -2,7 +2,12 @@ from abc import ABCMeta, abstractmethod
 
 import upnpclient
 
-from vibin.models import AmplifierState, AudioSource, UPnPServiceSubscriptions
+from vibin.models import (
+    AmplifierState,
+    AudioSource,
+    AudioSources,
+    UPnPServiceSubscriptions,
+)
 from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPProperties
 
 
@@ -101,6 +106,16 @@ class Amplifier(metaclass=ABCMeta):
         """Set the volume (0-1)."""
         pass
 
+    @abstractmethod
+    def volume_up(self) -> None:
+        """Increase the volume by one unit."""
+        pass
+
+    @abstractmethod
+    def volume_down(self) -> None:
+        """Decrease the volume by one unit."""
+        pass
+
     @property
     @abstractmethod
     def mute(self) -> MuteState:
@@ -116,6 +131,12 @@ class Amplifier(metaclass=ABCMeta):
     @abstractmethod
     def mute_toggle(self) -> None:
         """Toggle the mute state."""
+        pass
+
+    @property
+    @abstractmethod
+    def audio_sources(self) -> AudioSources | None:
+        """Get the Audio Sources."""
         pass
 
     @property

@@ -9,6 +9,7 @@ from vibin.models import (
     CurrentlyPlaying,
     PlaylistModifiedHandler,
     PlaylistModifyAction,
+    PowerState,
     Presets,
     StreamerDeviceDisplay,
     StreamerState,
@@ -116,12 +117,24 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def currently_playing(self) -> CurrentlyPlaying:
+    def power(self) -> PowerState:
+        """Power state."""
+        pass
+
+    @power.setter
+    @abstractmethod
+    def power(self, state: PowerState) -> None:
+        """Set the Streamer's power state."""
         pass
 
     @abstractmethod
     def power_toggle(self) -> None:
         """Toggle the Streamer's power state."""
+        pass
+
+    @property
+    @abstractmethod
+    def currently_playing(self) -> CurrentlyPlaying:
         pass
 
     @abstractmethod

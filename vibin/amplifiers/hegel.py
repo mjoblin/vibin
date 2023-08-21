@@ -21,10 +21,7 @@ from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPPropert
 # -----------------------------------------------------------------------------
 # Implementation of Amplifier for Hegel amplifiers.
 #
-# See Amplifier interface for method documentation.
-#
-# Hegel reference documentation:
-# https://support.hegel.com/component/jdownloads/send/3-files/81-h120-ip-control-codes
+# See Amplifier interface for additional method documentation.
 # -----------------------------------------------------------------------------
 
 
@@ -37,6 +34,23 @@ class Hegel(Amplifier):
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
+        """Implementation of the Amplifier ABC for Hegel amplifiers.
+
+        Supports:
+            * Power on/off
+            * Volume control
+            * Mute control
+            * Input selection
+
+        Current amplifier parameter values are tracked in local state. The
+        amplifier will notify us of parameter changes over the socket; and we
+        can request parameter changes over the socket. Whenever a parameter
+        value changes, send a System message with the current amplifier state
+        back to Vibin.
+
+        Hegel reference documentation:
+        https://support.hegel.com/component/jdownloads/send/3-files/81-h120-ip-control-codes
+        """
         self._device: upnpclient.Device = device
         self._upnp_properties: UPnPProperties = {}
         self._on_update = on_update
@@ -62,7 +76,6 @@ class Hegel(Amplifier):
             )
 
             self._amp_communication_thread.start()
-            self._initialize_amp_state()
 
     @property
     def name(self) -> str:
@@ -79,7 +92,7 @@ class Hegel(Amplifier):
             power=self.power,
             mute=self.mute,
             volume=self.volume,
-            sources=AudioSources(available=self.audio_sources, active=self.audio_source),
+            sources=self.audio_sources,
         )
 
     @property
@@ -136,6 +149,14 @@ class Hegel(Amplifier):
         """Set the volume (0-1)."""
         self._cmd_queue.put_nowait(("v", str(int(volume * 100))))
 
+    def volume_up(self) -> None:
+        """Increase the volume by one unit."""
+        self._cmd_queue.put_nowait(("v", "u"))
+
+    def volume_down(self) -> None:
+        """Decrease the volume by one unit."""
+        self._cmd_queue.put_nowait(("v", "d"))
+
     @property
     def mute(self) -> MuteState:
         """Mute state."""
@@ -154,6 +175,19 @@ class Hegel(Amplifier):
     def mute_toggle(self) -> None:
         """Toggle the mute state."""
         self._cmd_queue.put_nowait(("m", "t"))
+
+    @property
+    def audio_sources(self) -> AudioSources | None:
+        """Get all Audio Sources.
+
+        Hegel only supports inputs named 1-9. Alternate/custom names, or
+        additional input information, is not supported -- so the returned audio
+        sources leave most AudioSource values as None.
+        """
+        return AudioSources(
+            available=[AudioSource(id=str(num), name=str(num)) for num in range(1, 10)],
+            active=self.audio_source,
+        )
 
     @property
     def audio_source(self) -> AudioSource | None:
@@ -177,14 +211,6 @@ class Hegel(Amplifier):
             raise VibinDeviceError(f"Invalid source name (must be 1-9): {source}")
 
         self._cmd_queue.put_nowait(("i", str(source_num)))
-
-    @property
-    def audio_sources(self) -> list[AudioSource]:
-        """Get all sources."""
-        # Hegel amplifiers all appear to support the same 9 inputs
-        return [
-            AudioSource(id=str(num), name=str(num)) for num in range(1, 10)
-        ]
 
     # -------------------------------------------------------------------------
     # UPnP
@@ -211,7 +237,7 @@ class Hegel(Amplifier):
     # -------------------------------------------------------------------------
 
     def _handle_amp_communication(self):
-        """Handle the TCP communication with the amplifier.
+        """Handle the TCP socket communication with the amplifier.
 
         * Connect to the amplifier and run until told to stop by vibin.
         * Read incoming messages (parse, use to update local amplifier
@@ -220,18 +246,10 @@ class Hegel(Amplifier):
         * Regularly send connection-drop timer requests (as described in the
           Hegel docs).
         """
-        device_hostname = urlparse(self._device.location).hostname
-
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.connect((device_hostname, 50001))
-        self._socket.settimeout(0.5)
-
-        self._send_reset_timeout()
-
-        # TODO: Add reconnect behavior when amplifier connection is lost
+        self._connect_to_amplifier()
 
         while True:
-            # Attempt to read a response from the amplifier
+            # Attempt to read an incoming message from the amplifier
             try:
                 response = self._socket.recv(1024)  # TODO: 1K is a lot, make smaller?
             except socket.timeout as e:
@@ -243,9 +261,9 @@ class Hegel(Amplifier):
                 logger.error(f"Unexpected socket error from {self.name}: {e}")
             else:
                 if len(response) == 0:
-                    logger.warning(
-                        f"The amplifier {self.name} has closed the socket connection"
-                    )
+                    logger.warning(f"Lost socket connection to amplifier: {self.name}")
+                    self._connect_to_amplifier()
+
                 else:
                     # We have a message from the amplifier, so use it to update
                     # local state and send a System update message
@@ -257,7 +275,7 @@ class Hegel(Amplifier):
                         logger.error(f"Error processing Hegel response: {e}")
 
             # Check if there's a message on the queue that we need to pass to
-            # the amplifier
+            # the amplifier; and check if we've been asked to stop processing.
             try:
                 cmd = self._cmd_queue.get_nowait()
                 self._send_packet(self._generate_packet(cmd[0], cmd[1]))
@@ -269,6 +287,38 @@ class Hegel(Amplifier):
             # Check if we need to send a new reset command
             if time.time() >= self._reset_send_time:
                 self._send_reset_timeout()
+
+    def _connect_to_amplifier(self):
+        """Connect to the amplifier with infinite retries."""
+        device_hostname = urlparse(self._device.location).hostname
+        retry_interval = 5
+
+        logger.info(f"Connecting to amplifier: {self.name}")
+
+        while True:
+            try:
+                self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._socket.settimeout(5)
+                self._socket.connect((device_hostname, 50001))
+
+                break
+            except socket.error as e:
+                logger.warning(
+                    f"Could not connect to socket on amplifier {self.name} "
+                    + f"(retry in {retry_interval} secs): {e}"
+                )
+                self._socket.close()
+
+                if self._amp_communication_thread.stop_event.is_set():
+                    return
+
+                time.sleep(retry_interval)
+
+        logger.info(f"Connected to amplifier: {self.name}")
+
+        self._socket.settimeout(0.5)
+        self._send_reset_timeout()
+        self._initialize_amp_state()
 
     def _initialize_amp_state(self):
         """Populate the local amplifier state with current amplifier values."""
@@ -287,8 +337,11 @@ class Hegel(Amplifier):
         return f"-{command}.{parameter}\r".encode("utf-8")
 
     def _send_packet(self, packet: bytes) -> None:
-        """Send a packet to the amplifier."""
-        self._socket.sendall(packet)
+        """Send a command packet to the amplifier."""
+        try:
+            self._socket.sendall(packet)
+        except OSError:
+            pass
 
     def _send_reset_timeout(self):
         """Send a request to the amplifier to drop our connection in the future.

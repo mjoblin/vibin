@@ -150,8 +150,8 @@ class SystemState(BaseModel):
     """System hardware state."""
 
     streamer: StreamerState
-    media: MediaServerState
-    amplifier: AmplifierState
+    media: MediaServerState | None
+    amplifier: AmplifierState | None
 
 
 class SystemUPnPProperties(BaseModel):

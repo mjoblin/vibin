@@ -96,6 +96,7 @@ class Vibin:
         # Set up the Streamer and MediaServer instances
         self._current_streamer: Streamer | None = None
         self._current_media_server: MediaServer | None = None
+        self._current_amplifier: Amplifier | None = None
 
         streamer_device, media_server_device, amplifier_device = determine_devices(
             streamer, media_server, amplifier, discovery_timeout
@@ -268,8 +269,8 @@ class Vibin:
         """The current system state."""
         return SystemState(
             streamer=self.streamer.device_state,
-            media=self.media_server.device_state,
-            amplifier=self.amplifier.device_state,
+            media=self.media_server.device_state if self.media_server else None,
+            amplifier=self.amplifier.device_state if self.amplifier else None,
         )
 
     @property

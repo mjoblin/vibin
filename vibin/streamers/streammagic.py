@@ -37,6 +37,7 @@ from vibin.models import (
     MediaStream,
     PlaylistModifiedHandler,
     PlaylistModifyAction,
+    PowerState,
     Presets,
     StreamerDeviceDisplay,
     StreamerState,
@@ -303,11 +304,24 @@ class StreamMagic(Streamer):
     # System
 
     @property
-    def currently_playing(self) -> CurrentlyPlaying:
-        return self._currently_playing
+    def power(self) -> PowerState | None:
+        return self._device_state.power
+
+    @power.setter
+    def power(self, state: PowerState) -> None:
+        # If the streamer is already on, sending "ON" again seems to trigger a
+        # reboot -- so only send an "ON" if the streamer is not already on.
+        if state == "on" and self._device_state.power != "on":
+            requests.get(f"http://{self._device_hostname}/smoip/system/power?power=ON")
+        elif state == "off":
+            requests.get(f"http://{self._device_hostname}/smoip/system/power?power=NETWORK")
 
     def power_toggle(self):
         requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
+
+    @property
+    def currently_playing(self) -> CurrentlyPlaying:
+        return self._currently_playing
 
     def set_audio_source(self, source: str):
         requests.get(f"http://{self._device_hostname}/smoip/zone/state?source={source}")

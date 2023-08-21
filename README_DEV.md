@@ -19,17 +19,19 @@ The main responsibilities of `vibin` are:
 1. **Interact with a network music streamer**, implementing the `Streamer` interface.
    * The only current implementation is `StreamMagic` (for Cambridge Audio streamers using
      [StreamMagic]).
-1. **Interact with a local media server**, implementing the `MediaServer` interface.
+1. **Interact with a local media server** (optional), implementing the `MediaServer` interface.
    * The only current implementation is `Asset` (for the [Asset UPnP] server).
+1. **Interact with an amplifier** (optional), implementing the `Amplifier` interface.
+    * The only current implementation is `Hegel` (for [Hegel] amplifiers).
 1. **Retrieve information from external sources** (Wikipedia, Genius, Rate Your Music, Discogs,
    etc).
 1. **Persist information** such as user-defined Playlists, Favorites, lyrics, etc.
 1. Expose:
    * **A REST API**.
      * To retrieve media metadata.
-     * To perform actions on the streamer and media server.
-     * To receive UPnP events from the streamer or media server, to then forward on to the interface
-       implementation.
+     * To perform actions on the streamer, media server, and amplifier.
+     * To receive UPnP events from the streamer, media server, or amplifier; and to then forward the
+       events on to the target interface implementation.
    * **A WebSocket server** (to send live updates to any connected clients).
    * **The UI's static files** (see [vibinui]).
    * **A proxy for the media server** (mostly for album art).
@@ -41,6 +43,19 @@ The main responsibilities of `vibin` are:
 The various components and how they broadly interact is shown below:
 
 ![Architecture]
+
+### Device responsibility assumptions
+
+Vibin assumes the following device responsibilities:
+
+* `Streamer`: Initiates playback (of local media, internet radio, etc); details on what's currently
+  playing (track/stream details); transport controls (play/pause, playhead position, etc).
+* `MediaServer`: Local media browsing (Artists, Albums, Tracks, etc).
+* `Amplifier`: Volume (including mute).
+
+It's possible for one physical device (e.g. a streaming amplifier) to own two or all three of these
+responsibilities, although Vibin's current implementation was built for three distinct physical
+devices.
 
 ## Installation
 
@@ -63,6 +78,9 @@ The project structure is broadly laid out as follows:
 .
 ├── _data/                             Persisted data (TinyDB)
 ├── _webui/                            The web UI's static files (once installed)
+├── amplifiers                         Amplifier ABC and its implementations
+│   ├── amplifier.py
+│   └── hegel.py
 ├── base.py                            The main Vibin class
 ├── cli/                               The command line interface
 ├── constants.py                       Application constants
@@ -115,10 +133,11 @@ The project structure is broadly laid out as follows:
 
 The main hub of `vibin` is the `Vibin` class, which:
 
-* Instantiates and manages a `Streamer` instance and (optionally) a `MediaServer` instance.
+* Instantiates and manages a `Streamer` instance and (optionally) a `MediaServer` and `Amplifier`
+  instance.
 * Instantiates and manages any `ExternalService` implementations (such as Wikipedia, etc).
-* Exposes all capabilities of the streamer and media server, such as transport controls, retrieving
-  media metadata, etc.
+* Exposes all capabilities of the streamer, media server, and amplifier, such as transport controls,
+  retrieving media metadata, etc.
 * Acts as a hub for all the feature managers (Favorites, Links, Lyrics, etc).
 * Announces any updates as messages over a WebSocket connection (such as playhead position updates,
   playlist updates, etc) to any interested subscribers.
@@ -136,8 +155,8 @@ The following message types are published:
 * `Position`: Playhead position.
 * `Presets`: Information on Presets (e.g. Internet Radio stations).
 * `StoredPlaylists`: Information on Stored Playlists.
-* `System`: Information about the hardware devices (streamer name, power status, audio sources,
-  device display details; media server name).
+* `System`: Information about the hardware devices (streamer, media server, and amplifier) such as
+  device names, power status, audio sources, etc.
 * `TransportState`: Current state of the streamer transport (play state, active transport controls,
   shuffle and repeat state, etc).
 * `UPnPProperties`: A general kitchen-sink message containing all the UPnP property values received
@@ -179,19 +198,19 @@ The REST API's interactive swagger is available at `http://hostname:8080/docs`.
 
 The top-level REST routes include:
 
-| Route               | Description                                                                                    |
-|---------------------|------------------------------------------------------------------------------------------------|
-| `/vibin`            | Interact with the Vibin Server's top-level capabilities (settings, data cache, etc)            |
-| `/system`           | Interact with the system's Streamer and Media Server devices (power toggle, audio source, etc) |
-| `/artists`          | Interact with the Media Server's **Artists**                                                   |
-| `/albums`           | Interact with the Media Server's **Albums**                                                    |
-| `/tracks`           | Interact with the Media Server's **Tracks**                                                    |
-| `/browse`           | **Browse media** on the Media Server                                                           |
-| `/transport`        | Interact with the Streamer's **Transport** (pause, play, etc)                                  |
-| `/presets`          | Interact with the Streamer's **Presets** (internet radio, etc)                                 |
-| `/active_playlist`  | Interact with the Streamer's **Active Playlist**                                               |
-| `/stored_playlists` | Interact with Vibin's **Stored Playlists**                                                     |
-| `/favorites`        | Interact with Vibin's **Favorites** (favorited Albums and Tracks)                              |
+| Route               | Description                                                                                   |
+|---------------------|-----------------------------------------------------------------------------------------------|
+| `/vibin`            | Interact with the Vibin Server's top-level capabilities (settings, data cache, etc)           |
+| `/system`           | Interact with the system's Streamer, Media Server, and Amplifier devices (power, source, etc) |
+| `/artists`          | Interact with the Media Server's **Artists**                                                  |
+| `/albums`           | Interact with the Media Server's **Albums**                                                   |
+| `/tracks`           | Interact with the Media Server's **Tracks**                                                   |
+| `/browse`           | **Browse media** on the Media Server                                                          |
+| `/transport`        | Interact with the Streamer's **Transport** (pause, play, etc)                                 |
+| `/presets`          | Interact with the Streamer's **Presets** (internet radio, etc)                                |
+| `/active_playlist`  | Interact with the Streamer's **Active Playlist**                                              |
+| `/stored_playlists` | Interact with Vibin's **Stored Playlists**                                                    |
+| `/favorites`        | Interact with Vibin's **Favorites** (favorited Albums and Tracks)                             |
 
 ### A note on concurrent database access
 
@@ -203,27 +222,29 @@ alternative persistence solution should probably be found.
 
 ### Supporting other hardware devices
 
-The intent behind the `Streamer` and `MediaServer` interfaces is that they would be general enough
-to support a variety of implementations for different hardware devices. The reality is that they're
-_heavily_ influenced by two specific products: [StreamMagic] network streamers from Cambridge Audio,
-and the [Asset UPnP] media server software (implemented in `streammagic.py` and `asset.py`
-respectively).
+The intent behind the `Streamer`, `MediaServer`, and `Amplifier` interfaces is that they would be
+general enough to support a variety of implementations for different hardware devices. The reality
+is that they're _heavily_ influenced by three specific products: [StreamMagic] network streamers
+from Cambridge Audio, and the [Asset UPnP] media server software, and the [Hegel] amplifier control
+protocol (implemented in `streammagic.py`, `asset.py`, and `hegel.py` respectively).
 
 The same issue applies to many of the models (`models.py`) and types (`types.py`).
 
 If additional devices were to be supported then it's likely that the interfaces, models, and types,
 would need to be adjusted appropriately. It would be a learning adventure.
 
-Supporting additional media server devices would require implementing the `MediaServer` interface
-and is likely the simpler of the two.
+Supporting additional amplifiers would require implementing the `Amplifier` interface. The amplifier
+would need to support software controls for power, volume, etc.
+
+Supporting additional media server devices would require implementing the `MediaServer` interface.
 
 Supporting additional streamer devices would require implementing the `Streamer` interface. The
 implementation would also need to be sure to invoke the `on_update()` method (as passed in by
 `Vibin` when instantiating the implementation) for the following message types: `CurrentlyPlaying`,
 `Position`, and `TransportState`.
 
-Any implementation would need to ensure that the data owned by the media server or streamer is
-munged into the shape expected by the types and models specified by the interfaces.
+Any implementation would need to ensure that the data owned by the amplifier, media server, or
+streamer, is munged into the shape expected by the types and models specified by the interfaces.
 
 ### Tests
 
@@ -234,6 +255,7 @@ aspirational dev dependency.
 
 [StreamMagic]: https://www.cambridgeaudio.com/row/en/products/streammagic
 [Asset UPnP]: https://dbpoweramp.com/asset-upnp-dlna.htm
+[Hegel]: https://hegel.com
 [vibinui]: https://github.com/mjoblin/vibinui
 [Click]: https://click.palletsprojects.com
 [FastAPI]: https://fastapi.tiangolo.com/
