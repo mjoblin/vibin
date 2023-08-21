@@ -212,7 +212,9 @@ class Hegel(Amplifier):
         if current_source is None:
             return None
 
-        return AudioSource(id=current_source, name=self._source_name_by_id(int(current_source)))
+        return AudioSource(
+            id=current_source, name=self._source_name_by_id(int(current_source))
+        )
 
     @audio_source.setter
     def audio_source(self, source: str) -> None:
