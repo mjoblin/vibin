@@ -222,11 +222,15 @@ alternative persistence solution should probably be found.
 
 ### Supporting other hardware devices
 
-The intent behind the `Streamer`, `MediaServer`, and `Amplifier` interfaces is that they would be
-general enough to support a variety of implementations for different hardware devices. The reality
-is that they're _heavily_ influenced by three specific products: [StreamMagic] network streamers
-from Cambridge Audio, and the [Asset UPnP] media server software, and the [Hegel] amplifier control
-protocol (implemented in `streammagic.py`, `asset.py`, and `hegel.py` respectively).
+The intent behind the [`Streamer()`](vibin/streamers/streamer.py),
+[`MediaServer()`](vibin/mediaservers/mediaserver.py), and
+[`Amplifier()`](vibin/amplifiers/amplifier.py) interfaces is that they would be general enough to
+support a variety of implementations for different hardware devices. The reality is that they're
+_heavily_ influenced by three specific products: [StreamMagic] network streamers from Cambridge
+Audio, and the [Asset UPnP] media server software, and the [Hegel] amplifier control protocol
+(implemented in [`streammagic.py`](vibin/streamers/streammagic.py),
+[`asset.py`](vibin/mediaservers/asset.py), and [`hegel.py`](vibin/amplifiers/hegel.py)
+respectively).
 
 The same issue applies to many of the models (`models.py`) and types (`types.py`).
 
