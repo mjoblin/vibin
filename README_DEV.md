@@ -131,7 +131,7 @@ The project structure is broadly laid out as follows:
 
 ### The `Vibin` class
 
-The main hub of `vibin` is the `Vibin` class, which:
+The main hub of `vibin` is the [`Vibin()`](vibin/base.py) class, which:
 
 * Instantiates and manages a `Streamer` instance and (optionally) a `MediaServer` and `Amplifier`
   instance.
@@ -232,7 +232,8 @@ Audio, and the [Asset UPnP] media server software, and the [Hegel] amplifier con
 [`asset.py`](vibin/mediaservers/asset.py), and [`hegel.py`](vibin/amplifiers/hegel.py)
 respectively).
 
-The same issue applies to many of the models (`models.py`) and types (`types.py`).
+The same issue applies to many of the models ([`models.py`](vibin/models.py)) and types
+([`types.py`](vibin/types.py)).
 
 If additional devices were to be supported then it's likely that the interfaces, models, and types,
 would need to be adjusted appropriately. It would be a learning adventure.
