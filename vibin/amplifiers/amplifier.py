@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Callable
 
 import upnpclient
 
@@ -41,6 +42,8 @@ class Amplifier(metaclass=ABCMeta):
         self,
         device: upnpclient.Device,
         upnp_subscription_callback_base: str | None = None,
+        on_connect: Callable[[], None] | None = None,
+        on_disconnect: Callable[[], None] | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
         pass
@@ -49,6 +52,12 @@ class Amplifier(metaclass=ABCMeta):
     @abstractmethod
     def name(self) -> str:
         """The UPnP device name for the Amplifier."""
+        pass
+
+    @property
+    @abstractmethod
+    def connected(self) -> bool:
+        """Whether an active connection has been established."""
         pass
 
     @property

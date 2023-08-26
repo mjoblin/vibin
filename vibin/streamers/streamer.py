@@ -156,6 +156,11 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def toggle_playback(self):
+        """Toggle the playback state."""
+        pass
+
+    @abstractmethod
     def pause(self):
         """Pause playback."""
         pass

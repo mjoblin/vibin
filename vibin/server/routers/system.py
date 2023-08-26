@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import Response
@@ -144,14 +144,14 @@ def system_streamer_currently_playing() -> CurrentlyPlaying:
 
 
 @system_router.post(
-    "/streamer/audio_source",
+    "/streamer/audio_source/{source_name}",
     summary="Set the Streamer's Audio Source by name",
     tags=["Media System"],
     response_class=Response,
 )
-def system_streamer_audio_source(source: str):
+def system_streamer_set_audio_source(source_name: Any):
     try:
-        get_vibin_instance().streamer.set_audio_source(source)
+        get_vibin_instance().streamer.set_audio_source(str(source_name))
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
 
@@ -173,7 +173,7 @@ def system_streamer_device_display() -> StreamerDeviceDisplay:
     summary="Get the Amplifier's state",
     tags=["Media System"],
 )
-@requires_amplifier
+@requires_amplifier(allow_if_off=True)
 def system_amplifier_power() -> AmplifierState:
     try:
         return get_vibin_instance().amplifier.device_state
@@ -187,7 +187,7 @@ def system_amplifier_power() -> AmplifierState:
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier(allow_if_off=True)
 def system_amplifier_power_on():
     try:
         get_vibin_instance().amplifier.power = "on"
@@ -200,7 +200,7 @@ def system_amplifier_power_on():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_power_off():
     try:
         get_vibin_instance().amplifier.power = "off"
@@ -214,7 +214,7 @@ def system_amplifier_power_off():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier(allow_if_off=True)
 def system_amplifier_power_toggle():
     try:
         get_vibin_instance().amplifier.power_toggle()
@@ -227,7 +227,7 @@ def system_amplifier_power_toggle():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_volume_up():
     try:
         get_vibin_instance().amplifier.volume_up()
@@ -241,7 +241,7 @@ def system_amplifier_volume_up():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_volume_down():
     try:
         get_vibin_instance().amplifier.volume_down()
@@ -255,7 +255,7 @@ def system_amplifier_volume_down():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     try:
         get_vibin_instance().amplifier.volume = volume
@@ -269,7 +269,7 @@ def system_amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_mute_on():
     try:
         get_vibin_instance().amplifier.mute = "on"
@@ -283,7 +283,7 @@ def system_amplifier_mute_on():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_mute_off():
     try:
         get_vibin_instance().amplifier.mute = "off"
@@ -297,7 +297,7 @@ def system_amplifier_mute_off():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
+@requires_amplifier()
 def system_amplifier_mute_toggle():
     try:
         get_vibin_instance().amplifier.mute_toggle()
@@ -311,10 +311,10 @@ def system_amplifier_mute_toggle():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier
-def system_amplifier_set_audio_source(source_name: str):
+@requires_amplifier()
+def system_amplifier_set_audio_source(source_name: Any):
     try:
-        get_vibin_instance().amplifier.audio_source = source_name
+        get_vibin_instance().amplifier.audio_source = str(source_name)
     except VibinError as e:
         if "Invalid source name" in e.args[0]:
             raise HTTPException(status_code=400, detail=f"{e}")

@@ -161,6 +161,8 @@ class Vibin:
             self._current_amplifier = amplifier_class(
                 device=amplifier_device,
                 upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/amplifier",
+                on_connect=self._on_amplifier_connect,
+                on_disconnect=self._on_amplifier_disconnect,
                 on_update=self._on_amplifier_update,
             )
 
@@ -270,7 +272,9 @@ class Vibin:
         return SystemState(
             streamer=self.streamer.device_state,
             media=self.media_server.device_state if self.media_server else None,
-            amplifier=self.amplifier.device_state if self.amplifier else None,
+            amplifier=self.amplifier.device_state
+            if self.amplifier and self.amplifier.connected
+            else None,
         )
 
     @property
@@ -535,6 +539,18 @@ class Vibin:
     def _on_media_server_update(self, message_type: UpdateMessageType, data: Any):
         """Handle an incoming update message from the media server."""
         self._send_update(message_type, data)
+
+    def _on_amplifier_connect(self):
+        """Handle a successful amplifier connect."""
+        logger.info("Vibin has detected successful amplifier connection")
+
+    def _on_amplifier_disconnect(self):
+        """Handle an amplifier connection loss."""
+        # Sending a System message will notify any connected clients that the
+        # amplifier is no longer available. (Note: "available" does not mean
+        # powered off; it means the connection was entirely lost.
+        logger.warning("Vibin has detected amplifier disconnect")
+        self._send_update("System", self.system_state)
 
     def _on_amplifier_update(self, message_type: UpdateMessageType, data: Any):
         """Handle an incoming update message from the amplifier."""

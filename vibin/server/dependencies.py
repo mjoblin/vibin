@@ -152,19 +152,32 @@ def requires_media(func):
     return wrapper_requires_media
 
 
-def requires_amplifier(func):
-    """Decorator to return a 404 if the vibin server does not have an amplifier."""
-    @functools.wraps(func)
-    def wrapper_requires_media(*args, **kwargs):
-        if _vibin is None or _vibin.amplifier is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Feature unavailable (no amplifier registered with Vibin)",
-            )
+def requires_amplifier(allow_if_off=False):
+    """Decorator to check for valid amplifier state.
 
-        return func(*args, **kwargs)
+    Returns a 404 if the vibin server does not have an amplifier.
+    Returns a 503 if an amplifier is registered but is not powered on."""
 
-    return wrapper_requires_media
+    def decorator_requires_amplifier(func):
+        @functools.wraps(func)
+        def wrapper_requires_amplifier(*args, **kwargs):
+            if _vibin is None or _vibin.amplifier is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Feature unavailable (no amplifier registered with Vibin)",
+                )
+
+            if _vibin.amplifier.power != "on" and not allow_if_off:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Feature currently unavailable (amplifier is powered off)",
+                )
+
+            return func(*args, **kwargs)
+
+        return wrapper_requires_amplifier
+
+    return decorator_requires_amplifier
 
 
 _start_time = time.time()
