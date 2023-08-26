@@ -1,8 +1,9 @@
+from dataclasses import dataclass
 import queue
 import re
 import socket
 import time
-from typing import Callable
+from typing import Callable, Literal
 from urllib.parse import urlparse
 
 import upnpclient
@@ -24,6 +25,14 @@ from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPPropert
 #
 # See Amplifier interface for additional method documentation.
 # -----------------------------------------------------------------------------
+
+HegelCommandName = Literal["e", "i", "m", "p", "r", "v"]
+
+
+@dataclass
+class HegelCommand:
+    name: HegelCommandName
+    parameter: str
 
 
 class Hegel(Amplifier):
@@ -75,28 +84,30 @@ class Hegel(Amplifier):
         # Keep track of amplifier state. This will be updated as new messages
         # come in from the amplifier. This is a straight mapping of the Hegel
         # cmd/parameter pairs to a dict.
-        self._state = {
+        self._state: dict[HegelCommandName, str | None] = {
             "p": None,  # power
             "i": None,  # input
             "v": None,  # volume
             "m": None,  # mute
         }
 
-        self._cmd_queue = queue.Queue()
+        self._cmd_queue: queue.Queue[HegelCommand] = queue.Queue()
         self._cmd_queue_timeout = 1
         self._reset_send_time = 0
         self._socket = None
         self._connected = False
         self._connection_count = 0
-        self._last_sent_packet = None
+        self._last_sent_command: HegelCommand | None = None
 
-        if self._on_update:
-            # Start the communication thread
-            self._amp_communication_thread = utils.StoppableThread(
-                target=self._handle_amp_communication
-            )
+        # Start the heartbeat and communication threads
+        self._amp_heartbeat_thread = utils.StoppableThread(target=self._amp_heartbeat)
+        self._amp_heartbeat_thread.start()
 
-            self._amp_communication_thread.start()
+        self._amp_communication_thread = utils.StoppableThread(
+            target=self._handle_amp_communication
+        )
+
+        self._amp_communication_thread.start()
 
     @property
     def name(self) -> str:
@@ -125,6 +136,11 @@ class Hegel(Amplifier):
         return self._device.udn.removeprefix("uuid:")
 
     def on_shutdown(self) -> None:
+        if self._amp_heartbeat_thread:
+            logger.info(f"Stopping Hegel heartbeat thread for {self.name}")
+            self._amp_heartbeat_thread.stop()
+            self._amp_heartbeat_thread.join()
+
         if self._amp_communication_thread:
             logger.info(f"Stopping Hegel communication thread for {self.name}")
             self._amp_communication_thread.stop()
@@ -277,8 +293,33 @@ class Hegel(Amplifier):
 
         return None
 
+    def _request_command_send(self, command: HegelCommand):
+        """Request the send of a HegelCommand to the amplifier.
+
+        Does not repeat the same command more than once in a sequence."""
+        if command != self._last_sent_command:
+            self._cmd_queue.put_nowait(command)
+
     # -------------------------------------------------------------------------
     # Manage the TCP socket connection to the amplifier.
+
+    def _amp_heartbeat(self):
+        """Maintain an amplifier heartbeat.
+
+        Sends a power state request to the amplifier every 3 seconds. This acts
+        as a form of heartbeat, allowing for the detection of a loss of
+        connection to the amplifier.
+        """
+        while True:
+            if self._amp_heartbeat_thread.stop_event.is_set():
+                logger.info(f"Hegel heartbeat thread for {self.name} stopped")
+                return
+
+            # Bypass self._request_command_send() as we want to force this
+            #   command onto the queue rather than having it potentially be
+            #   filtered out as a repeat.
+            self._cmd_queue.put_nowait(HegelCommand(name="p", parameter="?"))
+            time.sleep(3)
 
     def _handle_amp_communication(self):
         """Handle the TCP socket communication with the amplifier.
@@ -290,7 +331,7 @@ class Hegel(Amplifier):
         * Regularly send connection-drop timer requests (as described in the
           Hegel docs).
         """
-        self._connect_to_amplifier(initial_connect=True)
+        self._connect_to_amplifier()
 
         while True:
             # Attempt to read an incoming message from the amplifier
@@ -302,43 +343,50 @@ class Hegel(Amplifier):
                 #
                 # TODO: 1K is a lot, make a smaller power of 2? 8 might be
                 #   enough given the compactness of the protocol.
+                logger.info(f"Reading socket: {self._socket.gettimeout()}")
                 response = self._socket.recv(1024)
             except socket.timeout as e:
-                err = e.args[0]
+                # err = e.args[0]
 
-                if "timed out" not in err:
-                    logger.error(f"Unexpected timeout error from {self.name}: {e}")
-                    self._connect_to_amplifier(initial_connect=False)
+                if e == "timed out":
+                    logger.error(
+                        f"Unexpected socket timeout error while reading from {self.name}: {e}"
+                    )
+                    self._connect_to_amplifier()
             except ConnectionResetError as e:
                 logger.info(
                     f"Amplifier {self.name} has reset the connection; attempting reconnect"
                 )
                 self._handle_disconnect()
-                self._connect_to_amplifier(initial_connect=False, resend_last_packet=True)
+                self._connect_to_amplifier(resend_last_packet=True)
             except socket.error as e:
                 logger.error(f"Unexpected socket error from {self.name}: {e}")
                 self._handle_disconnect()
-                self._connect_to_amplifier(initial_connect=False)
+                self._connect_to_amplifier()
             else:
                 if len(response) == 0:
                     logger.warning(f"Lost socket connection to amplifier: {self.name}")
                     self._handle_disconnect()
-                    self._connect_to_amplifier(initial_connect=False)
+                    self._connect_to_amplifier()
                 else:
                     # We have a message from the amplifier, so use it to update
                     # local state and send a System update message
                     try:
-                        command, parameter = self._process_response(response)
-                        self._state[command] = parameter
-                        self._on_update("System", self.device_state)
+                        command = self._process_response(response)
+
+                        old_parameter_value = self._state[command.name]
+                        self._state[command.name] = command.parameter
+
+                        if self._on_update and self._state[command.name] != old_parameter_value:
+                            self._on_update("System", self.device_state)
                     except VibinError as e:
                         logger.error(f"Error processing Hegel response: {e}")
 
             # Check if there's a message on the queue that we need to pass to
             # the amplifier; and check if we've been asked to stop processing.
             try:
-                cmd = self._cmd_queue.get_nowait()
-                self._send_packet(self._generate_packet(cmd[0], cmd[1]))
+                command = self._cmd_queue.get_nowait()
+                self._send_packet(self._generate_packet(command))
             except queue.Empty:
                 if self._amp_communication_thread.stop_event.is_set():
                     logger.info(f"Hegel communication thread for {self.name} stopped")
@@ -348,15 +396,15 @@ class Hegel(Amplifier):
             if time.time() >= self._reset_send_time:
                 self._send_reset_timeout()
 
-    def _connect_to_amplifier(self, initial_connect=False, resend_last_packet=False):
+    def _connect_to_amplifier(self, resend_last_packet=False):
         """Connect to the amplifier with infinite retries."""
         device_hostname = urlparse(self._device.location).hostname
-        retry_interval = 5
 
         if self._socket is not None:
             logger.info("Attempting to close amplifier socket before reconnecting")
             try:
                 self._socket.close()
+                self._socket = None
 
                 if self._on_disconnect:
                     self._on_disconnect()
@@ -366,12 +414,14 @@ class Hegel(Amplifier):
         self._connection_count += 1
         logger.info(f"Connecting to amplifier {self._connection_count}: {self.name}")
 
+        retry_interval = 5  # How long to wait before retrying if connect failed
+
         while True:
             try:
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._socket.settimeout(5)
-                self._socket.connect((device_hostname, 50001))
+                self._socket.settimeout(3)  # Wait for 3 seconds when connecting
 
+                self._socket.connect((device_hostname, 50001))
                 break
             except socket.error as e:
                 logger.warning(
@@ -387,15 +437,15 @@ class Hegel(Amplifier):
 
         logger.info(f"Connected to amplifier: {self.name}")
 
-        self._socket.settimeout(0.5)
+        self._socket.settimeout(0.5)  # Subsequent socket read timeout
         self._send_reset_timeout()
         self._initialize_amp_state()
 
-        if resend_last_packet and self._last_sent_packet is not None:
+        if resend_last_packet and self._last_sent_command is not None:
             logger.info(
-                f"Re-sending last-attempted packet to amplifier: {self._last_sent_packet}"
+                f"Re-sending last-attempted packet to amplifier: {self._last_sent_command}"
             )
-            self._send_packet(self._last_sent_packet)
+            self._send_packet(self._generate_packet(self._last_sent_command))
 
         self._connected = True
 
@@ -411,19 +461,19 @@ class Hegel(Amplifier):
 
     def _initialize_amp_state(self):
         """Populate the local amplifier state with current amplifier values."""
-        for command in self._state.keys():
+        for command_name in self._state.keys():
             # These "?" commands will trigger responses from the amplifier which
             # will in turn be used to update local amplifier state.
-            self._cmd_queue.put_nowait((command, "?"))
+            self._cmd_queue.put_nowait(HegelCommand(name=command_name, parameter="?"))
 
-    def _generate_packet(self, command: str, parameter: str) -> bytes:
-        """Generate a Hegel-compliant packet for the command/parameter paid.
+    def _generate_packet(self, command: HegelCommand) -> bytes:
+        """Generate a Hegel-compliant socket packet from the given HegelCommand.
 
         Packet documentation:
         https://support.hegel.com/component/jdownloads/send/3-files/81-h120-ip-control-codes
         """
-        packet = f"-{command}.{parameter}\r".encode("utf-8")
-        self._last_sent_packet = packet
+        self._last_sent_command = command
+        packet = f"-{command.name}.{command.parameter}\r".encode("utf-8")
 
         return packet
 
@@ -454,26 +504,31 @@ class Hegel(Amplifier):
         timeout_mins = 3
 
         logger.info(f"Sending reset duration: {timeout_mins}")
-        self._send_packet(self._generate_packet("r", str(timeout_mins)))
+        self._send_packet(
+            self._generate_packet(HegelCommand(name="r", parameter=str(timeout_mins)))
+        )
         self._reset_send_time = time.time() + 60 * timeout_resend_mins
 
     @staticmethod
-    def _process_response(response) -> (str, str):
+    def _process_response(response) -> HegelCommand:
         """Process a response from the amplifier.
 
         Returns the command/parameter-value pair as a tuple.
         """
         try:
             m = re.search(r"-(.)\.(\S+)", response.decode("utf-8"))
-            result_command = m.group(1)
-            result_value = m.group(2)
+            result_command_name = m.group(1)
+            result_parameter_value = m.group(2)
 
-            if result_command == "e":
-                raise VibinDeviceError(f"Got error response from Hegel: {result_value}")
+            if result_command_name == "e":
+                raise VibinDeviceError(
+                    f"Got error response from Hegel: {result_parameter_value}"
+                )
 
-            if result_command == "p":
-                logger.info(f"Got power {result_value}")
+            # TODO: Remove
+            if result_command_name == "p":
+                logger.info(f"Got power {result_parameter_value}")
 
-            return result_command, result_value
+            return HegelCommand(name=result_command_name, parameter=result_parameter_value)
         except (AttributeError, IndexError) as e:
             raise VibinError(f"Could not parse Hegel response: {response}")
