@@ -315,11 +315,12 @@ class Hegel(Amplifier):
                 logger.info(f"Hegel heartbeat thread for {self.name} stopped")
                 return
 
-            # Bypass self._request_command_send() as we want to force this
-            #   command onto the queue rather than having it potentially be
-            #   filtered out as a repeat.
-            self._cmd_queue.put_nowait(HegelCommand(name="p", parameter="?"))
-            time.sleep(3)
+            if self._connected:
+                # Bypass self._request_command_send() as we want to force this
+                #   command onto the queue rather than having it potentially be
+                #   filtered out as a repeat.
+                self._cmd_queue.put_nowait(HegelCommand(name="p", parameter="?"))
+                time.sleep(3)
 
     def _handle_amp_communication(self):
         """Handle the TCP socket communication with the amplifier.
@@ -333,6 +334,8 @@ class Hegel(Amplifier):
         """
         self._connect_to_amplifier()
 
+        expecting_response = False
+
         while True:
             # Attempt to read an incoming message from the amplifier
             try:
@@ -341,14 +344,24 @@ class Hegel(Amplifier):
                 #   allow for receiving more than one message -- and receiving
                 #   partial messages. Messages appear to be \r delimited.
                 #
-                # TODO: 1K is a lot, make a smaller power of 2? 8 might be
-                #   enough given the compactness of the protocol.
-                logger.info(f"Reading socket: {self._socket.gettimeout()}")
+                # TODO: 1K is a lot to recv, make a smaller power of 2? 8 might
+                #   be enough given the compactness of the protocol.
+                #
+                # TODO: This approach relies on the amplifier responding to a
+                #   sent command within the socket timeout window. If no
+                #   response is received in time then the socket is closed.
+                #   This seems to be OK with a 500ms timeout but this logic
+                #   could be tightened up to allow for a less responsive
+                #   amplifier.
                 response = self._socket.recv(1024)
             except socket.timeout as e:
-                # err = e.args[0]
-
-                if e == "timed out":
+                if expecting_response:
+                    logger.warning(
+                        f"Did not receive response from {self.name} within the "
+                        + "expected timeout window; reconnecting"
+                    )
+                    self._connect_to_amplifier()
+                elif e == "timed out":
                     logger.error(
                         f"Unexpected socket timeout error while reading from {self.name}: {e}"
                     )
@@ -357,20 +370,20 @@ class Hegel(Amplifier):
                 logger.info(
                     f"Amplifier {self.name} has reset the connection; attempting reconnect"
                 )
-                self._handle_disconnect()
                 self._connect_to_amplifier(resend_last_packet=True)
             except socket.error as e:
                 logger.error(f"Unexpected socket error from {self.name}: {e}")
-                self._handle_disconnect()
                 self._connect_to_amplifier()
             else:
                 if len(response) == 0:
                     logger.warning(f"Lost socket connection to amplifier: {self.name}")
-                    self._handle_disconnect()
                     self._connect_to_amplifier()
                 else:
                     # We have a message from the amplifier, so use it to update
                     # local state and send a System update message
+
+                    expecting_response = False
+
                     try:
                         command = self._process_response(response)
 
@@ -386,6 +399,8 @@ class Hegel(Amplifier):
             # the amplifier; and check if we've been asked to stop processing.
             try:
                 command = self._cmd_queue.get_nowait()
+
+                expecting_response = True
                 self._send_packet(self._generate_packet(command))
             except queue.Empty:
                 if self._amp_communication_thread.stop_event.is_set():
@@ -405,9 +420,7 @@ class Hegel(Amplifier):
             try:
                 self._socket.close()
                 self._socket = None
-
-                if self._on_disconnect:
-                    self._on_disconnect()
+                self._handle_disconnect()
             except Exception as e:
                 logger.info(f"Error closing amplifier socket: {e}")
 
@@ -479,7 +492,6 @@ class Hegel(Amplifier):
 
     def _send_packet(self, packet: bytes) -> None:
         """Send a command packet to the amplifier."""
-        logger.info(f"Sending: {packet}")
         try:
             self._socket.sendall(packet)
         except OSError:
@@ -524,10 +536,6 @@ class Hegel(Amplifier):
                 raise VibinDeviceError(
                     f"Got error response from Hegel: {result_parameter_value}"
                 )
-
-            # TODO: Remove
-            if result_command_name == "p":
-                logger.info(f"Got power {result_parameter_value}")
 
             return HegelCommand(name=result_command_name, parameter=result_parameter_value)
         except (AttributeError, IndexError) as e:
