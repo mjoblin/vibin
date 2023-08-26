@@ -166,11 +166,13 @@ class Hegel(Amplifier):
     @power.setter
     def power(self, state: PowerState) -> None:
         """Set the power state."""
-        self._cmd_queue.put_nowait(("p", "1" if state == "on" else "0"))
+        self._cmd_queue.put_nowait(
+            HegelCommand(name="p", parameter="1" if state == "on" else "0")
+        )
 
     def power_toggle(self) -> None:
         """Toggle the power state."""
-        self._cmd_queue.put_nowait(("p", "t"))
+        self._cmd_queue.put_nowait(HegelCommand(name="p", parameter="t"))
 
     @property
     def volume(self) -> float:
@@ -188,15 +190,17 @@ class Hegel(Amplifier):
     @volume.setter
     def volume(self, volume: float) -> None:
         """Set the volume (0-1)."""
-        self._cmd_queue.put_nowait(("v", str(int(volume * 100))))
+        self._cmd_queue.put_nowait(
+            HegelCommand(name="v", parameter=str(int(volume * 100)))
+        )
 
     def volume_up(self) -> None:
         """Increase the volume by one unit."""
-        self._cmd_queue.put_nowait(("v", "u"))
+        self._cmd_queue.put_nowait(HegelCommand(name="v", parameter="u"))
 
     def volume_down(self) -> None:
         """Decrease the volume by one unit."""
-        self._cmd_queue.put_nowait(("v", "d"))
+        self._cmd_queue.put_nowait(HegelCommand(name="v", parameter="d"))
 
     @property
     def mute(self) -> MuteState:
@@ -211,11 +215,13 @@ class Hegel(Amplifier):
     @mute.setter
     def mute(self, state: MuteState) -> None:
         """Set the mute state."""
-        self._cmd_queue.put_nowait(("m", "1" if state == "on" else "0"))
+        self._cmd_queue.put_nowait(
+            HegelCommand(name="m", parameter="1" if state == "on" else "0")
+        )
 
     def mute_toggle(self) -> None:
         """Toggle the mute state."""
-        self._cmd_queue.put_nowait(("m", "t"))
+        self._cmd_queue.put_nowait(HegelCommand(name="m", parameter="t"))
 
     @property
     def audio_sources(self) -> AudioSources | None:
@@ -256,7 +262,7 @@ class Hegel(Amplifier):
         except TypeError:
             raise VibinDeviceError(f"Invalid source name (must be 1-9): {source}")
 
-        self._cmd_queue.put_nowait(("i", str(source_num)))
+        self._cmd_queue.put_nowait(HegelCommand(name="i", parameter=str(source_num)))
 
     # -------------------------------------------------------------------------
     # UPnP
