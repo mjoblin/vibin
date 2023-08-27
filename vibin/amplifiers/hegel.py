@@ -96,7 +96,6 @@ class Hegel(Amplifier):
         self._reset_send_time = 0
         self._socket = None
         self._connected = False
-        self._connection_count = 0
         self._last_sent_command: HegelCommand | None = None
 
         # Start the heartbeat and communication threads
@@ -430,8 +429,7 @@ class Hegel(Amplifier):
             except Exception as e:
                 logger.info(f"Error closing amplifier socket: {e}")
 
-        self._connection_count += 1
-        logger.info(f"Connecting to amplifier {self._connection_count}: {self.name}")
+        logger.info(f"Connecting to amplifier: {self.name}")
 
         retry_interval = 5  # How long to wait before retrying if connect failed
 
