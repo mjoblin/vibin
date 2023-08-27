@@ -299,7 +299,7 @@ def _determine_amplifier_device(
     """
     if amplifier_input is None or amplifier_input == "":
         # Nothing provided by the caller, so perform a UPnP discovery and
-        # attempt to find a MediaRenderer from Cambridge Audio.
+        # attempt to find a MediaRenderer/amplifier.
 
         logger.info(
             "No amplifier specified, attempting to auto-discover a UPnP MediaRenderer"
@@ -325,9 +325,9 @@ def _determine_amplifier_device(
                     if device != streamer_device
                 ][0]
         except IndexError:
-            raise VibinError(
-                "Could not find a UPnP MediaRenderer device for the amplifier"
-            )
+            # No MediaRenderers is not an error state for amplifiers (amplifiers
+            # are optional for Vibin).
+            return None
 
     amplifier_input_as_url = urlparse(amplifier_input)
 
