@@ -94,6 +94,7 @@ class Streamer(metaclass=ABCMeta):
         """The Streamer's UPnP device UDN (Unique Device Name)."""
         pass
 
+    @property
     @abstractmethod
     def device_display(self) -> StreamerDeviceDisplay:
         """Return information shown on the Streamer's display."""

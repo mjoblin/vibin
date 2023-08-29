@@ -89,7 +89,7 @@ def system_upnp_properties() -> SystemUPnPProperties:
     summary="Get the Streamer's state",
     tags=["Media System"],
 )
-def system_amplifier_power() -> StreamerState:
+def streamer_state() -> StreamerState:
     try:
         return get_vibin_instance().streamer.device_state
     except VibinError as e:
@@ -102,11 +102,12 @@ def system_amplifier_power() -> StreamerState:
     tags=["Media System"],
     response_class=Response,
 )
-def system_amplifier_power_on():
+def streamer_power_on():
     try:
         get_vibin_instance().streamer.power = "on"
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
+
 
 @system_router.post(
     "/streamer/power/off",
@@ -114,7 +115,7 @@ def system_amplifier_power_on():
     tags=["Media System"],
     response_class=Response,
 )
-def system_amplifier_power_off():
+def streamer_power_off():
     try:
         get_vibin_instance().streamer.power = "off"
     except VibinError as e:
@@ -127,7 +128,7 @@ def system_amplifier_power_off():
     tags=["Media System"],
     response_class=Response,
 )
-def system_streamer_power_toggle():
+def streamer_power_toggle():
     try:
         get_vibin_instance().streamer.power_toggle()
     except VibinError as e:
@@ -139,7 +140,7 @@ def system_streamer_power_toggle():
     summary="Retrieve details on what is currently playing",
     tags=["Media System"],
 )
-def system_streamer_currently_playing() -> CurrentlyPlaying:
+def streamer_currently_playing() -> CurrentlyPlaying:
     return get_vibin_instance().currently_playing
 
 
@@ -149,7 +150,7 @@ def system_streamer_currently_playing() -> CurrentlyPlaying:
     tags=["Media System"],
     response_class=Response,
 )
-def system_streamer_set_audio_source(source_name: Any):
+def streamer_set_audio_source(source_name: Any):
     try:
         get_vibin_instance().streamer.set_audio_source(str(source_name))
     except VibinError as e:
@@ -161,7 +162,7 @@ def system_streamer_set_audio_source(source_name: Any):
     summary="Retrieve the Streamer's current display",
     tags=["Media System"],
 )
-def system_streamer_device_display() -> StreamerDeviceDisplay:
+def streamer_device_display() -> StreamerDeviceDisplay:
     return get_vibin_instance().streamer.device_display
 
 
@@ -174,7 +175,7 @@ def system_streamer_device_display() -> StreamerDeviceDisplay:
     tags=["Media System"],
 )
 @requires_amplifier(allow_if_off=True)
-def system_amplifier_power() -> AmplifierState:
+def amplifier_power() -> AmplifierState:
     try:
         return get_vibin_instance().amplifier.device_state
     except VibinError as e:
@@ -188,7 +189,7 @@ def system_amplifier_power() -> AmplifierState:
     response_class=Response,
 )
 @requires_amplifier(allow_if_off=True)
-def system_amplifier_power_on():
+def amplifier_power_on():
     try:
         get_vibin_instance().amplifier.power = "on"
     except VibinError as e:
@@ -201,7 +202,7 @@ def system_amplifier_power_on():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_power_off():
+def amplifier_power_off():
     try:
         get_vibin_instance().amplifier.power = "off"
     except VibinError as e:
@@ -215,7 +216,7 @@ def system_amplifier_power_off():
     response_class=Response,
 )
 @requires_amplifier(allow_if_off=True)
-def system_amplifier_power_toggle():
+def amplifier_power_toggle():
     try:
         get_vibin_instance().amplifier.power_toggle()
     except VibinError as e:
@@ -228,7 +229,7 @@ def system_amplifier_power_toggle():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_volume_up():
+def amplifier_volume_up():
     try:
         get_vibin_instance().amplifier.volume_up()
     except VibinError as e:
@@ -242,7 +243,7 @@ def system_amplifier_volume_up():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_volume_down():
+def amplifier_volume_down():
     try:
         get_vibin_instance().amplifier.volume_down()
     except VibinError as e:
@@ -256,7 +257,7 @@ def system_amplifier_volume_down():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
+def amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     try:
         get_vibin_instance().amplifier.volume = volume
     except VibinError as e:
@@ -270,7 +271,7 @@ def system_amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_mute_on():
+def amplifier_mute_on():
     try:
         get_vibin_instance().amplifier.mute = "on"
     except VibinError as e:
@@ -284,7 +285,7 @@ def system_amplifier_mute_on():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_mute_off():
+def amplifier_mute_off():
     try:
         get_vibin_instance().amplifier.mute = "off"
     except VibinError as e:
@@ -298,7 +299,7 @@ def system_amplifier_mute_off():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_mute_toggle():
+def amplifier_mute_toggle():
     try:
         get_vibin_instance().amplifier.mute_toggle()
     except VibinError as e:
@@ -312,7 +313,7 @@ def system_amplifier_mute_toggle():
     response_class=Response,
 )
 @requires_amplifier()
-def system_amplifier_set_audio_source(source_name: Any):
+def amplifier_set_audio_source(source_name: Any):
     try:
         get_vibin_instance().amplifier.audio_source = str(source_name)
     except VibinError as e:
