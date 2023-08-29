@@ -78,6 +78,11 @@ class MediaServer(metaclass=ABCMeta):
         """The Media Server's UPnP device UDN (Unique Device Name)."""
         pass
 
+    @abstractmethod
+    def on_shutdown(self) -> None:
+        """Called when the Vibin system is shut down."""
+        pass
+
     # -------------------------------------------------------------------------
     # System
 

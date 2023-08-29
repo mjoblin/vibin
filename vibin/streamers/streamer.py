@@ -9,6 +9,7 @@ from vibin.models import (
     CurrentlyPlaying,
     PlaylistModifiedHandler,
     PlaylistModifyAction,
+    PowerState,
     Presets,
     StreamerDeviceDisplay,
     StreamerState,
@@ -93,6 +94,7 @@ class Streamer(metaclass=ABCMeta):
         """The Streamer's UPnP device UDN (Unique Device Name)."""
         pass
 
+    @property
     @abstractmethod
     def device_display(self) -> StreamerDeviceDisplay:
         """Return information shown on the Streamer's display."""
@@ -116,12 +118,24 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def currently_playing(self) -> CurrentlyPlaying:
+    def power(self) -> PowerState:
+        """Power state."""
+        pass
+
+    @power.setter
+    @abstractmethod
+    def power(self, state: PowerState) -> None:
+        """Set the Streamer's power state."""
         pass
 
     @abstractmethod
     def power_toggle(self) -> None:
         """Toggle the Streamer's power state."""
+        pass
+
+    @property
+    @abstractmethod
+    def currently_playing(self) -> CurrentlyPlaying:
         pass
 
     @abstractmethod
@@ -140,6 +154,11 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def play(self):
         """Play (resume) playback."""
+        pass
+
+    @abstractmethod
+    def toggle_playback(self):
+        """Toggle the playback state."""
         pass
 
     @abstractmethod

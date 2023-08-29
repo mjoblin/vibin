@@ -22,6 +22,32 @@ def transport_state() -> TransportState:
     return get_vibin_instance().streamer.transport_state
 
 
+@transport_router.post("/play", summary="Play the Transport", tags=["Transport"])
+def transport_play() -> TransportState:
+    vibin = get_vibin_instance()
+
+    try:
+        vibin.streamer.play()
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return vibin.streamer.transport_state
+
+
+@transport_router.post(
+    "/toggle_playback", summary="Toggle the Transport's play state", tags=["Transport"]
+)
+def transport_toggle_playback() -> TransportState:
+    vibin = get_vibin_instance()
+
+    try:
+        vibin.streamer.toggle_playback()
+    except VibinError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return vibin.streamer.transport_state
+
+
 @transport_router.post("/pause", summary="Pause the Transport", tags=["Transport"])
 def transport_pause() -> TransportState:
     vibin = get_vibin_instance()
@@ -34,12 +60,12 @@ def transport_pause() -> TransportState:
     return vibin.streamer.transport_state
 
 
-@transport_router.post("/play", summary="Play the Transport", tags=["Transport"])
-def transport_play() -> TransportState:
+@transport_router.post("/stop", summary="Stop the Transport", tags=["Transport"])
+def transport_stop() -> TransportState:
     vibin = get_vibin_instance()
 
     try:
-        vibin.streamer.play()
+        vibin.streamer.stop()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

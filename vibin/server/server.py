@@ -43,6 +43,8 @@ def server_start(
     streamer_type=None,
     media_server=None,
     media_server_type=None,
+    amplifier=None,
+    amplifier_type=None,
     discovery_timeout=5,
     vibinui=None,
     proxy_media_server=False,
@@ -76,6 +78,8 @@ def server_start(
             streamer_type=streamer_type,
             media_server=media_server,
             media_server_type=media_server_type,
+            amplifier=amplifier,
+            amplifier_type=amplifier_type,
             discovery_timeout=discovery_timeout,
             upnp_subscription_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
             proxy_media_server=proxy_media_server,
@@ -83,6 +87,7 @@ def server_start(
         )
     except VibinError as e:
         logger.error(f"Vibin server start unsuccessful: {e}")
+        logger.info("Vibin server start aborted")
         return
 
     @asynccontextmanager
@@ -114,7 +119,8 @@ def server_start(
         },
         {
             "name": "Media System",
-            "description": "Interact with devices in the media system as a whole (Streamer and Media Server)",
+            "description": "Interact with devices in the media system as a whole "
+            + "(Streamer, Media Server, Amplifier)",
         },
         {"name": "Artists", "description": "Interact with Media Server Artists"},
         {"name": "Albums", "description": "Interact with Media Server Albums"},

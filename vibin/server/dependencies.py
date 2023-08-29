@@ -31,6 +31,8 @@ def get_vibin_instance(
     streamer_type=None,
     media_server=None,
     media_server_type=None,
+    amplifier=None,
+    amplifier_type=None,
     discovery_timeout=5,
     upnp_subscription_callback_base="",
     proxy_media_server=False,
@@ -57,6 +59,8 @@ def get_vibin_instance(
             streamer_type=streamer_type,
             media_server=media_server,
             media_server_type=media_server_type,
+            amplifier=amplifier,
+            amplifier_type=amplifier_type,
             discovery_timeout=discovery_timeout,
             upnp_subscription_callback_base=upnp_subscription_callback_base,
         )
@@ -68,7 +72,6 @@ def get_vibin_instance(
                 _media_server_proxy_client = httpx.AsyncClient(
                     base_url=_media_server_proxy_target
                 )
-
     except VibinError as e:
         logger.error(f"Vibin server start unsuccessful: {e}")
         raise
@@ -147,6 +150,34 @@ def requires_media(func):
         return func(*args, **kwargs)
 
     return wrapper_requires_media
+
+
+def requires_amplifier(allow_if_off=False):
+    """Decorator to check for valid amplifier state.
+
+    Returns a 404 if the vibin server does not have an amplifier.
+    Returns a 503 if an amplifier is registered but is not powered on."""
+
+    def decorator_requires_amplifier(func):
+        @functools.wraps(func)
+        def wrapper_requires_amplifier(*args, **kwargs):
+            if _vibin is None or _vibin.amplifier is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Feature unavailable (no amplifier registered with Vibin)",
+                )
+
+            if _vibin.amplifier.power != "on" and not allow_if_off:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Feature currently unavailable (amplifier is powered off)",
+                )
+
+            return func(*args, **kwargs)
+
+        return wrapper_requires_amplifier
+
+    return decorator_requires_amplifier
 
 
 _start_time = time.time()

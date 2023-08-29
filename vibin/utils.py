@@ -59,7 +59,7 @@ class StoppableThread(threading.Thread):
     thread target to frequently check whether stop_event is set.
     """
     def __init__(self, *args, **kwargs):
-        super(StoppableThread, self).__init__(*args, **kwargs)
+        super(StoppableThread, self).__init__(*args, **kwargs, daemon=True)
         self.stop_event = threading.Event()
 
     def stop(self):

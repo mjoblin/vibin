@@ -3,20 +3,21 @@
 `vibin` is the backend for [`vibinui`](https://github.com/mjoblin/vibinui). It:
 
 * Talks to [StreamMagic] audio streamers.
-* Talks to NAS media servers running [Asset UPnP].
+* Talks to NAS media servers running [Asset UPnP] (optional).
+* Talks to [Hegel] amplifiers for volume/mute control (optional).
 * Serves the `vibinui` Web UI.
 * Exposes a REST API and a WebSocket server for use by clients (such as `vibinui`).
 * Comes with CLI tools for starting the server, controlling the streamer transport, installing the
   UI, etc.
 
-> `vibin` can in theory be extended to support other streamers and media servers. Currently it has
-> only been used with the Cambridge Audio CXNv2 (via StreamMagic and UPnP) and a NAS running Asset
-> UPnP.
+> `vibin` can in theory be extended to support other streamers, media servers, and amplifiers.
+> Currently it has only been used with the Cambridge Audio CXNv2 streamer (via StreamMagic and
+> UPnP), a NAS running Asset UPnP, and a Hegel H120 amplifier.
 
 ## Overview
 
 `vibin` sits between the Vibin UI (`vibinui`) and the hardware devices (such as the music streamer,
-NAS, etc).
+NAS, and amplifier).
 
 ![Vibin Overview]
 
@@ -87,7 +88,8 @@ vibin serve
 
 1. Attempt to find a Cambridge Audio StreamMagic audio streamer on the network (using UPnP
    discovery).
-1. Attempt to find (via the streamer) any connected local media.
+1. Attempt to find (via the streamer) any supported local media.
+1. Attempt to find a supported amplifier.
 1. Serve the Web UI (if installed).
 
 This behavior can be modified using command line options. See `vibin serve --help` for more
@@ -101,6 +103,9 @@ information. The supported options include:
   -m, --media-server NAME       Media server (UPnP friendly name, or UPnP location URL).
   --media-server-type TYPE      Media server type (e.g. Asset). Usually not required.
   --no-media-server             Ignore any local media servers.
+  -a, --amplifier NAME          Amplifier (UPnP friendly name, or UPnP location URL).
+  --amplifier-type TYPE         Amplifier type (e.g. Hegel). Usually not required.
+  --no-amplifier                Ignore any amplifiers.
   -t, --discovery-timeout SECS  UPnP discovery timeout (seconds).  [default: 5]
   -u, --vibinui DIR             Path to Web UI static files; use 'auto' to find 'vibin installui'
                                 location.  [default: auto]
@@ -261,6 +266,7 @@ to the backend as they happen.
 
 [StreamMagic]: https://www.cambridgeaudio.com/row/en/products/streammagic
 [Asset UPnP]: https://dbpoweramp.com/asset-upnp-dlna.htm
+[Hegel]: https://hegel.com
 [Python 3.10]: https://www.python.org/downloads
 [Discogs]: https://www.discogs.com
 [Genius]: https://genius.com

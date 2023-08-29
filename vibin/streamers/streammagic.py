@@ -37,6 +37,7 @@ from vibin.models import (
     MediaStream,
     PlaylistModifiedHandler,
     PlaylistModifyAction,
+    PowerState,
     Presets,
     StreamerDeviceDisplay,
     StreamerState,
@@ -303,14 +304,40 @@ class StreamMagic(Streamer):
     # System
 
     @property
-    def currently_playing(self) -> CurrentlyPlaying:
-        return self._currently_playing
+    def power(self) -> PowerState | None:
+        return self._device_state.power
+
+    @power.setter
+    def power(self, state: PowerState) -> None:
+        # If the streamer is already on, sending "ON" again seems to trigger a
+        # reboot -- so only send an "ON" if the streamer is not already on.
+        if state == "on" and self._device_state.power != "on":
+            requests.get(f"http://{self._device_hostname}/smoip/system/power?power=ON")
+        elif state == "off":
+            requests.get(f"http://{self._device_hostname}/smoip/system/power?power=NETWORK")
 
     def power_toggle(self):
         requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
 
-    def set_audio_source(self, source: str):
-        requests.get(f"http://{self._device_hostname}/smoip/zone/state?source={source}")
+    @property
+    def currently_playing(self) -> CurrentlyPlaying:
+        return self._currently_playing
+
+    def set_audio_source(self, source_name: str):
+        try:
+            source_details = [
+                source
+                for source in self._device_state.sources.available
+                if source.name == source_name
+            ][0]
+
+            requests.get(
+                f"http://{self._device_hostname}/smoip/zone/state?source={source_details.id}"
+            )
+        except IndexError:
+            raise VibinDeviceError(
+                f"Could not find streamer source with name: {source_name}"
+            )
 
     # -------------------------------------------------------------------------
     # Transport
@@ -324,6 +351,11 @@ class StreamMagic(Streamer):
 
     def play(self):
         self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+
+    def toggle_playback(self):
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?action=toggle"
+        )
 
     def pause(self):
         self._av_transport.Pause(InstanceID=self._instance_id)
@@ -611,12 +643,13 @@ class StreamMagic(Streamer):
         transform_map: dict[str, TransportAction] = {
             "pause": "pause",
             "play": "play",
-            "play_pause": "stop",
+            "play_pause": "toggle_playback",
             "toggle_shuffle": "shuffle",
             "toggle_repeat": "repeat",
             "track_next": "next",
             "track_previous": "previous",
             "seek": "seek",
+            "stop": "stop",
         }
 
         transformed = []
@@ -1096,9 +1129,23 @@ class StreamMagic(Streamer):
                 pass
 
             # Extract the active track details from play_state metadata.
+            # When determining the active track details, if we don't have a
+            # title but we *do* have a station then we use the station as the
+            # title. This handles internet radio cases.
+            #
+            # TODO: Improve handling of the current track. For local media we
+            #   mostly ignore this information and use the media id to get the
+            #   full track details from the media server. But for non-local
+            #   playback it would be nice to have a more flexible notion of
+            #   a current track (which accounts for a variety of sources).
+
+            current_track_info = play_state["metadata"]
+            if "title" not in current_track_info and "station" in current_track_info:
+                current_track_info["title"] = current_track_info["station"]
+
             try:
                 self._currently_playing.active_track = ActiveTrack(
-                    **play_state["metadata"]
+                    **current_track_info
                 )
             except KeyError:
                 pass
