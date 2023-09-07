@@ -350,15 +350,27 @@ class StreamMagic(Streamer):
         return self._transport_state
 
     def play(self):
-        self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+        if self._transport_state.play_state == "play":
+            return
+
+        if "toggle_playback" in self._transport_state.active_controls:
+            self.toggle_playback()
+        else:
+            self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+
+    def pause(self):
+        if self._transport_state.play_state == "pause":
+            return
+
+        if "toggle_playback" in self._transport_state.active_controls:
+            self.toggle_playback()
+        else:
+            self._av_transport.Pause(InstanceID=self._instance_id)
 
     def toggle_playback(self):
         requests.get(
             f"http://{self._device_hostname}/smoip/zone/play_control?action=toggle"
         )
-
-    def pause(self):
-        self._av_transport.Pause(InstanceID=self._instance_id)
 
     def stop(self):
         self._av_transport.Stop(InstanceID=self._instance_id)

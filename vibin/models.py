@@ -149,6 +149,7 @@ class AmplifierState(UPnPDeviceState):
 class SystemState(BaseModel):
     """System hardware state."""
 
+    power: PowerState | None
     streamer: StreamerState
     media: MediaServerState | None
     amplifier: AmplifierState | None
