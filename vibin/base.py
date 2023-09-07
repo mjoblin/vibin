@@ -268,8 +268,24 @@ class Vibin:
 
     @property
     def system_state(self) -> SystemState:
-        """The current system state."""
+        """The current system device hardware state.
+
+        Returns details on the overall media system, the streamer, and (if
+        available) the media server and amplifier.
+
+        The overall system power will always be either "off" or "on". It's only
+        considered on if the streamer is on and the amplifier (if present) is
+        also on. A mixed on/off state for streamer/amp will have a system state
+        of "off".
+        """
+        system_power = "off" if self.streamer.power is None else self.streamer.power
+
+        if self.amplifier is not None:
+            if self.amplifier.power == "off" or self.amplifier.power is None:
+                system_power = "off"
+
         return SystemState(
+            power=system_power,
             streamer=self.streamer.device_state,
             media=self.media_server.device_state if self.media_server else None,
             amplifier=self.amplifier.device_state
