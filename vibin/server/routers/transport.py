@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from vibin import VibinError
+from vibin import VibinInputError, VibinError
 from vibin.models import TransportPlayheadPositionPayload, TransportState
 from vibin.server.dependencies import get_vibin_instance
 from vibin.types import SeekTarget
@@ -138,6 +138,8 @@ def transport_shuffle() -> TransportState:
 def transport_seek(target: SeekTarget):
     try:
         get_vibin_instance().streamer.seek(target)
+    except VibinInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except VibinError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
