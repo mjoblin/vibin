@@ -188,17 +188,17 @@ def server_start(
     # Add the REST API routers.
     # -------------------------------------------------------------------------
 
-    vibin_app.include_router(albums_router)
-    vibin_app.include_router(artists_router)
-    vibin_app.include_router(browse_router)
-    vibin_app.include_router(favorites_router)
-    vibin_app.include_router(playlist_router)
-    vibin_app.include_router(presets_router)
-    vibin_app.include_router(stored_playlists_router)
-    vibin_app.include_router(system_router)
-    vibin_app.include_router(tracks_router)
-    vibin_app.include_router(transport_router)
-    vibin_app.include_router(vibin_router)
+    vibin_app.include_router(albums_router, prefix="/api")
+    vibin_app.include_router(artists_router, prefix="/api")
+    vibin_app.include_router(browse_router, prefix="/api")
+    vibin_app.include_router(favorites_router, prefix="/api")
+    vibin_app.include_router(playlist_router, prefix="/api")
+    vibin_app.include_router(presets_router, prefix="/api")
+    vibin_app.include_router(stored_playlists_router, prefix="/api")
+    vibin_app.include_router(system_router, prefix="/api")
+    vibin_app.include_router(tracks_router, prefix="/api")
+    vibin_app.include_router(transport_router, prefix="/api")
+    vibin_app.include_router(vibin_router, prefix="/api")
 
     # -------------------------------------------------------------------------
     # Add the non-REST-API routers (media server proxy, WebSocket server, and
