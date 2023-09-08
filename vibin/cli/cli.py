@@ -276,6 +276,7 @@ def get_server_info():
 
 def call_vibin(endpoint, method="POST", payload=None):
     vibin_server = None
+    api_prefix = "/api"
 
     try:
         vibin_server = get_server_info()
@@ -293,7 +294,7 @@ def call_vibin(endpoint, method="POST", payload=None):
     try:
         response = requests.request(
             method=method,
-            url=f"{vibin_server}{endpoint}",
+            url=f"{vibin_server}{api_prefix}{endpoint}",
             json=payload,
         )
 
