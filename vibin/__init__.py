@@ -1,5 +1,6 @@
 from vibin.exceptions import (
     VibinDeviceError,
+    VibinInputError,
     VibinError,
     VibinNotFoundError,
     VibinMissingDependencyError,

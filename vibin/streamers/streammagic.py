@@ -23,7 +23,7 @@ from upnpclient.marshal import marshal_value
 import websockets
 import xmltodict
 
-from vibin import utils, VibinDeviceError
+from vibin import utils, VibinDeviceError, VibinError, VibinInputError
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -376,6 +376,11 @@ class StreamMagic(Streamer):
         self._av_transport.Stop(InstanceID=self._instance_id)
 
     def seek(self, target: SeekTarget):
+        if "seek" not in self.active_transport_controls:
+            # TODO: Establish consistent way of handling "currently unavailable"
+            #   features.
+            raise VibinError("Seek currently unavailable")
+
         target_hmmss = None
 
         # TODO: Fix handling of float vs. int. All numbers come in as floats,
@@ -393,7 +398,7 @@ class StreamMagic(Streamer):
                 target_hmmss = utils.secs_to_hmmss(int(target))
         elif isinstance(target, str):
             if not utils.is_hmmss(target):
-                raise TypeError("Time must be in h:mm:ss format")
+                raise VibinInputError("Time must be in h:mm:ss format")
 
             target_hmmss = target
 
