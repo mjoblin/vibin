@@ -27,12 +27,12 @@ The main responsibilities of `vibin` are:
    etc).
 1. **Persist information** such as user-defined Playlists, Favorites, lyrics, etc.
 1. Expose:
-   * **A REST API**.
+   * **A REST API** under `/api`.
      * To retrieve media metadata.
      * To perform actions on the streamer, media server, and amplifier.
      * To receive UPnP events from the streamer, media server, or amplifier; and to then forward the
        events on to the target interface implementation.
-   * **A WebSocket server** (to send live updates to any connected clients).
+   * **A WebSocket server** at `/ws` (to send live updates to any connected clients).
    * **The UI's static files** (see [vibinui]).
    * **A proxy for the media server** (mostly for album art).
      * This is only required when one or more clients will be accessing `vibin` from a different
@@ -145,7 +145,11 @@ The main hub of `vibin` is the [`Vibin()`](vibin/base.py) class, which:
 The REST API is mostly a thin API layer that sits in front of `Vibin`. The WebSocket server
 subscribes to any `Vibin` updates, which it then passes on to any connected clients.
 
-#### WebSocket message types
+#### WebSocket server
+
+The WebSocket server is hosted at `/ws`.
+
+##### WebSocket message types
 
 The following message types are published:
 
@@ -192,11 +196,12 @@ is shown below:
 
 #### REST API
 
-The REST API's interactive swagger is available at `http://hostname:8080/docs`.
+The REST API is hosted under `http://hostname:8080/api`. Its interactive swagger is available at
+`http://hostname:8080/docs`.
 
 ![Swagger]
 
-The top-level REST routes include:
+The top-level REST routes (all nested under the `/api` prefix) include:
 
 | Route               | Description                                                                                   |
 |---------------------|-----------------------------------------------------------------------------------------------|

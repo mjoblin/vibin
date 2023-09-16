@@ -200,8 +200,8 @@ waveforms will be automatically generated from local media on play.
 `vibin` provides three interfaces for interaction:
 
 1. Command line interface (CLI).
-2. REST API.
-3. WebSocket server.
+2. REST API (under `/api`).
+3. WebSocket server (at `/ws`).
 
 > These interfaces are intended primarily for the Web UI. Most installs won't need to use more than
 > `vibin installui` and `vibin serve`.
@@ -245,7 +245,8 @@ vibin serve --help
 > The REST API can be ignored by most users.
 
 `vibin` exposes a REST API. When `vibin serve` is running, the REST API documentation can be found
-at `http://hostname:8080/docs`. The API documentation is interactive. 
+at `http://hostname:8080/docs` with the API endpoints being found under `http://hostname:8080/api`.
+The API documentation is interactive. 
 
 ![Swagger]
 
@@ -253,8 +254,8 @@ at `http://hostname:8080/docs`. The API documentation is interactive.
 
 > The WebSocket server can be ignored by most users.
 
-`vibin` also exposes a WebSocket server. Connected clients will receive messages describing updates
-to the backend as they happen.
+`vibin` also exposes a WebSocket server at `http://hostname:8080/ws`. Connected clients will receive
+messages describing updates to the backend as they happen.
 
 ## Database
 
