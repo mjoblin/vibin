@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from websockets.exceptions import ConnectionClosedError, WebSocketException
 
 from vibin import VibinError
 from vibin.logger import logger
@@ -215,6 +216,13 @@ class ConnectionManager:
                 defunct_clients = []
 
                 for client_websocket in self.active_connections.keys():
+                    client_id = "(unknown)"
+
+                    try:
+                        client_id = self.active_connections[client_websocket]["id"]
+                    except KeyError:
+                        pass
+                    
                     try:
                         await client_websocket.send_text(
                             self.build_message(
@@ -223,21 +231,25 @@ class ConnectionManager:
                                 client_websocket,
                             )
                         )
-                    except RuntimeError as e:
+                    except (RuntimeError, ConnectionClosedError) as e:
                         logger.warning(
-                            "Error sending broadcast message to WebSocket client "
+                            f"{type(e).__name__} sending broadcast message to WebSocket client {client_id} "
                             + f"(client will be removed): {e}"
                         )
                         defunct_clients.append(client_websocket)
+                    except WebSocketException as e:
+                        logger.warning(
+                            f"WebSocket error sending broadcast message to WebSocket client {client_id}: {e}"
+                        )
 
                 for defunct_client in defunct_clients:
                     self._remove_client(defunct_client)
             except VibinError as e:
-                logger.warning(f"Could not send message over WebSocket: {e}")
+                logger.warning(f"Could not send broadcast message to all WebSocket clients: {e}")
             except Exception as e:
                 # TODO: Reconsider this "except Exception" approach; it's heavy-handed
                 logger.warning(
-                    f"Unexpected error attempting to send message to WebSocket clients: {e}"
+                    f"Unexpected error attempting to send message to all WebSocket clients: {e}"
                 )
 
     async def single_client_send(
