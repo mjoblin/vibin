@@ -220,7 +220,14 @@ class Track(BaseModel):
     creator: str | None
     date: str | None
     artist: str | None
-    album: str | None
+    # TODO: The "album" field cannot be None. This is done to ensure that
+    #   pydantic will require an "album" field to be present for a dict to be
+    #   interpreted as as a Track. If this isn't done then pydantic will coerce
+    #   Tracks into Albums when generating a Favorite response. It would be
+    #   preferred to figure out how to properly manage UPnP object types and
+    #   not fall back on the "None" crutch for every field (Nones result in
+    #   extremely tolerant coercions, which isn't always desirable).
+    album: str
     duration: str | None
     genre: str | None
     album_art_uri: str | None
@@ -368,7 +375,7 @@ class Favorite(BaseModel):
     type: FavoriteType
     media_id: MediaId
     when_favorited: float | None
-    media: Album | Track | None = None
+    media: Track | Album | None
 
 
 Favorites = list[Favorite]
