@@ -377,7 +377,7 @@ class Asset(MediaServer):
                 pass
 
         return Track(
-            id=item["id"],
+            id=item["id"].removesuffix(f"-{item['parentID']}"),
             parentId=item["parentID"],
             title=item.dc_title.cdata,
             creator=item.dc_creator.cdata,
