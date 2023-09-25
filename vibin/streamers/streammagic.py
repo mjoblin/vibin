@@ -697,6 +697,15 @@ class StreamMagic(Streamer):
             this_track_id = match.groups(0)[0]
             this_album_id = match.groups(0)[1]
 
+            if this_album_id == "0":
+                # An album id of "0" seems to mean that the album id is unknown,
+                # so strip it off.
+                this_album_id = None
+                this_track_id = this_track_id.removesuffix("-0")
+            else:
+                # We have a known album id, so strip it off of the track id.
+                this_track_id = this_track_id.replace(f"-{this_album_id}", "")
+
             return this_album_id, this_track_id
 
         return None, None
