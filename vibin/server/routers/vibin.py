@@ -4,9 +4,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from vibin import VibinInputError
 from vibin.models import VibinStatus, VibinSettings
 from vibin.server.dependencies import get_vibin_instance, requires_media, server_status
 from vibin.server.routers.websocket_server import ws_connection_manager
+from vibin.types import DatabaseName
 
 
 # -----------------------------------------------------------------------------
@@ -59,16 +61,23 @@ def vibin_update_settings(settings: VibinSettings) -> VibinSettings:
 
 
 @vibin_router.get(
-    "/db", summary="Retrieve the Database contents (as JSON)", tags=["Vibin Server"]
+    "/db/{database_name}",
+    summary="Retrieve the contents of a system database as JSON",
+    tags=["Vibin Server"],
 )
-def db_get() -> dict[str, Any]:
-    return get_vibin_instance().db_get()
+def db_get(database_name: DatabaseName) -> dict[str, Any]:
+    try:
+        return get_vibin_instance().db_get(database_name)
+    except VibinInputError as e:
+        raise HTTPException(status_code=400, detail=f"Cannot retrieve database: {e}")
 
 
 @vibin_router.put(
-    "/db", summary="Replace the Database with the provided JSON", tags=["Vibin Server"]
+    "/db/{database_name}",
+    summary="Replace the contents of a system database with the provided JSON",
+    tags=["Vibin Server"],
 )
-def db_set(data: dict):
+def db_set(database_name: DatabaseName, data: dict):
     # TODO: This takes a user-provided chunk of data and writes it to disk.
     #   This could be exploited for much harm if used with ill intent.
     try:
@@ -81,4 +90,7 @@ def db_set(data: dict):
             detail=f"Provided payload is not valid JSON: {e}",
         )
 
-    return get_vibin_instance().db_set(data)
+    try:
+        return get_vibin_instance().db_set(database_name, data)
+    except VibinInputError as e:
+        raise HTTPException(status_code=400, detail=f"Cannot replace database: {e}")

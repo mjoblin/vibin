@@ -42,7 +42,11 @@ HMMSS_MATCH = re.compile("^\d+:\d{2}:\d{2}(\.\d+)?$")
 #
 # Ultimately the persistence solution should be reconsidered entirely, perhaps
 # preferring a solution which natively supports concurrent access.
-DB_ACCESS_LOCK = threading.Lock()
+DB_ACCESS_LOCK_FAVORITES = threading.Lock()
+DB_ACCESS_LOCK_LINKS = threading.Lock()
+DB_ACCESS_LOCK_LYRICS = threading.Lock()
+DB_ACCESS_LOCK_PLAYLISTS = threading.Lock()
+DB_ACCESS_LOCK_SETTINGS = threading.Lock()
 
 
 # =============================================================================

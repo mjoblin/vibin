@@ -13,7 +13,7 @@ from vibin.mediaservers import MediaServer
 from vibin.models import Lyrics
 from vibin.types import MediaId
 from vibin.utils import (
-    DB_ACCESS_LOCK,
+    DB_ACCESS_LOCK_LYRICS,
     requires_external_service_token,
     requires_media_server,
 )
@@ -64,14 +64,14 @@ class LyricsManager:
         # Check if lyrics are already stored
         StoredLyricsQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_LYRICS:
             stored_lyrics = self._db.get(
                 StoredLyricsQuery.lyrics_id == storage_id(track_id, artist, title)
             )
 
         if stored_lyrics is not None:
             if update_cache:
-                with DB_ACCESS_LOCK:
+                with DB_ACCESS_LOCK_LYRICS:
                     self._db.remove(doc_ids=[stored_lyrics.doc_id])
             else:
                 lyrics_data = Lyrics(**stored_lyrics)
@@ -108,7 +108,7 @@ class LyricsManager:
                 chunks=lyric_chunks if lyric_chunks is not None else [],
             )
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_LYRICS:
                 self._db.insert(lyric_data.dict())
 
             return lyric_data
@@ -122,13 +122,13 @@ class LyricsManager:
 
         StoredLyricsQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_LYRICS:
             stored_lyrics = self._db.get(StoredLyricsQuery.lyrics_id == lyrics_id)
 
         if stored_lyrics is None:
             raise VibinNotFoundError(f"Could not find lyrics id: {lyrics_id}")
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_LYRICS:
             self._db.update({"is_valid": is_valid}, doc_ids=[stored_lyrics.doc_id])
 
     def search(self, search_query: str) -> list[MediaId]:
@@ -145,7 +145,7 @@ class LyricsManager:
         Lyrics = Query()
         Chunk = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_LYRICS:
             results = self._db.search(
                 Lyrics.chunks.any(
                     Chunk.header.search(search_query, flags=re.IGNORECASE)

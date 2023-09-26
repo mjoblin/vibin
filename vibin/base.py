@@ -1,11 +1,12 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from threading import Lock
+from typing import Any, Union
 
 from tinydb import TinyDB
 
-from vibin import VibinError
+from vibin import VibinError, VibinInputError
 from vibin.constants import (
     DB_ROOT,
     DEFAULT_ALL_ALBUMS_PATH,
@@ -45,12 +46,20 @@ from vibin.models import (
 )
 from vibin.streamers import Streamer
 from vibin.types import (
+    DatabaseName,
     MediaId,
     UpdateMessageHandler,
     UPnPDeviceType,
     UpdateMessageType,
 )
-from vibin.utils import DB_ACCESS_LOCK, requires_media_server
+from vibin.utils import (
+    DB_ACCESS_LOCK_FAVORITES,
+    DB_ACCESS_LOCK_LINKS,
+    DB_ACCESS_LOCK_LYRICS,
+    DB_ACCESS_LOCK_PLAYLISTS,
+    DB_ACCESS_LOCK_SETTINGS,
+    requires_media_server,
+)
 
 
 class Vibin:
@@ -259,7 +268,7 @@ class Vibin:
 
     @settings.setter
     def settings(self, settings: VibinSettings):
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_SETTINGS:
             self._settings_db.update(settings.dict())
 
         self._current_media_server.all_albums_path = settings.all_albums_path
@@ -446,17 +455,54 @@ class Vibin:
             # Send updated state vars to interested recipients.
             self._send_update("UPnPProperties", self.upnp_properties)
 
-    def db_get(self):
-        """Retrieve the entire system database as a dict."""
-        with DB_ACCESS_LOCK, open(self._db_file, "r") as fh:
-            return json.loads(fh.read())
+    def _get_db_details(
+        self, database: DatabaseName
+    ) -> tuple[Union[Path, None], Union[Lock, None]]:
+        if database == "favorites":
+            db_file = self._db_file_favorites
+            lock = DB_ACCESS_LOCK_FAVORITES
+        elif database == "lyrics":
+            db_file = self._db_file_lyrics
+            lock = DB_ACCESS_LOCK_LYRICS
+        elif database == "playlists":
+            db_file = self._db_file_playlists
+            lock = DB_ACCESS_LOCK_PLAYLISTS
+        elif database == "settings":
+            db_file = self._db_file_settings
+            lock = DB_ACCESS_LOCK_SETTINGS
+        elif database == "links":
+            db_file = self._db_file_links
+            lock = DB_ACCESS_LOCK_LINKS
+        elif database == "lyrics":
+            db_file = self._db_file_lyrics
+            lock = DB_ACCESS_LOCK_LYRICS
+        else:
+            db_file = None
+            lock = None
 
-    def db_set(self, data):
-        """Set the entire system database from a dict."""
-        with DB_ACCESS_LOCK, open(self._db_file, "w") as fh:
-            fh.write(json.dumps(data))
+        return db_file, lock
 
-        self._init_db()
+    def db_get(self, database: DatabaseName):
+        """Retrieve the contents of a system database as a dict."""
+        db_file, lock = self._get_db_details(database)
+
+        if db_file is None or lock is None:
+            raise VibinInputError(f"Invalid database: {database}")
+        else:
+            with lock, open(db_file, "r") as fh:
+                return json.loads(fh.read())
+
+    def db_set(self, database: DatabaseName, data):
+        """Set the contents of a system database from a dict."""
+        db_file, lock = self._get_db_details(database)
+
+        if db_file is None or lock is None:
+            raise VibinInputError(f"Invalid database: {database}")
+        else:
+            with lock, open(db_file, "w") as fh:
+                fh.write(json.dumps(data))
+
+            self._init_db()
 
     def shutdown(self):
         """Shut down the Vibin system.
@@ -469,7 +515,11 @@ class Vibin:
         logger.info("Vibin instance is shutting down")
 
         logger.info("Closing database")
-        self._db.close()
+        self._db_favorites.close()
+        self._db_links.close()
+        self._db_lyrics.close()
+        self._db_playlists.close()
+        self._db_settings.close()
 
         if self._current_streamer:
             logger.info(f"Disconnecting from {self._current_streamer.name}")
@@ -489,20 +539,41 @@ class Vibin:
     # Initialization helpers
 
     def _init_db(self):
+        """Initialize the database."""
+        # NOTE: This initializes a separate TinyDB file per database table.
+        #   It's possible to instead store all tables in one file, but that
+        #   affects performance as the file size grows. The downside to
+        #   multiple files is that we have a pretty sloppy collection of files,
+        #   TinyDB instances, and DB locks. TinyDB should be replaced with
+        #   another database solution TinyDB should be replaced with
+        #   another database solution.
+
         # Configure app-level persistent data directory.
         try:
             os.makedirs(DB_ROOT, exist_ok=True)
         except OSError:
             raise VibinError(f"Cannot create data directory: {DB_ROOT}")
 
-        # Configure data store.
-        self._db_file = Path(DB_ROOT, "db.json")
-        self._db = TinyDB(self._db_file)
-        self._settings_db = self._db.table("settings")
-        self._playlists_db = self._db.table("playlists")
-        self._favorites_db = self._db.table("favorites")
-        self._lyrics_db = self._db.table("lyrics")
-        self._links_db = self._db.table("links")
+        # Configure data store. Lyrics are stored in a separate file for
+        # performance reasons.
+
+        self._db_file_favorites = Path(DB_ROOT, "db_favorites.json")
+        self._db_file_links = Path(DB_ROOT, "db_links.json")
+        self._db_file_lyrics = Path(DB_ROOT, "db_lyrics.json")
+        self._db_file_playlists = Path(DB_ROOT, "db_playlists.json")
+        self._db_file_settings = Path(DB_ROOT, "db_settings.json")
+
+        self._db_favorites = TinyDB(self._db_file_favorites)
+        self._db_links = TinyDB(self._db_file_links)
+        self._db_lyrics = TinyDB(self._db_file_lyrics)
+        self._db_playlists = TinyDB(self._db_file_playlists)
+        self._db_settings = TinyDB(self._db_file_settings)
+
+        self._favorites_db = self._db_favorites.table("favorites")
+        self._links_db = self._db_links.table("links")
+        self._lyrics_db = self._db_lyrics.table("lyrics")
+        self._playlists_db = self._db_playlists.table("playlists")
+        self._settings_db = self._db_settings.table("settings")
 
         if len(self._settings_db.all()) == 0:
             settings = VibinSettings(
@@ -511,7 +582,7 @@ class Vibin:
                 all_artists_path=DEFAULT_ALL_ARTISTS_PATH,
             )
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_SETTINGS:
                 self._settings_db.insert(settings.dict())
 
     def _add_external_service(self, service_class, token_env_var=None):

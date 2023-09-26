@@ -107,3 +107,11 @@ TransportShuffleState = Literal["off", "all"]
 # Int: Number of seconds into the track
 # Str: h:mm:ss into the track
 SeekTarget = float | int | str
+
+DatabaseName = Literal[
+    "favorites",
+    "links",
+    "lyrics",
+    "playlists",
+    "settings",
+]
