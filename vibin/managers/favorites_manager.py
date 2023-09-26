@@ -8,7 +8,7 @@ from vibin import VibinNotFoundError
 from vibin.mediaservers import MediaServer
 from vibin.models import Album, Favorite, FavoritesPayload, Track
 from vibin.types import FavoriteType, MediaId, UpdateMessageHandler
-from vibin.utils import DB_ACCESS_LOCK, requires_media_server
+from vibin.utils import DB_ACCESS_LOCK_FAVORITES, requires_media_server
 
 
 class FavoritesManager:
@@ -48,7 +48,7 @@ class FavoritesManager:
         # Check for existing favorite with this media_id
         FavoritesQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_FAVORITES:
             existing_favorite = self._db.get(FavoritesQuery.media_id == media_id)
 
         if existing_favorite:
@@ -74,7 +74,7 @@ class FavoritesManager:
             when_favorited=time.time(),
         )
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_FAVORITES:
             self._db.insert(favorite_data.dict())
 
         self._send_update()
@@ -86,13 +86,13 @@ class FavoritesManager:
 
         FavoritesQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_FAVORITES:
             favorite_to_delete = self._db.get(FavoritesQuery.media_id == media_id)
 
         if favorite_to_delete is None:
             raise VibinNotFoundError()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_FAVORITES:
             self._db.remove(doc_ids=[favorite_to_delete.doc_id])
 
         self._send_update()
@@ -112,7 +112,7 @@ class FavoritesManager:
 
         favorites = []
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_FAVORITES:
             for favorite in self._db.all():
                 if requested_types is None or favorite["type"] in requested_types:
                     try:

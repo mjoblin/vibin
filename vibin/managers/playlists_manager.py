@@ -15,7 +15,7 @@ from vibin.models import (
 )
 from vibin.streamers import Streamer
 from vibin.types import MediaId, PlaylistModifyAction, UpdateMessageHandler
-from vibin.utils import DB_ACCESS_LOCK, requires_media_server
+from vibin.utils import DB_ACCESS_LOCK_PLAYLISTS, requires_media_server
 
 
 class PlaylistsManager:
@@ -130,7 +130,7 @@ class PlaylistsManager:
     @property
     def stored_playlists(self) -> StoredPlaylists:
         """Details on all stored playlists."""
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_PLAYLISTS:
             playlists = StoredPlaylists(
                 status=self._stored_playlist_status,
                 playlists=[StoredPlaylist(**playlist) for playlist in self._db.all()],
@@ -142,7 +142,7 @@ class PlaylistsManager:
         """Details on a single stored playlist."""
         PlaylistQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_PLAYLISTS:
             playlist_dict = self._db.get(PlaylistQuery.id == playlist_id)
 
         if playlist_dict is None:
@@ -157,7 +157,7 @@ class PlaylistsManager:
 
         PlaylistQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_PLAYLISTS:
             playlist_dict = self._db.get(PlaylistQuery.id == stored_playlist_id)
 
         if playlist_dict is None:
@@ -214,7 +214,7 @@ class PlaylistsManager:
                 entry_ids=[entry.trackMediaId for entry in active_playlist.entries],
             )
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_PLAYLISTS:
                 self._db.insert(playlist_data.dict())
 
             self._cached_stored_playlist = playlist_data
@@ -238,7 +238,7 @@ class PlaylistsManager:
             PlaylistQuery = Query()
 
             try:
-                with DB_ACCESS_LOCK:
+                with DB_ACCESS_LOCK_PLAYLISTS:
                     doc_id = self._db.update(
                         updates,
                         PlaylistQuery.id == self._stored_playlist_status.active_id,
@@ -273,7 +273,7 @@ class PlaylistsManager:
         """Delete a stored playlist."""
         PlaylistQuery = Query()
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_PLAYLISTS:
             playlist_to_delete = self._db.get(PlaylistQuery.id == playlist_id)
 
             if playlist_to_delete is None:
@@ -294,7 +294,7 @@ class PlaylistsManager:
         PlaylistQuery = Query()
 
         try:
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_PLAYLISTS:
                 updated_ids = self._db.update(
                     {
                         "updated": now,
@@ -308,7 +308,7 @@ class PlaylistsManager:
 
             self._send_stored_playlists_update()
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_PLAYLISTS:
                 playlist = StoredPlaylist(**self._db.get(doc_id=updated_ids[0]))
 
             return playlist
@@ -330,7 +330,7 @@ class PlaylistsManager:
             entry.trackMediaId for entry in streamer_playlist_entries
         ]
 
-        with DB_ACCESS_LOCK:
+        with DB_ACCESS_LOCK_PLAYLISTS:
             stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._db.all()]
 
         try:

@@ -10,7 +10,7 @@ from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import ExternalServiceLink, Links
 from vibin.types import MediaId
-from vibin.utils import DB_ACCESS_LOCK
+from vibin.utils import DB_ACCESS_LOCK_LINKS
 
 
 class LinksManager:
@@ -57,7 +57,7 @@ class LinksManager:
         if media_id:
             StoredLinksQuery = Query()
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_LINKS:
                 stored_links = self._db.get(StoredLinksQuery.media_id == media_id)
 
             if stored_links is not None:
@@ -140,7 +140,7 @@ class LinksManager:
                 links=results,
             )
 
-            with DB_ACCESS_LOCK:
+            with DB_ACCESS_LOCK_LINKS:
                 self._db.insert(link_data.dict())
 
         return results
