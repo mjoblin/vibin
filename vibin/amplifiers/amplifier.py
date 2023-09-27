@@ -79,6 +79,11 @@ class Amplifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def on_startup(self) -> None:
+        """Called when the Vibin system has started up."""
+        pass
+
+    @abstractmethod
     def on_shutdown(self) -> None:
         """Called when the Vibin system is shut down."""
         pass

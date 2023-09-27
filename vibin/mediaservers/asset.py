@@ -75,6 +75,9 @@ class Asset(MediaServer):
     def device_udn(self) -> str:
         return self._device.udn.removeprefix("uuid:")
 
+    def on_startup(self) -> None:
+        pass
+
     def on_shutdown(self) -> None:
         pass
 

@@ -247,25 +247,6 @@ class StreamMagic(Streamer):
         # (see self._determine_current_media_ids()).
         self._set_last_seen_media_ids(None, None)
 
-        try:
-            # See if any currently-playing media IDs can be found at startup
-            response = device.UuVolControl.GetPlaybackDetails(
-                NavigatorId=self._navigator_id
-            )
-
-            # Determine the currently-streamed URL, and use it to extract IDs.
-            stream_url = untangle.parse(
-                response["RetPlaybackXML"]
-            ).reciva.playback_details.stream.url.cdata
-
-            this_album_id, this_track_id = self._album_and_track_ids_from_file(stream_url)
-
-            logger.info(f"Found currently-playing local media IDs")
-            self._set_last_seen_media_ids(this_album_id, this_track_id)
-        except Exception:
-            # TODO: Investigate which exceptions to handle
-            logger.info(f"No currently-playing local media IDs found")
-
     @property
     def name(self):
         return self._device.friendly_name
@@ -288,6 +269,26 @@ class StreamMagic(Streamer):
 
     def register_media_server(self, media_server: MediaServer):
         self._media_server = media_server
+
+    def on_startup(self) -> None:
+        try:
+            # See if any currently-playing media IDs can be found at startup
+            response = self._device.UuVolControl.GetPlaybackDetails(
+                NavigatorId=self._navigator_id
+            )
+
+            # Determine the currently-streamed URL, and use it to extract IDs.
+            stream_url = untangle.parse(
+                response["RetPlaybackXML"]
+            ).reciva.playback_details.stream.url.cdata
+
+            this_album_id, this_track_id = self._album_and_track_ids_from_file(stream_url)
+
+            logger.info(f"Found currently-playing local media IDs")
+            self._set_last_seen_media_ids(this_album_id, this_track_id)
+        except Exception:
+            # TODO: Investigate which exceptions to handle
+            logger.info(f"No currently-playing local media IDs found")
 
     def on_shutdown(self) -> None:
         if self._disconnected:
