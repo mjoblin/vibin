@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
@@ -18,7 +19,7 @@ from vibin.models import (
     Track,
     UPnPServiceSubscriptions,
 )
-from vibin.types import UpdateMessageHandler, UPnPProperties
+from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
 
 
 # -----------------------------------------------------------------------------
@@ -44,6 +45,10 @@ class Asset(MediaServer):
         self._all_albums_path: str | None = None
         self._new_albums_path: str | None = None
         self._all_artists_path: str | None = None
+
+        self._albums_by_id: dict[MediaId, Album] = {}
+        self._artists_by_id: dict[MediaId, Artist] = {}
+        self._tracks_by_id: dict[MediaId, Track] = {}
 
         self._upnp_properties: UPnPProperties = {}
 
@@ -124,7 +129,10 @@ class Asset(MediaServer):
         if self.all_albums_path is None:
             return []
 
-        return self.get_path_contents(Path(self.all_albums_path))
+        all_albums = self.get_path_contents(Path(self.all_albums_path))
+        self._albums_by_id = {album.id: album for album in all_albums}
+
+        return all_albums
 
     @property
     def albums(self) -> list[Album]:
@@ -132,9 +140,9 @@ class Asset(MediaServer):
 
     @lru_cache
     def _new_albums(self) -> list[Album]:
-        # NOTE: This could just:
+        # NOTE: This could just return the results of:
         #
-        #   return self.get_path_contents(Path(self.new_albums_path))
+        #   self.get_path_contents(Path(self.new_albums_path))
         #
         # ... but "New Albums" returns albums with different Ids from the
         # "All Albums" path. So after getting the New Albums, we replace each
@@ -165,14 +173,17 @@ class Asset(MediaServer):
         return self._new_albums()
 
     def album_tracks(self, album_id) -> list[Track]:
-        album_tracks_xml = self._get_children_xml(album_id)
-        parsed_metadata = untangle.parse(album_tracks_xml)
-
-        return [self._track_from_item(item) for item in parsed_metadata.DIDL_Lite.item]
+        return sorted(
+            [track for track in self.tracks if track.albumId == album_id],
+            key=lambda track: track.original_track_number,
+        )
 
     @lru_cache
     def _artists(self) -> list[Artist]:
-        return self.get_path_contents(Path(self.all_artists_path))
+        all_artists = self.get_path_contents(Path(self.all_artists_path))
+        self._artists_by_id = {artist.id: artist for artist in all_artists}
+
+        return all_artists
 
     @property
     def artists(self) -> list[Artist]:
@@ -180,16 +191,32 @@ class Asset(MediaServer):
 
     def artist(self, artist_id: str) -> Artist:
         try:
-            return self._artist_from_metadata(self.get_metadata(artist_id))
-        except VibinNotFoundError as e:
+            return [artist for artist in self.artists if artist.id == artist_id][0]
+        except IndexError:
             raise VibinNotFoundError(f"Could not find Artist with id '{artist_id}'")
 
     @lru_cache
     def _tracks(self) -> list[Track]:
         tracks: list[Track] = []
 
+        # Retrieve all tracks by iterating over all albums. This ensures that
+        # that each Track's albumId can be set properly.
+
         for album in self.albums:
-            tracks.extend(self.album_tracks(album.id))
+            # Get XML descriptions of all tracks for this album.
+            album_tracks_xml = self._get_children_xml(album.id)
+            parsed_metadata = untangle.parse(album_tracks_xml)
+
+            album_tracks = [
+                self._track_from_item(item) for item in parsed_metadata.DIDL_Lite.item
+            ]
+
+            for album_track in album_tracks:
+                album_track.albumId = album.id
+
+            tracks.extend(album_tracks)
+
+        self._tracks_by_id = {track.id: track for track in tracks}
 
         return tracks
 
@@ -199,17 +226,47 @@ class Asset(MediaServer):
 
     def album(self, album_id: str) -> Album:
         try:
-            return self._album_from_metadata(self.get_metadata(album_id))
-        except VibinNotFoundError as e:
+            return [album for album in self.albums if album.id == album_id][0]
+        except IndexError:
             raise VibinNotFoundError(f"Could not find Album with id '{album_id}'")
 
     def track(self, track_id: str) -> Track:
         try:
-            return self._track_from_metadata(self.get_metadata(track_id))
-        except VibinNotFoundError as e:
+            return [track for track in self.tracks if track.id == track_id][0]
+        except IndexError:
             raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
 
-    # -------------------------------------------------------------------------
+    def ids_from_filename(
+        self, filename: str, requested_ids: list[MediaType]
+    ) -> dict[MediaType, MediaId]:
+        found_ids: dict[MediaType, MediaId] = {key: None for key in requested_ids}
+
+        # Asset Ids seem to be of the form "d-123345...", and "co12A345...".
+        # The first character is a letter, followed by an optional hyphen,
+        # followed by one or more alphanumeric.
+        potential_ids = re.findall(r"[a-z]-?[a-z0-9]+", filename, re.IGNORECASE)
+
+        album_ids = self._albums_by_id.keys()
+        artist_ids = self._artists_by_id.keys()
+        track_ids = self._tracks_by_id.keys()
+
+        for potential_id in potential_ids:
+            if potential_id in album_ids:
+                found_ids["album"] = potential_id
+            elif potential_id in artist_ids:
+                found_ids["artist"] = potential_id
+            elif potential_id in track_ids:
+                found_ids["track"] = potential_id
+
+        if found_ids["album"] is None and found_ids["track"] is not None:
+            # Attempt to find the album id from the track id.
+            try:
+                found_ids["album"] = self.track(found_ids["track"]).albumId
+            except (VibinNotFoundError, AttributeError):
+                pass
+
+        return {key: value for key, value in found_ids.items() if key in requested_ids}
+
     # Browsing
 
     def get_path_contents(
@@ -318,7 +375,6 @@ class Asset(MediaServer):
         """Convert a UPnP container to an Album."""
         return Album(
             id=container["id"],
-            parentId=container["parentID"],
             title=container.dc_title.cdata,
             creator=container.dc_creator.cdata,
             date=container.dc_date.cdata,
@@ -332,7 +388,6 @@ class Asset(MediaServer):
         """Convert a UPnP container to an Artist."""
         return Artist(
             id=container["id"],
-            parentId=container["parentID"],
             title=container.dc_title.cdata,
             genre=container.upnp_genre.cdata,
             album_art_uri=container.upnp_albumArtURI.cdata,
@@ -376,9 +431,14 @@ class Asset(MediaServer):
             except KeyError:
                 pass
 
+        # Asset Track Ids seem to be in "{trackId}-{parentId}" format. We strip
+        # off the "-{parentId}" component, leaving just "{trackId}" (which is
+        # still a valid unique Track Id). We then treat the parentId as the
+        # Album Id for Vibin's purposes.
+
         return Track(
             id=item["id"].removesuffix(f"-{item['parentID']}"),
-            parentId=item["parentID"],
+            albumId=item["parentID"],
             title=item.dc_title.cdata,
             creator=item.dc_creator.cdata,
             date=item.dc_date.cdata,

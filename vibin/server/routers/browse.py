@@ -44,8 +44,8 @@ def path_contents(
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def browse(parent_id: str) -> MediaBrowseSingleLevel:
-    return get_vibin_instance().browse_media(parent_id)
+def children(parent_id: str) -> MediaBrowseSingleLevel:
+    return get_vibin_instance().media_server.children(parent_id)
 
 
 @browse_router.get(
@@ -53,5 +53,5 @@ def browse(parent_id: str) -> MediaBrowseSingleLevel:
 )
 @transform_media_server_urls_if_proxying
 @requires_media
-def browse(id: str):
+def metadata(id: str):
     return xmltodict.parse(get_vibin_instance().media_server.get_metadata(id))

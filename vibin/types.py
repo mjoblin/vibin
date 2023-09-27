@@ -11,6 +11,8 @@ from lxml import etree
 #   then that would likely require a refactoring of many of these types.
 # -----------------------------------------------------------------------------
 
+MediaType = Literal["album", "track", "artist"]
+
 MediaId = str  # Local media server id (Album, Track, Artist)
 
 MediaMetadata = dict  # Local media server metadata

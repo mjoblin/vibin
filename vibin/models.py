@@ -192,7 +192,6 @@ class Album(BaseModel):
     """An album on a local media server."""
 
     id: str | None
-    parentId: str | None
     title: str | None
     creator: str | None
     date: str | None
@@ -205,7 +204,6 @@ class Artist(BaseModel):
     """An artist on a local media server."""
 
     id: str | None
-    parentId: str | None
     title: str | None
     genre: str | None
     album_art_uri: str | None
@@ -215,7 +213,7 @@ class Track(BaseModel):
     """A track on a local media server."""
 
     id: str | None
-    parentId: str | None
+    albumId: str | None
     title: str | None
     creator: str | None
     date: str | None
