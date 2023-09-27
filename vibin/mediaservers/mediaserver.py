@@ -11,7 +11,7 @@ from vibin.models import (
     Track,
     UPnPServiceSubscriptions,
 )
-from vibin.types import MediaId, UpdateMessageHandler, UPnPProperties
+from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
 
 
 # -----------------------------------------------------------------------------
@@ -161,6 +161,11 @@ class MediaServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def album(self, album_id: MediaId) -> Album:
+        """Get details on an Album by MediaId."""
+        pass
+
+    @abstractmethod
     def album_tracks(self, album_id: MediaId) -> list[Track]:
         """Get details on all Tracks for al Album on the Media Server."""
         pass
@@ -183,13 +188,15 @@ class MediaServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def album(self, album_id: MediaId) -> Album:
-        """Get details on an Album by MediaId."""
+    def track(self, track_id: MediaId) -> Track:
+        """Get details on a Track by MediaId."""
         pass
 
     @abstractmethod
-    def track(self, track_id: MediaId) -> Track:
-        """Get details on a Track by MediaId."""
+    def ids_from_filename(
+        self, filename: str, ids: list[MediaType]
+    ) -> dict[MediaType, MediaId]:
+        """Extract Media Ids from the given filename."""
         pass
 
     # -------------------------------------------------------------------------

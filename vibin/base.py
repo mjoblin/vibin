@@ -182,6 +182,17 @@ class Vibin:
         else:
             logger.warning("Not using an amplifier; some features will be unavailable")
 
+        if self.media_server is not None:
+            # Fetching media counts here is useful for logging, but also ensures
+            # that the album and track details are hydrated by the media server
+            # before Vibin is allowed to continue initializing.
+            logger.info("Retrieving local media counts (might take a while)")
+
+            albums = self.media_server.albums
+            tracks = self.media_server.tracks
+
+            logger.info(f"Media server has {len(albums)} albums and {len(tracks)} tracks")
+
         # Initialize the managers for features like favorites, playlists, etc.
         self._favorites_manager = FavoritesManager(
             db=self._favorites_db,

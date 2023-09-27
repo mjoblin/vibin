@@ -23,7 +23,13 @@ from upnpclient.marshal import marshal_value
 import websockets
 import xmltodict
 
-from vibin import utils, VibinDeviceError, VibinError, VibinInputError
+from vibin import (
+    utils,
+    VibinDeviceError,
+    VibinError,
+    VibinInputError,
+    VibinNotFoundError,
+)
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -679,36 +685,20 @@ class StreamMagic(Streamer):
 
         return transformed
 
-    @staticmethod
-    def _album_and_track_ids_from_file(file: str) -> (str | None, str | None):
+    def _album_and_track_ids_from_file(self, file: str) -> (str | None, str | None):
         """Determine Album and Track Media IDs from the given filename.
 
         The source `file` is expected to be a local media file, e.g. a .flac.
         This is making assumptions about the naming conventions used by the
         Asset server, where files are named <track_id>-<album_id>.<ext>.
         """
+        if self._media_server is None:
+            return None, None
+
         filename_only = pathlib.Path(file).stem
+        ids = self._media_server.ids_from_filename(filename_only, ["album", "track"])
 
-        # It seems that the track id can itself include a hyphen whereas the
-        # album id won't.
-        match = re.match(r"^(.*-([^-]+))$", filename_only)
-
-        if match and len(match.groups(0)) == 2:
-            this_track_id = match.groups(0)[0]
-            this_album_id = match.groups(0)[1]
-
-            if this_album_id == "0":
-                # An album id of "0" seems to mean that the album id is unknown,
-                # so strip it off.
-                this_album_id = None
-                this_track_id = this_track_id.removesuffix("-0")
-            else:
-                # We have a known album id, so strip it off of the track id.
-                this_track_id = this_track_id.replace(f"-{this_album_id}", "")
-
-            return this_album_id, this_track_id
-
-        return None, None
+        return ids["album"], ids["track"]
 
     # -------------------------------------------------------------------------
     # State setters
