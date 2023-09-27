@@ -225,6 +225,15 @@ class Vibin:
         self.playlists_manager.check_for_streamer_playlist_in_store()
         self._subscribe_to_upnp_events()
 
+        # Invoke on_startup handlers
+        self.streamer.on_startup()
+
+        if self.media_server is not None:
+            self.media_server.on_startup()
+
+        if self.amplifier is not None:
+            self.amplifier.on_startup()
+
     def __str__(self):
         return (
             f"Vibin: "

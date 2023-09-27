@@ -134,6 +134,9 @@ class Hegel(Amplifier):
     def device_udn(self) -> str:
         return self._device.udn.removeprefix("uuid:")
 
+    def on_startup(self) -> None:
+        pass
+
     def on_shutdown(self) -> None:
         if self._amp_heartbeat_thread:
             logger.info(f"Stopping Hegel heartbeat thread for {self.name}")
