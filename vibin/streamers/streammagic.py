@@ -149,6 +149,8 @@ class StreamMagic(Streamer):
         self._av_transport = device.AVTransport
         self._playlist_extension = device.PlaylistExtension
 
+        self._playlist_id_array = None
+
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
             (
@@ -222,18 +224,6 @@ class StreamMagic(Streamer):
             # TODO
             pass
 
-        # Current playlist.
-        self._playlist_id_array = None
-        self._set_current_playlist_entries()
-
-        # Current playlist track index.
-        try:
-            response = device.UuVolControl.GetCurrentPlaylistTrack()
-            self._set_current_playlist_track_index(response["CurrentPlaylistTrackID"])
-        except Exception:
-            # TODO
-            pass
-
         if self._on_update:
             self._websocket_thread = utils.StoppableThread(
                 target=self._handle_websocket_to_streamer
@@ -271,8 +261,11 @@ class StreamMagic(Streamer):
         self._media_server = media_server
 
     def on_startup(self) -> None:
+        # Perform any StreamMagic-related startup checks which need to wait
+        # until the MediaServer and Amplifier have been initialized.
+
+        # See if any currently-playing media IDs can be found.
         try:
-            # See if any currently-playing media IDs can be found at startup
             response = self._device.UuVolControl.GetPlaybackDetails(
                 NavigatorId=self._navigator_id
             )
@@ -289,6 +282,18 @@ class StreamMagic(Streamer):
         except Exception:
             # TODO: Investigate which exceptions to handle
             logger.info(f"No currently-playing local media IDs found")
+
+        # Figure out what the current active playlist looks like.
+        self._playlist_id_array = None
+        self._set_current_playlist_entries()
+
+        # Current playlist track index.
+        try:
+            response = self._device.UuVolControl.GetCurrentPlaylistTrack()
+            self._set_current_playlist_track_index(response["CurrentPlaylistTrackID"])
+        except Exception:
+            # TODO
+            pass
 
     def on_shutdown(self) -> None:
         if self._disconnected:
