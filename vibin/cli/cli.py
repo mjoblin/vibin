@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from vibin import VibinError
+from vibin.constants import VIBIN_VER
 from vibin.server import server_start
 from vibin.constants import UI_ROOT, VIBIN_PORT
 from vibin.utils import get_ui_install_dir, install_vibinui
@@ -22,6 +23,7 @@ SERVER_FILE = f"{tempfile.gettempdir()}/vibinserver"
 
 
 @click.group()
+@click.version_option(VIBIN_VER)
 def cli():
     """
     A commandline interface to the Vibin server.
