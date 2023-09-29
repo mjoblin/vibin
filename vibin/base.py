@@ -645,6 +645,7 @@ class Vibin:
     def _on_amplifier_connect(self):
         """Handle a successful amplifier connect."""
         logger.info("Vibin has detected successful amplifier connection")
+        self._send_update("System", self.system_state)
 
     def _on_amplifier_disconnect(self):
         """Handle an amplifier connection loss."""
