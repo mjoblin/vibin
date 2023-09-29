@@ -90,7 +90,6 @@ class PlaylistsManager:
         metadata: str,
         action: PlaylistModifyAction = "REPLACE",
         insert_index: int | None = None,
-        ignore_stored_playlist_impact: bool = False,
     ):
         """Modify the streamer's active playlist.
 
@@ -98,10 +97,16 @@ class PlaylistsManager:
         to be added to the playlist. Possible actions include "APPEND",
         "INSERT", "PLAY_FROM_HERE", "PLAY_NEXT", "PLAY_NOW", "REPLACE".
         """
-        if not ignore_stored_playlist_impact:
-            self._reset_stored_playlist_status(send_update=True)
-
         self._streamer.modify_playlist(metadata, action, insert_index)
+
+        if action == "REPLACE":
+            # Treat an entire playlist replace as cutting any connection to a
+            # stored playlist. It's possible that the resulting playlist update
+            # details (sent by the streamer and received by
+            # on_streamer_playlist_modified()) will detect the new playlist as
+            # being identical to a stored playlist; but we don't know if that's
+            # the case yet.
+            self._reset_stored_playlist_status(send_update=True)
 
     @requires_media_server()
     def modify_streamer_playlist_with_id(
@@ -109,7 +114,6 @@ class PlaylistsManager:
         id: MediaId,
         action: PlaylistModifyAction = "REPLACE",
         insert_index: int | None = None,
-        ignore_stored_playlist_impact: bool = False,
     ):
         """Modify the streamer's active playlist.
 
@@ -120,7 +124,6 @@ class PlaylistsManager:
             self._media_server.get_metadata(id),
             action,
             insert_index,
-            ignore_stored_playlist_impact,
         )
 
     def play_streamer_playlist_index(self, index: int):
@@ -153,6 +156,7 @@ class PlaylistsManager:
     @requires_media_server()
     def set_streamer_playlist(self, stored_playlist_id: str) -> StoredPlaylist:
         """Set the streamer's active playlist to the items in a stored playlist."""
+        self.clear_streamer_playlist()
         self._reset_stored_playlist_status(is_activating=True, send_update=True)
 
         PlaylistQuery = Query()
@@ -176,7 +180,6 @@ class PlaylistsManager:
         # isn't clean, and the boolean will be set back to False again before
         # the system has fully dealt with adding entries to the active playlist
         # -- but it's better than doing nothing.
-        self.clear_streamer_playlist()
 
         self._ignore_playlist_updates = True
 
@@ -383,20 +386,19 @@ class PlaylistsManager:
             # persisted unless the user requests it, but the behavior might
             # feel inconsistent.
 
-            if self._stored_playlist_status.active_id:
-                prior_sync_state = (
-                    self._stored_playlist_status.is_active_synced_with_store
-                )
+            prior_sync_state = (
+                self._stored_playlist_status.is_active_synced_with_store
+            )
 
-                self._stored_playlist_status.is_active_synced_with_store = (
-                    self._streamer_playlist_matches_stored(playlist_entries)
-                )
+            self._stored_playlist_status.is_active_synced_with_store = (
+                self._streamer_playlist_matches_stored(playlist_entries)
+            )
 
-                if (
-                    self._stored_playlist_status.is_active_synced_with_store
-                    != prior_sync_state
-                ):
-                    self._send_stored_playlists_update()
+            if (
+                self._stored_playlist_status.is_active_synced_with_store
+                != prior_sync_state
+            ):
+                self._send_stored_playlists_update()
 
     # -------------------------------------------------------------------------
     # Private methods

@@ -378,7 +378,8 @@ class Vibin:
     @requires_media_server()
     def play_id(self, media_id: MediaId):
         """Play the provided media ID. This replaces the active streamer playlist."""
-        self.playlists_manager.modify_streamer_playlist_with_id(media_id)
+        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.modify_streamer_playlist_with_id(media_id, "REPLACE")
         self._last_played_id = media_id
 
     @requires_media_server()
@@ -388,9 +389,7 @@ class Vibin:
 
         # TODO: Consider adding a hard max_count limit
         for media_id in media_ids[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(
-                media_id, "APPEND", ignore_stored_playlist_impact=True
-            )
+            self.playlists_manager.modify_streamer_playlist_with_id(media_id, "APPEND")
 
         if len(media_ids) > 0:
             self.playlists_manager.play_streamer_playlist_index(0)
@@ -405,9 +404,7 @@ class Vibin:
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(
-                album["media_id"], "APPEND", ignore_stored_playlist_impact=True
-            )
+            self.playlists_manager.modify_streamer_playlist_with_id(album["media_id"], "APPEND")
 
         self.playlists_manager.play_streamer_playlist_index(0)
 
@@ -418,9 +415,7 @@ class Vibin:
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(
-                track["media_id"], "APPEND", ignore_stored_playlist_impact=True
-            )
+            self.playlists_manager.modify_streamer_playlist_with_id(track["media_id"], "APPEND")
 
         self.playlists_manager.play_streamer_playlist_index(0)
 
