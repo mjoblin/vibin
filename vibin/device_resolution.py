@@ -220,7 +220,7 @@ def _determine_media_server_device(
 
                     return upnpclient.Device(media_server["description_url"])
                 except IndexError:
-                    logger.watning(
+                    logger.warning(
                         f"Cambridge Audio device '{streamer_device.friendly_name}' "
                         + f"did not specify a media server device"
                     )
