@@ -1,6 +1,5 @@
 from collections.abc import Iterable
 import dataclasses
-from distutils.version import StrictVersion
 import functools
 import json
 import math
@@ -15,6 +14,7 @@ import threading
 import time
 import zipfile
 
+from packaging.version import Version
 from pydantic import BaseModel
 import requests
 import upnpclient
@@ -499,7 +499,7 @@ def get_ui_install_dir() -> Path | None:
         candidate.replace(f"{UI_APPNAME}-", "") for candidate in candidates
     ]
 
-    candidate_versions.sort(key=StrictVersion, reverse=True)
+    candidate_versions.sort(key=Version, reverse=True)
 
     try:
         return Path(UI_ROOT, f"{UI_APPNAME}-{candidate_versions[0]}")
