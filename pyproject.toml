@@ -30,6 +30,7 @@ dependencies = [
     "httpx >= 0.24.1, < 0.25",
     "lxml >= 4.9.2, < 5",
     "lyricsgenius >= 3.0.1, < 4",
+    "packaging >= 24.1",
     "requests >= 2.31.0, < 3",
     "rich >= 13.4.2, < 14",
     "starlette >= 0.27.0, < 0.28",
