@@ -701,8 +701,7 @@ class StreamMagic(Streamer):
         if self._media_server is None:
             return None, None
 
-        filename_only = pathlib.Path(file).stem
-        ids = self._media_server.ids_from_filename(filename_only, ["album", "track"])
+        ids = self._media_server.ids_from_filename(file, ["album", "track"])
 
         return ids["album"], ids["track"]
 
