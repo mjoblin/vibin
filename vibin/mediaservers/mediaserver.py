@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from pathlib import Path
 
 import upnpclient
 
@@ -209,7 +210,7 @@ class MediaServer(metaclass=ABCMeta):
 
     @abstractmethod
     def get_path_contents(
-        self, path: str
+        self, path: Path
     ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
         """Retrieve the contents of the given path on the Media Server."""
         pass
