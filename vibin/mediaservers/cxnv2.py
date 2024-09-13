@@ -163,7 +163,9 @@ class _Catalogue(object):
                        if result.type == "object.item.audioItem.musicTrack"]
         self.tracks_by_id = {track.id: track for track in self.tracks}
         self.tracks_by_album_id = _Catalogue._group_tracks_by_album_id(self.tracks)
-        self.track_id_by_resource = {result.resource : self.id_map.get_id(result.path) for result in results
+        self.track_id_by_resource = {_Catalogue.stabilize_resource_uri(result.resource)
+                                     : self.id_map.get_id(result.path)
+                                     for result in results
                                      if result.resource and result.type == "object.item.audioItem.musicTrack"}
 
         self.albums = [self.create_album(result) for result in results
@@ -188,7 +190,6 @@ class _Catalogue(object):
             genre = result.genre,
             album_art_uri = result.album_art_uri,
             original_track_number = result.original_track_number,
-            resource = result.resource
         )
 
     def create_album(self, result: _BrowseResult) -> Album:
@@ -272,6 +273,18 @@ class _Catalogue(object):
             out[track.albumId].append(track)
 
         return out
+
+    @staticmethod
+    def stabilize_resource_uri(resource: str):
+        """Strips the unstable portion of a resource path, leaving a portion
+        which survives standby mode and is still likely to be a unique
+        identifier for a track.
+
+        Resource paths are in the form:
+        `file:///tmp/usm/27/music/Kosheen/Resist/01%20-%20Demonstrate.mp3`
+        ...where the number is unstable. Returns the rest of the path.
+        """
+        return '/'.join(urlparse(resource).path.split('/')[4:])
 
 
 class CXNv2(MediaServer):
@@ -397,8 +410,9 @@ class CXNv2(MediaServer):
             self, filename: str, ids: list[MediaType]
     ) -> dict[MediaType, MediaId | None]:
         """Extract Media Ids from the given filename."""
-        if filename in self._catalogue().track_id_by_resource:
-            track_id = self._catalogue().track_id_by_resource[filename]
+        stable_resource = _Catalogue.stabilize_resource_uri(filename)
+        if stable_resource in self._catalogue().track_id_by_resource:
+            track_id = self._catalogue().track_id_by_resource[stable_resource]
             return {
                 "track": track_id,
                 "album": self._catalogue().tracks_by_id[track_id].albumId
