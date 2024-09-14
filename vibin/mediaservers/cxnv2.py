@@ -5,11 +5,13 @@ from typing import Iterable
 from xml.etree.ElementTree import Element
 
 import upnpclient
+from urllib.request import urlopen
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 from functools import cache
 
 from vibin import VibinNotFoundError
+from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import MediaServerState, Album, Artist, Track, UPnPServiceSubscriptions, MediaBrowseSingleLevel, \
     MediaFolder
@@ -68,13 +70,11 @@ from vibin.types import UpdateMessageHandler, MediaId, UPnPProperties, MediaType
 # entire path. This allows the synthetic ids to survive a restart of the CXNv2.
 # Unfortunately it does take a couple of seconds to play an album or track that
 # hasn't been played since the last time the CXNv2 was in standby mode.
+#
+# Album art is prefetched at startup, and served to the UI as `data:` URIs.
 # -----------------------------------------------------------------------------
 
-# The present implementation is quite naive and doesn't include workarounds for
-# all the limitations described above.
-#
 # TODO:
-#   * Preserve images across standby mode.
 #   * Provide occasional reassuring log messages when indexing the
 #     ContentDirectory, which can take a long time.
 
@@ -156,7 +156,8 @@ class _MediaIdGenerator(object):
 class _Catalogue(object):
     """Indexes all the Tracks, Albums and Artist objects found in the
     ContentDirectory."""
-    def __init__(self, results: list[_BrowseResult]):
+    def __init__(self, results: list[_BrowseResult], artwork: dict[str, str]):
+        self.artwork = artwork
         self.id_map = _MediaIdGenerator()
 
         self.tracks = [self.create_track(result) for result in results
@@ -188,7 +189,8 @@ class _Catalogue(object):
             album = result.album or "Unknown Album",
             duration = result.duration,
             genre = result.genre,
-            album_art_uri = result.album_art_uri,
+            album_art_uri = self.artwork.get(result.album_art_uri)
+                            or result.album_art_uri,
             original_track_number = result.original_track_number,
         )
 
@@ -200,7 +202,8 @@ class _Catalogue(object):
             title = result.title,
             artist = result.artist or self._guess_artist(album_id),
             genre = result.genre or self._guess_genre(album_id),
-            album_art_uri = result.album_art_uri,
+            album_art_uri = self.artwork.get(result.album_art_uri)
+                            or result.album_art_uri,
         )
 
     def _guess_artist(self, album_id: MediaId):
@@ -526,17 +529,28 @@ class CXNv2(MediaServer):
         to_fetch = deque([([], "0")])
         processed_ids = set()
         browse_results = []
+        artwork_urls = set()
 
         while to_fetch:
             (path, id) = to_fetch.popleft()
             processed_ids.add(id)
             for child in self._browse_direct_children(id, path):
                 browse_results.append(child)
+                if child.album_art_uri:
+                    artwork_urls.add(child.album_art_uri)
                 if (child.type.startswith("object.container")
                         and not child.id in processed_ids):
                     to_fetch.append((path + [child.title], child.id))
 
-        return _Catalogue(browse_results)
+        logger.info("Fetching artwork")
+        artwork = dict()
+        for url in artwork_urls:
+            http_response = urlopen(url)
+            content_type = http_response.headers["Content-Type"]
+            encoded = base64.b64encode(http_response.read()).decode('ascii')
+            artwork[url] = f"data:image/{content_type};base64,{encoded}"
+
+        return _Catalogue(browse_results, artwork)
 
     def _browse_direct_children(
             self, id, parent_path: Iterable[str]) -> list[_BrowseResult]:
