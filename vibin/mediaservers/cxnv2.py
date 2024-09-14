@@ -1,4 +1,5 @@
 import base64
+import time
 from collections import deque, Counter
 from pathlib import Path
 from typing import Iterable
@@ -73,10 +74,6 @@ from vibin.types import UpdateMessageHandler, MediaId, UPnPProperties, MediaType
 #
 # Album art is prefetched at startup, and served to the UI as `data:` URIs.
 # -----------------------------------------------------------------------------
-
-# TODO:
-#   * Provide occasional reassuring log messages when indexing the
-#     ContentDirectory, which can take a long time.
 
 _xml_namespaces = {
     "didl": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
@@ -530,7 +527,9 @@ class CXNv2(MediaServer):
         processed_ids = set()
         browse_results = []
         artwork_urls = set()
+        log_interval = 30
 
+        next_log_time = time.time() + log_interval
         while to_fetch:
             (path, id) = to_fetch.popleft()
             processed_ids.add(id)
@@ -542,13 +541,22 @@ class CXNv2(MediaServer):
                         and not child.id in processed_ids):
                     to_fetch.append((path + [child.title], child.id))
 
+                if time.time() > next_log_time:
+                    logger.info(f"Still scanning - {len(processed_ids)} directories so far")
+                    next_log_time = time.time() + log_interval
+
         logger.info("Fetching artwork")
+        next_log_time = time.time() + log_interval
         artwork = dict()
         for url in artwork_urls:
             http_response = urlopen(url)
             content_type = http_response.headers["Content-Type"]
             encoded = base64.b64encode(http_response.read()).decode('ascii')
             artwork[url] = f"data:image/{content_type};base64,{encoded}"
+
+            if time.time() > next_log_time:
+                logger.info(f"Fetched {len(artwork)} out of {len(artwork_urls)}")
+                next_log_time = time.time() + log_interval
 
         return _Catalogue(browse_results, artwork)
 
