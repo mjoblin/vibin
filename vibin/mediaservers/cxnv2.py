@@ -210,7 +210,7 @@ class _Catalogue(object):
         album is credited to that artist. Otherwise, use the name `Various
         Artists`.
         """
-        tracks = self.tracks_by_album_id[album_id]
+        tracks = self.tracks_by_album_id.get(album_id)
         if not tracks:
             return "Unknown"
         (artist, count) = Counter([t.artist for t in tracks]).most_common(1)[0]
@@ -225,7 +225,7 @@ class _Catalogue(object):
         If most of the tracks share a genre, uses that genre. Otherwise, return
         the string 'Unknown' which the UI expects in the absense of a genre.
         """
-        tracks = self.tracks_by_album_id[album_id]
+        tracks = self.tracks_by_album_id.get(album_id)
         if not tracks:
             return "Unknown"
         (genre, count) = Counter([t.genre for t in tracks]).most_common(1)[0]
@@ -381,11 +381,14 @@ class CXNv2(MediaServer):
 
     def album(self, album_id: MediaId) -> Album:
         """Get details on an Album by MediaId."""
-        return self._catalogue().albums_by_id[album_id]
+        try:
+            return self._catalogue().albums_by_id[album_id]
+        except KeyError:
+            raise VibinNotFoundError(f"Could not find Album with id '{album_id}'")
 
     def album_tracks(self, album_id: MediaId) -> list[Track]:
         """Get details on all Tracks for an Album on the Media Server."""
-        return self._catalogue().tracks_by_album_id[album_id]
+        return self._catalogue().tracks_by_album_id.get(album_id) or []
 
     @property
     def artists(self) -> list[Artist]:
@@ -394,7 +397,10 @@ class CXNv2(MediaServer):
 
     def artist(self, artist_id: MediaId) -> Artist:
         """Get details on an Artist by MediaId."""
-        return self._catalogue().artists_by_id[artist_id]
+        try:
+            return self._catalogue().artists_by_id[artist_id]
+        except KeyError:
+            raise VibinNotFoundError(f"Could not find Artist with id '{artist_id}'")
 
     @property
     def tracks(self) -> list[Track]:
@@ -403,7 +409,10 @@ class CXNv2(MediaServer):
 
     def track(self, track_id: MediaId) -> Track:
         """Get details on a Track by MediaId."""
-        return self._catalogue().tracks_by_id[track_id]
+        try:
+            return self._catalogue().tracks_by_id[track_id]
+        except KeyError:
+            raise VibinNotFoundError(f"Could not find Track with id '{track_id}'")
 
     def ids_from_filename(
             self, filename: str, ids: list[MediaType]
@@ -412,9 +421,10 @@ class CXNv2(MediaServer):
         stable_resource = _Catalogue.stabilize_resource_uri(filename)
         if stable_resource in self._catalogue().track_id_by_resource:
             track_id = self._catalogue().track_id_by_resource[stable_resource]
+            album = self._catalogue().tracks_by_id.get(track_id)
             return {
                 "track": track_id,
-                "album": self._catalogue().tracks_by_id[track_id].albumId
+                "album": album.albumId if album else None
             }
         else:
             return {
