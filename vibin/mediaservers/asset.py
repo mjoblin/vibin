@@ -1,4 +1,3 @@
-import pathlib
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -243,7 +242,7 @@ class Asset(MediaServer):
     def ids_from_filename(
         self, filename: str, requested_ids: list[MediaType]
     ) -> dict[MediaType, MediaId]:
-        stem = pathlib.Path(filename).stem
+        stem = Path(filename).stem
         found_ids: dict[MediaType, MediaId] = {key: None for key in requested_ids}
 
         # Asset Ids seem to be of the form "d-123345...", and "co12A345...".
