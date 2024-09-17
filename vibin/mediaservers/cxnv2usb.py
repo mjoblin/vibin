@@ -287,11 +287,11 @@ class _Catalogue(object):
         return '/'.join(urlparse(resource).path.split('/')[4:])
 
 
-class CXNv2(MediaServer):
+class CXNv2USB(MediaServer):
     """Implementation of MediaServer using USB storage attached to a Cambridge
     Audio CXNv2 Streamer."""
 
-    model_name = "CXNv2"
+    model_name = "CXNv2 USB Storage"
 
     def __init__(
             self,
