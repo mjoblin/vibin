@@ -382,7 +382,6 @@ class CXNv2(MediaServer):
     def album(self, album_id: MediaId) -> Album:
         """Get details on an Album by MediaId."""
         return self._catalogue().albums_by_id[album_id]
-        pass
 
     def album_tracks(self, album_id: MediaId) -> list[Track]:
         """Get details on all Tracks for an Album on the Media Server."""
@@ -505,6 +504,7 @@ class CXNv2(MediaServer):
     def subscribe_to_upnp_events(self) -> None:
         pass
 
+    @property
     def upnp_properties(self) -> UPnPProperties:
         return {}
 
