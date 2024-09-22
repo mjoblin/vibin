@@ -20,7 +20,8 @@ The main responsibilities of `vibin` are:
    * The only current implementation is `StreamMagic` (for Cambridge Audio streamers using
      [StreamMagic]).
 1. **Interact with a local media server** (optional), implementing the `MediaServer` interface.
-   * The only current implementation is `Asset` (for the [Asset UPnP] server).
+   * The only current implementations are `Asset` (for the [Asset UPnP] server) and `CXNv2USB` (for
+     media connected to the streamer over USB).
 1. **Interact with an amplifier** (optional), implementing the `Amplifier` interface.
     * The only current implementation is `Hegel` (for [Hegel] amplifiers).
 1. **Retrieve information from external sources** (Wikipedia, Genius, Rate Your Music, Discogs,
@@ -99,8 +100,9 @@ The project structure is broadly laid out as follows:
 │   ├── lyrics_manager.py
 │   ├── playlists_manager.py
 │   └── waveform_manager.py
-├── mediasources/                      MediaSource ABC and its implementations (Asset)
+├── mediasources/                      MediaSource ABC and implementations (Asset, CXNv2USB)
 │   ├── asset.py
+│   ├── cxnv2usb.py
 │   └── mediasource.py
 ├── server/                            The REST API, WebSocket server, and proxies (FastAPI)
 │   ├── dependencies.py                Dependencies relied on by various routers
