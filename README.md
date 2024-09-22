@@ -3,7 +3,9 @@
 `vibin` is the backend for [`vibinui`](https://github.com/mjoblin/vibinui). It:
 
 * Talks to [StreamMagic] audio streamers.
-* Talks to NAS media servers running [Asset UPnP] (optional).
+* Manages music from:
+  * NAS media servers running [Asset UPnP] (optional).
+  * USB connections to the StreamMagic streamer (optional).
 * Talks to [Hegel] amplifiers for volume/mute control (optional).
 * Serves the `vibinui` Web UI.
 * Exposes a REST API and a WebSocket server for use by clients (such as `vibinui`).
@@ -12,7 +14,7 @@
 
 > `vibin` can in theory be extended to support other streamers, media servers, and amplifiers.
 > Currently it has only been used with the Cambridge Audio CXNv2 streamer (via StreamMagic and
-> UPnP), a NAS running Asset UPnP, and a Hegel H120 amplifier.
+> UPnP), a NAS running Asset UPnP, USB media connected to the streamer, and a Hegel H120 amplifier.
 
 ## Overview
 
@@ -58,10 +60,31 @@ pip install -e .
 > `vibin/_data/` and `vibin/_webui/` directories will be created where the git repository was
 > checked out, rather than under the virtual environment's `lib/` directory.
 
-The install can be validated by attempting to run the CLI:
+The install can be validated by attempting to run the CLI with `vibin --help`:
 
 ```
-vibin --help
+$ vibin --help
+Usage: vibin [OPTIONS] COMMAND [ARGS]...
+
+  A commandline interface to the Vibin server.
+
+  Note that "vibin serve" must be running before any other commands will
+  function. See "vibin serve --help" for more information.
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  albums     Retrieve a list of all albums.
+  browse     Browse the children of the given media id.
+  installui  Install the Vibin Web UI.
+  next       Skip to the next track.
+  pause      Pause playback.
+  play       Resume playback, or play the specified media ID.
+  previous   Skip to the previous track.
+  seek       Seek into the current track.
+  serve      Start the Vibin server.
 ```
 
 ### Using `vibin` to install `vibinui`
