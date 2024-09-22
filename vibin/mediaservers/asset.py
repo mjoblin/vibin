@@ -242,12 +242,13 @@ class Asset(MediaServer):
     def ids_from_filename(
         self, filename: str, requested_ids: list[MediaType]
     ) -> dict[MediaType, MediaId]:
+        stem = Path(filename).stem
         found_ids: dict[MediaType, MediaId] = {key: None for key in requested_ids}
 
         # Asset Ids seem to be of the form "d-123345...", and "co12A345...".
         # The first character is a letter, followed by an optional hyphen,
         # followed by one or more alphanumeric.
-        potential_ids = re.findall(r"[a-z]-?[a-z0-9]+", filename, re.IGNORECASE)
+        potential_ids = re.findall(r"[a-z]-?[a-z0-9]+", stem, re.IGNORECASE)
 
         album_ids = self._albums_by_id.keys()
         artist_ids = self._artists_by_id.keys()
