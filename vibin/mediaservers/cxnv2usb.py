@@ -1,4 +1,5 @@
 import base64
+import threading
 import time
 from collections import deque, Counter
 from functools import cache
@@ -141,6 +142,7 @@ class _MediaIdGenerator(object):
     maintains a bidirectional map between the two."""
 
     def __init__(self, prefix: str = "id"):
+        self._lock = threading.Lock()
         self._by_path = dict()
         self._by_id = dict()
         self._next = 0
@@ -149,17 +151,19 @@ class _MediaIdGenerator(object):
     def get_id(self, path: _MediaPath) -> MediaId:
         """Returns the generated id for the given path, generating a new one if
         necessary."""
-        if path not in self._by_path:
-            generated = f"{self._prefix}{self._next}"
-            self._next = self._next + 1
-            self._by_path[path] = generated
-            self._by_id[generated] = path
-        return self._by_path[path]
+        with self._lock:
+            if path not in self._by_path:
+                generated = f"{self._prefix}{self._next}"
+                self._next = self._next + 1
+                self._by_path[path] = generated
+                self._by_id[generated] = path
+            return self._by_path[path]
 
     def get_path(self, id: MediaId) -> _MediaPath:
         """Returns the path corresponding to the given id, throwing KeyError
         if none."""
-        return self._by_id[id]
+        with self._lock:
+            return self._by_id[id]
 
 
 class _Catalogue(object):
