@@ -188,7 +188,7 @@ def amplifier_power() -> AmplifierState:
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier(allow_if_off=True)
+@requires_amplifier(actions=["power"], allow_if_off=True)
 def amplifier_power_on():
     try:
         get_vibin_instance().amplifier.power = "on"
@@ -201,7 +201,7 @@ def amplifier_power_on():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["power"])
 def amplifier_power_off():
     try:
         get_vibin_instance().amplifier.power = "off"
@@ -215,7 +215,7 @@ def amplifier_power_off():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier(allow_if_off=True)
+@requires_amplifier(actions=["power"], allow_if_off=True)
 def amplifier_power_toggle():
     try:
         get_vibin_instance().amplifier.power_toggle()
@@ -228,7 +228,7 @@ def amplifier_power_toggle():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["volume_up_down"])
 def amplifier_volume_up():
     try:
         get_vibin_instance().amplifier.volume_up()
@@ -242,7 +242,7 @@ def amplifier_volume_up():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["volume_up_down"])
 def amplifier_volume_down():
     try:
         get_vibin_instance().amplifier.volume_down()
@@ -256,7 +256,7 @@ def amplifier_volume_down():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["volume"])
 def amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     try:
         get_vibin_instance().amplifier.volume = volume
@@ -270,7 +270,7 @@ def amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["mute"])
 def amplifier_mute_on():
     try:
         get_vibin_instance().amplifier.mute = "on"
@@ -284,7 +284,7 @@ def amplifier_mute_on():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["mute"])
 def amplifier_mute_off():
     try:
         get_vibin_instance().amplifier.mute = "off"
@@ -298,7 +298,7 @@ def amplifier_mute_off():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["mute"])
 def amplifier_mute_toggle():
     try:
         get_vibin_instance().amplifier.mute_toggle()
@@ -312,7 +312,7 @@ def amplifier_mute_toggle():
     tags=["Media System"],
     response_class=Response,
 )
-@requires_amplifier()
+@requires_amplifier(actions=["audio_source"])
 def amplifier_set_audio_source(source_name: Any):
     try:
         get_vibin_instance().amplifier.audio_source = str(source_name)

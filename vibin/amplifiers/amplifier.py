@@ -9,7 +9,13 @@ from vibin.models import (
     AudioSources,
     UPnPServiceSubscriptions,
 )
-from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPProperties
+from vibin.types import (
+    MuteState,
+    PowerState,
+    UpdateMessageHandler,
+    UPnPProperties,
+    AmplifierAction,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -21,6 +27,7 @@ from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPPropert
 # it is likely a very leaky abstraction exposing many design choices of the
 # Hegel server product.
 # -----------------------------------------------------------------------------
+
 
 class Amplifier(metaclass=ABCMeta):
     """
@@ -93,76 +100,82 @@ class Amplifier(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def power(self) -> PowerState:
-        """Power state."""
+    def actions(self) -> list[AmplifierAction]:
+        """Actions supported by this amplifier."""
+        pass
+
+    @property
+    @abstractmethod
+    def power(self) -> PowerState | None:
+        """Power state, if known."""
         pass
 
     @power.setter
     @abstractmethod
     def power(self, state: PowerState) -> None:
-        """Set the power state."""
+        """Set the power state. No-op if not supported."""
         pass
 
     @abstractmethod
     def power_toggle(self) -> None:
-        """Toggle the power state."""
+        """Toggle the power state. No-op if not supported."""
         pass
 
     @property
     @abstractmethod
-    def volume(self) -> float:
-        """Current volume (0-1)."""
+    def volume(self) -> float | None:
+        """Current volume (0-1), if known."""
         pass
 
     @volume.setter
     @abstractmethod
     def volume(self, volume: float) -> None:
-        """Set the volume (0-1)."""
+        """Set the volume (0-1). No-op if not supported."""
         pass
 
     @abstractmethod
     def volume_up(self) -> None:
-        """Increase the volume by one unit."""
+        """Increase the volume by one unit. No-op if not supported."""
         pass
 
     @abstractmethod
     def volume_down(self) -> None:
-        """Decrease the volume by one unit."""
+        """Decrease the volume by one unit. No-op if not supported."""
         pass
 
     @property
     @abstractmethod
-    def mute(self) -> MuteState:
-        """Mute state."""
+    def mute(self) -> MuteState | None:
+        """Mute state, if known."""
         pass
 
     @mute.setter
     @abstractmethod
     def mute(self, state: MuteState) -> None:
-        """Set the mute state."""
+        """Set the mute state. No-op if not supported."""
         pass
 
     @abstractmethod
     def mute_toggle(self) -> None:
-        """Toggle the mute state."""
+        """Toggle the mute state. No-op if not supported."""
         pass
 
     @property
     @abstractmethod
     def audio_sources(self) -> AudioSources | None:
-        """Get the Audio Sources."""
+        """Get the Audio Sources, if any."""
         pass
 
     @property
     @abstractmethod
     def audio_source(self) -> AudioSource | None:
-        """Get the active Audio Source."""
+        """Get the active Audio Source, if known."""
         pass
 
     @audio_source.setter
     @abstractmethod
     def audio_source(self, source: str) -> None:
-        """Set the active Audio Source by name."""
+        """Set the active Audio Source by name. No-op if not supported."""
         pass
 
     # -------------------------------------------------------------------------
