@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterable
 import dataclasses
 import functools
@@ -12,12 +13,16 @@ import socket
 import tempfile
 import threading
 import time
+from typing import Callable, Awaitable
 import zipfile
 
 from packaging.version import Version
 from pydantic import BaseModel
 import requests
 import upnpclient
+import websockets
+from websockets.legacy.client import WebSocketClientProtocol
+from websockets.typing import Data
 
 from vibin import VibinError, VibinMissingDependencyError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
@@ -244,6 +249,110 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                 logger.warning(f"{fail_message}: {e}")
 
         self._subscriptions = {}
+
+
+class WebsocketThread(StoppableThread):
+    """Thread which manages a connection to a Websocket, and handles receipt of data."""
+
+    def __init__(
+        self,
+        uri: str,
+        friendly_name: str,
+        on_connect: Callable[[WebSocketClientProtocol], Awaitable[None]] = None,
+        on_data: Callable[[Data], None] = None,
+        on_disconnect: Callable[[], None] = None,
+        *args,
+        **kwargs,
+    ):
+        """
+        :param uri: The URI to connect to.
+        :param friendly_name: Used in logs.
+        :param on_connect: An async callback, invoked when the thread has
+            connected (or reconnected) to the Websocket. The first parameter
+            is the connection object from `websockets`, and can be used to
+            send initial requests.
+        :param on_data: Called when data is received via the Websocket.
+        :param on_disconnect: Called when the connection is broken.
+        """
+        super().__init__(
+            target=lambda: asyncio.run(self._handle_websocket()), *args, **kwargs
+        )
+        self._uri = uri
+        self._on_connect = on_connect
+        self._on_data = on_data
+        self._on_disconnect = on_disconnect
+        self._friendly_name = friendly_name
+        self._websocket_timeout = 1
+        self._connected = False
+
+    def connected(self):
+        return self._connected
+
+    async def _handle_websocket(self):
+        logger.info(
+            f"Connecting to {self._friendly_name} WebSocket server on {self._uri}"
+        )
+
+        wait_for_message = True
+
+        # TODO: Handle condition where the uri is technically valid, but the
+        #   connection cannot be established.
+
+        try:
+            # The "for" iteration automatically takes care of reconnects.
+            async for websocket in websockets.connect(
+                self._uri,
+                ssl=None,
+                extra_headers={
+                    "Origin": "vibin",
+                },
+            ):
+                self._connected = True
+                try:
+                    logger.info(
+                        f"Successfully connected to {self._friendly_name} WebSocket server"
+                    )
+                    if self._on_connect:
+                        await self._on_connect(websocket)
+                    while wait_for_message:
+                        try:
+                            # Wait for an incoming message
+                            update = await asyncio.wait_for(
+                                websocket.recv(), timeout=self._websocket_timeout
+                            )
+                        except asyncio.TimeoutError:
+                            if not self.stop_event.is_set():
+                                # Keep listening for incoming messages
+                                continue
+
+                            # The thread we're running in has been told to stop
+                            wait_for_message = False
+                        if self._on_data:
+                            self._on_data(update)
+
+                    logger.info(f"WebSocket connection to {self.name} closed by Vibin")
+                    self._connected = False
+                    if self._on_disconnect:
+                        self._on_disconnect()
+                    return
+                except websockets.ConnectionClosed:
+                    # Attempt a re-connect when the streamer drops the connection
+                    logger.warning(
+                        f"Lost connection to {self._friendly_name} WebSocket server; "
+                        + "attempting reconnect"
+                    )
+                    self._connected = False
+                    if self._on_disconnect:
+                        self._on_disconnect()
+
+                    # Continue the "for" loop, which will trigger a reconnect.
+                    continue
+        except websockets.WebSocketException as e:
+            if self._connected:
+                self._connected = False
+                if self._on_disconnect:
+                    self._on_disconnect()
+            logger.error(f"WebSocket error from {self._friendly_name}: {e}")
 
 
 # -----------------------------------------------------------------------------
