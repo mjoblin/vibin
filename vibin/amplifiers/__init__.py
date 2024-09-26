@@ -2,6 +2,7 @@ from .amplifier import Amplifier
 
 # Each Amplifier implementation should be imported here.
 from .hegel import Hegel
+from .streammagic import StreamMagic
 
 # Map UPnP device models to Amplifier implementations. This is not required if
 # the UPnP model name is the same as the implementation name.
@@ -12,4 +13,5 @@ model_to_amplifier = {
     "H390": Hegel,
     "H590": Hegel,
     "H600": Hegel,
+    "CXNv2": StreamMagic,
 }
