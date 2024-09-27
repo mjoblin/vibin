@@ -309,9 +309,8 @@ class Vibin:
         """
         system_power = "off" if self.streamer.power is None else self.streamer.power
 
-        if self.amplifier is not None:
-            if self.amplifier.power == "off" or self.amplifier.power is None:
-                system_power = "off"
+        if self.amplifier and self.amplifier.power == "off":
+            system_power = "off"
 
         return SystemState(
             power=system_power,

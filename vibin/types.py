@@ -117,3 +117,14 @@ DatabaseName = Literal[
     "playlists",
     "settings",
 ]
+
+# Amplifier -------------------------------------------------------------------
+
+# Actions that can be performed by an amplifier
+AmplifierAction = Literal[
+    "power",
+    "volume",
+    "mute",
+    "volume_up_down",
+    "audio_source",
+]

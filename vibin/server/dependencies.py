@@ -9,6 +9,7 @@ from vibin import Vibin, VibinError
 from vibin.constants import VIBIN_VER
 from vibin.logger import logger
 from vibin.models import VibinStatus, WebSocketClientDetails
+from vibin.types import AmplifierAction
 from vibin.utils import replace_media_server_urls_with_proxy
 
 UPNP_EVENTS_BASE_ROUTE = "/upnpevents"
@@ -152,7 +153,7 @@ def requires_media(func):
     return wrapper_requires_media
 
 
-def requires_amplifier(allow_if_off=False):
+def requires_amplifier(actions: list[AmplifierAction]=None, allow_if_off=False):
     """Decorator to check for valid amplifier state.
 
     Returns a 404 if the vibin server does not have an amplifier.
@@ -167,7 +168,14 @@ def requires_amplifier(allow_if_off=False):
                     detail="Feature unavailable (no amplifier registered with Vibin)",
                 )
 
-            if _vibin.amplifier.power != "on" and not allow_if_off:
+            for action in actions or []:
+                if action not in _vibin.amplifier.actions:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Feature unavailable (amplifier doesn't support action)",
+                    )
+
+            if _vibin.amplifier.power == "off" and not allow_if_off:
                 raise HTTPException(
                     status_code=503,
                     detail="Feature currently unavailable (amplifier is powered off)",
