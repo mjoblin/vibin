@@ -100,7 +100,7 @@ class Amplifier(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def actions(self) -> list[AmplifierAction]:
+    def supported_actions(self) -> list[AmplifierAction]:
         """Actions supported by this amplifier."""
         pass
 

@@ -169,7 +169,7 @@ def requires_amplifier(actions: list[AmplifierAction]=None, allow_if_off=False):
                 )
 
             for action in actions or []:
-                if action not in _vibin.amplifier.actions:
+                if action not in _vibin.amplifier.supported_actions:
                     raise HTTPException(
                         status_code=404,
                         detail="Feature unavailable (amplifier doesn't support action)",

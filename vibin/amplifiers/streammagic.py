@@ -113,8 +113,8 @@ class StreamMagic(Amplifier):
     # System
 
     @property
-    def actions(self) -> list[AmplifierAction]:
-        return self.device_state.actions
+    def supported_actions(self) -> list[AmplifierAction]:
+        return self.device_state.supported_actions
 
     @property
     def power(self) -> PowerState | None:
@@ -143,19 +143,19 @@ class StreamMagic(Amplifier):
     @volume.setter
     def volume(self, volume: float) -> None:
         """Set the volume (0-1)."""
-        if "volume" in self.device_state.actions and self._max_volume_step:
+        if "volume" in self.device_state.supported_actions and self._max_volume_step:
             self._send_state_request(
                 "volume_step", str(round(volume * self._max_volume_step))
             )
 
     def volume_up(self) -> None:
         """Increase the volume by one unit."""
-        if "volume_up_down" in self.device_state.actions:
+        if "volume_up_down" in self.device_state.supported_actions:
             self._send_state_request("volume_step_change", "1")
 
     def volume_down(self) -> None:
         """Decrease the volume by one unit."""
-        if "volume_up_down" in self.device_state.actions:
+        if "volume_up_down" in self.device_state.supported_actions:
             self._send_state_request("volume_step_change", "-1")
 
     @property
@@ -166,12 +166,12 @@ class StreamMagic(Amplifier):
     @mute.setter
     def mute(self, state: MuteState) -> None:
         """Set the mute state."""
-        if "mute" in self.device_state.actions:
+        if "mute" in self.device_state.supported_actions:
             self._send_state_request("mute", "true" if state == "on" else "false")
 
     def mute_toggle(self) -> None:
         """Toggle the mute state."""
-        if "mute" in self.device_state.actions:
+        if "mute" in self.device_state.supported_actions:
             self._send_state_request(
                 "mute", "false" if self.device_state.mute == "on" else "true"
             )
@@ -252,7 +252,7 @@ class StreamMagic(Amplifier):
         if self._state_data and self._state_data["pre_amp_mode"]:
             return AmplifierState(
                 name=self._device.friendly_name,
-                actions=["volume", "mute", "volume_up_down"],
+                supported_actions=["volume", "mute", "volume_up_down"],
                 power="on" if self._state_data["power"] else "off",
                 mute="on" if self._state_data["mute"] else "off",
                 volume=(
@@ -265,7 +265,7 @@ class StreamMagic(Amplifier):
         elif self._state_data and self._state_data["cbus"] in ["amplifier", "receiver"]:
             return AmplifierState(
                 name=self._device.friendly_name,
-                actions=["volume_up_down"],
+                supported_actions=["volume_up_down"],
                 power="on" if self._state_data["power"] else "off",
                 mute=None,
                 volume=None,
@@ -274,7 +274,7 @@ class StreamMagic(Amplifier):
         elif self._state_data:
             return AmplifierState(
                 name=self._device.friendly_name,
-                actions=[],
+                supported_actions=[],
                 power="on" if self._state_data["power"] else "off",
                 mute=None,
                 volume=None,
@@ -283,7 +283,7 @@ class StreamMagic(Amplifier):
         else:
             return AmplifierState(
                 name=self._device.friendly_name,
-                actions=[],
+                supported_actions=[],
                 power=None,
                 mute=None,
                 volume=None,

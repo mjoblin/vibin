@@ -141,7 +141,7 @@ class MediaServerState(UPnPDeviceState):
 class AmplifierState(UPnPDeviceState):
     """Amplifier hardware state."""
 
-    actions: list[AmplifierAction]
+    supported_actions: list[AmplifierAction]
     power: PowerState | None
     mute: MuteState | None
     volume: float | None

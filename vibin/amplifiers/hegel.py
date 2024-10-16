@@ -129,7 +129,7 @@ class Hegel(Amplifier):
     def device_state(self) -> AmplifierState:
         return AmplifierState(
             name=self._device.friendly_name,
-            actions=self.actions,
+            supported_actions=self.supported_actions,
             power=self.power,
             mute=self.mute,
             volume=self.volume,
@@ -162,7 +162,7 @@ class Hegel(Amplifier):
     # send commands to the amplifier to set the new value.
 
     @property
-    def actions(self) -> list[AmplifierAction]:
+    def supported_actions(self) -> list[AmplifierAction]:
         return ["power", "volume", "mute", "volume_up_down", "audio_source"]
 
     @property
