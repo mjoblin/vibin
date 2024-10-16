@@ -224,7 +224,7 @@ class StreamMagic(Amplifier):
             return
 
         if "path" not in parsed:
-            pass
+            return
 
         match parsed["path"]:
             case "/zone/state":
