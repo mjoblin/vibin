@@ -8,7 +8,7 @@ import pathlib
 import queue
 import re
 import sys
-from typing import Literal
+from typing import Literal, Any
 from urllib.parse import urlparse
 import uuid
 import xml.etree.ElementTree as ET
@@ -1067,10 +1067,14 @@ class StreamMagic(Streamer):
     def _process_streamer_message(self, update: Data) -> None:
         """Process a single incoming message from the StreamMagic WebSocket server."""
         try:
-            update_dict = json.loads(update)
+            self._process_update_message(json.loads(update))
         except (KeyError, json.decoder.JSONDecodeError):
-            return
+            # TODO: This currently quietly ignores unexpected payload formats
+            #   or missing keys. Consider adding error handling if errors need
+            #   to be announced.
+            pass
 
+    def _process_update_message(self, update_dict: dict[str, Any]):
         if update_dict["path"] == "/zone/play_state":
             # Current play state ----------------------------------------------
             play_state = update_dict["params"]["data"]
