@@ -6,7 +6,9 @@
 * Manages music from:
   * NAS media servers running [Asset UPnP] (optional).
   * USB connections to the StreamMagic streamer (optional).
-* Talks to [Hegel] amplifiers for volume/mute control (optional).
+* Handles volume and mute controls for:
+  * [StreamMagic] streamers in Pre-Amp mode, or via the Control Bus in Amplifier mode (optional).
+  * [Hegel] amplifiers (optional).
 * Serves the `vibinui` Web UI.
 * Exposes a REST API and a WebSocket server for use by clients (such as `vibinui`).
 * Comes with CLI tools for starting the server, controlling the streamer transport, installing the

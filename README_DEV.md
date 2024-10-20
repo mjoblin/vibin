@@ -23,9 +23,10 @@ The main responsibilities of `vibin` are:
    * The only current implementations are `Asset` (for the [Asset UPnP] server) and `CXNv2USB` (for
      media connected to the streamer over USB).
 1. **Interact with an amplifier** (optional), implementing the `Amplifier` interface.
-    * The only current implementation is `Hegel` (for [Hegel] amplifiers).
+    * The only current implementations are `StreamMagic` (for StreamMagic streamers in Pre-Amp mode
+      or the Control Bus set to Amplifier mode) and `Hegel` (for [Hegel] amplifiers).
 1. **Retrieve information from external sources** (Wikipedia, Genius, Rate Your Music, Discogs,
-   etc).
+     etc).
 1. **Persist information** such as user-defined Playlists, Favorites, lyrics, etc.
 1. Expose:
    * **A REST API** under `/api`.
@@ -81,6 +82,7 @@ The project structure is broadly laid out as follows:
 ├── _webui/                            The web UI's static files (once installed)
 ├── amplifiers                         Amplifier ABC and its implementations
 │   ├── amplifier.py
+│   ├── streammagic.py
 │   └── hegel.py
 ├── base.py                            The main Vibin class
 ├── cli/                               The command line interface
@@ -100,7 +102,7 @@ The project structure is broadly laid out as follows:
 │   ├── lyrics_manager.py
 │   ├── playlists_manager.py
 │   └── waveform_manager.py
-├── mediasources/                      MediaSource ABC and implementations (Asset, CXNv2USB)
+├── mediasources/                      MediaSource ABC and implementations
 │   ├── asset.py
 │   ├── cxnv2usb.py
 │   └── mediasource.py
