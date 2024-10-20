@@ -17,8 +17,13 @@ from vibin.models import (
     AudioSources,
     UPnPServiceSubscriptions,
 )
-from vibin.types import MuteState, PowerState, UpdateMessageHandler, UPnPProperties
-
+from vibin.types import (
+    AmplifierAction,
+    MuteState,
+    PowerState,
+    UpdateMessageHandler,
+    UPnPProperties,
+)
 
 # -----------------------------------------------------------------------------
 # Implementation of Amplifier for Hegel amplifiers.
@@ -124,6 +129,7 @@ class Hegel(Amplifier):
     def device_state(self) -> AmplifierState:
         return AmplifierState(
             name=self._device.friendly_name,
+            supported_actions=self.supported_actions,
             power=self.power,
             mute=self.mute,
             volume=self.volume,
@@ -154,6 +160,10 @@ class Hegel(Amplifier):
     # The getters just return the current values from local amplifier state
     # (transforming the value if required; e.g. a "1" to "on"). The setters
     # send commands to the amplifier to set the new value.
+
+    @property
+    def supported_actions(self) -> list[AmplifierAction]:
+        return ["power", "volume", "mute", "volume_up_down", "audio_source"]
 
     @property
     def power(self) -> PowerState:

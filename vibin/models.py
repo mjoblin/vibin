@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 import upnpclient
 
 from vibin.types import (
+    AmplifierAction,
     FavoriteType,
     MediaId,
     MuteState,
@@ -140,6 +141,7 @@ class MediaServerState(UPnPDeviceState):
 class AmplifierState(UPnPDeviceState):
     """Amplifier hardware state."""
 
+    supported_actions: list[AmplifierAction]
     power: PowerState | None
     mute: MuteState | None
     volume: float | None

@@ -1,5 +1,4 @@
 import array
-import asyncio
 import atexit
 import base64
 import functools
@@ -9,7 +8,7 @@ import pathlib
 import queue
 import re
 import sys
-from typing import Literal
+from typing import Literal, Any
 from urllib.parse import urlparse
 import uuid
 import xml.etree.ElementTree as ET
@@ -20,7 +19,8 @@ import requests
 import untangle
 import upnpclient
 from upnpclient.marshal import marshal_value
-import websockets
+from websockets.legacy.client import WebSocketClientProtocol
+from websockets.typing import Data
 import xmltodict
 
 from vibin import (
@@ -63,7 +63,7 @@ from vibin.types import (
     UPnPPropertyChangeHandlers,
 )
 from vibin.streamers import Streamer
-from vibin.utils import UPnPSubscriptionManagerThread
+from vibin.utils import UPnPSubscriptionManagerThread, WebsocketThread
 
 
 # See Streamer interface for method documentation.
@@ -143,7 +143,6 @@ class StreamMagic(Streamer):
         self._media_server: MediaServer | None = None
         self._instance_id = 0  # StreamMagic implements a static AVTransport instance
         self._websocket_thread = None
-        self._websocket_timeout = 1
 
         self._uu_vol_control = device.UuVolControl
         self._av_transport = device.AVTransport
@@ -225,8 +224,11 @@ class StreamMagic(Streamer):
             pass
 
         if self._on_update:
-            self._websocket_thread = utils.StoppableThread(
-                target=self._handle_websocket_to_streamer
+            self._websocket_thread = WebsocketThread(
+                uri=f"ws://{self._device_hostname}:80/smoip",
+                friendly_name=self._device.friendly_name,
+                on_connect=self._initialize_websocket,
+                on_data=self._process_streamer_message,
             )
             self._websocket_thread.start()
 
@@ -1042,101 +1044,37 @@ class StreamMagic(Streamer):
     # WebSocket connection to StreamMagic streamer.
     # =========================================================================
 
-    def _handle_websocket_to_streamer(self):
-        """Handle the WebSocket connection to the StreamMagic WebSocket server.
+    async def _initialize_websocket(self, websocket: WebSocketClientProtocol):
+        # Request playhead position updates (these arrive one per sec).
+        await websocket.send(
+            '{"path": "/zone/play_state/position", "params": {"update": 1}}'
+        )
 
-        On connection, subscribe to a variety of StreamMagic events. Then
-        continue to process messages as they come in, until told to stop
-        (probably because the system is shutting down).
-        """
-        async def async_websocket_manager():
-            uri = f"ws://{self._device_hostname}:80/smoip"
-            logger.info(f"Connecting to {self.name} WebSocket server on {uri}")
+        # Request now-playing updates, so the "controls" information can
+        # be used to track active transport controls for TransportState
+        # messages.
+        await websocket.send('{"path": "/zone/now_playing", "params": {"update": 1}}')
 
-            wait_for_message = True
+        # Request play state updates (these arrive one per track change).
+        await websocket.send('{"path": "/zone/play_state", "params": {"update": 1}}')
 
-            # TODO: Handle condition where the uri is technically valid, but the
-            #   connection cannot be established.
+        # Request preset updates.
+        await websocket.send('{"path": "/presets/list", "params": {"update": 1}}')
 
-            try:
-                # The "for" iteration automatically takes care of reconnects.
-                async for websocket in websockets.connect(
-                    uri,
-                    ssl=None,
-                    extra_headers={
-                        "Origin": "vibin",
-                    },
-                ):
-                    try:
-                        logger.info(f"Successfully connected to {self.name} WebSocket server")
+        # Request power updates (on/off).
+        await websocket.send('{"path": "/system/power", "params": {"update": 100}}')
 
-                        # Request playhead position updates (these arrive one per sec).
-                        await websocket.send(
-                            '{"path": "/zone/play_state/position", "params": {"update": 1}}'
-                        )
-
-                        # Request now-playing updates, so the "controls" information can
-                        # be used to track active transport controls for TransportState
-                        # messages.
-                        await websocket.send(
-                            '{"path": "/zone/now_playing", "params": {"update": 1}}'
-                        )
-
-                        # Request play state updates (these arrive one per track change).
-                        await websocket.send(
-                            '{"path": "/zone/play_state", "params": {"update": 1}}'
-                        )
-
-                        # Request preset updates.
-                        await websocket.send(
-                            '{"path": "/presets/list", "params": {"update": 1}}'
-                        )
-
-                        # Request power updates (on/off).
-                        await websocket.send(
-                            '{"path": "/system/power", "params": {"update": 100}}'
-                        )
-
-                        while wait_for_message:
-                            try:
-                                # Wait for an incoming message
-                                update = await asyncio.wait_for(
-                                    websocket.recv(), timeout=self._websocket_timeout
-                                )
-                            except asyncio.TimeoutError:
-                                if not self._websocket_thread.stop_event.is_set():
-                                    # Keep listening for incoming messages
-                                    continue
-
-                                # The thread we're running in has been told to stop
-                                wait_for_message = False
-
-                            try:
-                                self._process_streamer_message(json.loads(update))
-                            except (KeyError, json.decoder.JSONDecodeError) as e:
-                                # TODO: This currently quietly ignores unexpected
-                                #   payload formats or missing keys. Consider adding
-                                #   error handling if errors need to be announced.
-                                pass
-
-                        logger.info(f"WebSocket connection to {self.name} closed by Vibin")
-                        return
-                    except websockets.ConnectionClosed:
-                        # Attempt a re-connect when the streamer drops the connection
-                        logger.warning(
-                            f"Lost connection to {self.name} WebSocket server; " +
-                            "attempting reconnect"
-                        )
-
-                        # Continue the "for" loop, which will trigger a reconnect.
-                        continue
-            except websockets.WebSocketException as e:
-                logger.error(f"WebSocket error from {self.name}: {e}")
-
-        asyncio.run(async_websocket_manager())
-
-    def _process_streamer_message(self, update_dict: dict) -> None:
+    def _process_streamer_message(self, update: Data) -> None:
         """Process a single incoming message from the StreamMagic WebSocket server."""
+        try:
+            self._process_update_message(json.loads(update))
+        except (KeyError, json.decoder.JSONDecodeError):
+            # TODO: This currently quietly ignores unexpected payload formats
+            #   or missing keys. Consider adding error handling if errors need
+            #   to be announced.
+            pass
+
+    def _process_update_message(self, update_dict: dict[str, Any]):
         if update_dict["path"] == "/zone/play_state":
             # Current play state ----------------------------------------------
             play_state = update_dict["params"]["data"]
