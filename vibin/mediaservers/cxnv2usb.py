@@ -4,7 +4,7 @@ import time
 from collections import deque, Counter
 from functools import cache
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Deque
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from xml.etree import ElementTree
@@ -89,7 +89,10 @@ _xml_namespaces = {
     "dlna": "urn:schemas-dlna-org:metadata-1-0/",
 }
 
-_MediaPath = tuple[str, ...]  # A path through the USB device, by title.
+# Represents paths through the USB device by title. Each entry consists of the
+# title, and the index amongst siblings with the same title.
+_MediaPathPart = tuple[str, int]
+_MediaPath = tuple[_MediaPathPart, ...]
 
 
 class _BrowseResult(object):
@@ -97,7 +100,7 @@ class _BrowseResult(object):
     item in the content directory.
     """
 
-    def __init__(self, parent_path: _MediaPath, element: ElementTree.Element):
+    def __init__(self, element: ElementTree.Element):
         res = element.find("didl:res", namespaces=_xml_namespaces)
         self.id = element.attrib["id"]
         self.parentId = element.attrib["parentID"]
@@ -114,9 +117,6 @@ class _BrowseResult(object):
             res.attrib["duration"] if isinstance(res, ElementTree.Element) else None
         )
         self.resource = _BrowseResult._property(element, "didl:res")
-
-        self.parent_path = parent_path
-        self.path = self.parent_path + (self.title,)
 
     @staticmethod
     def _property(element, field):
@@ -170,44 +170,46 @@ class _Catalogue(object):
     """Indexes all the Tracks, Albums and Artist objects found in the
     ContentDirectory."""
 
-    def __init__(self, results: list[_BrowseResult], artwork: dict[str, str]):
+    def __init__(
+        self,
+        results: Iterable[tuple[_MediaPath, _BrowseResult]],
+        artwork: dict[str, str],
+    ):
         self.artwork = artwork
         self.id_map = _MediaIdGenerator()
 
         self.tracks = [
-            self.create_track(result)
-            for result in results
+            self.create_track(path, result)
+            for (path, result) in results
             if result.type == "object.item.audioItem.musicTrack"
         ]
         self.tracks_by_id = {track.id: track for track in self.tracks}
         self.tracks_by_album_id = _Catalogue._group_tracks_by_album_id(self.tracks)
         self.track_id_by_resource = {
-            _Catalogue.stabilize_resource_uri(result.resource): self.id_map.get_id(
-                result.path
-            )
-            for result in results
+            _Catalogue.stabilize_resource_uri(result.resource): self.id_map.get_id(path)
+            for (path, result) in results
             if result.resource and result.type == "object.item.audioItem.musicTrack"
         }
 
         self.albums = [
-            self.create_album(result)
-            for result in results
+            self.create_album(path, result)
+            for (path, result) in results
             if result.type == "object.container.album.musicAlbum"
         ]
         self.albums_by_id = {album.id: album for album in self.albums}
 
         self.artists = [
             self.create_artist(name)
-            for name in {result.artist for result in results if result.artist}
+            for name in {result.artist for (path, result) in results if result.artist}
         ]
         self.artists_by_id = {artist.id: artist for artist in self.artists}
         self.artists.sort(key=lambda a: a.title)
 
-    def create_track(self, result: _BrowseResult) -> Track:
+    def create_track(self, path: _MediaPath, result: _BrowseResult) -> Track:
         """Creates a new Track with information from this _BrowseResult"""
         return Track(
-            id=self.id_map.get_id(result.path),
-            albumId=self.id_map.get_id(result.parent_path),
+            id=self.id_map.get_id(path),
+            albumId=self.id_map.get_id(path[:-1]),
             title=result.title,
             artist=result.artist,
             album=result.album or "Unknown Album",
@@ -218,9 +220,9 @@ class _Catalogue(object):
             original_track_number=result.original_track_number,
         )
 
-    def create_album(self, result: _BrowseResult) -> Album:
+    def create_album(self, path: _MediaPath, result: _BrowseResult) -> Album:
         """Creates a new Album with information from this _BrowseResult."""
-        album_id = self.id_map.get_id(result.path)
+        album_id = self.id_map.get_id(path)
         return Album(
             id=album_id,
             title=result.title,
@@ -270,13 +272,15 @@ class _Catalogue(object):
             genre=result.genre,
         )
 
-    def create_model_object(self, result: _BrowseResult) -> Track | Album | MediaFolder:
+    def create_model_object(
+        self, path: _MediaPath, result: _BrowseResult
+    ) -> Track | Album | MediaFolder:
         """Returns a model object for this _BrowseResult."""
         match result.type:
             case "object.item.audioItem.musicTrack":
-                return self.create_track(result)
+                return self.create_track(path, result)
             case "object.container.album.musicAlbum":
-                return self.create_album(result)
+                return self.create_album(path, result)
             case _:
                 return self.create_media_folder(result)
 
@@ -460,17 +464,26 @@ class CXNv2USB(MediaServer):
     def get_path_contents(
         self, path: Path
     ) -> list[MediaFolder | Artist | Album | Track] | Track | None:
-        """Retrieve the contents of the given path on the Media Server."""
-        match = self._traverse_path(path.parts)
+        """Retrieve the contents of the given path on the Media Server.
+
+        Following the implementation in asset.py, the path is a sequence of
+        titles. If multiple entries have the same title, pick the first.
+        """
+        media_path: _MediaPath = tuple([(part, 0) for part in path.parts])
+        match = self._traverse_path(media_path)
 
         if match and match.type == "object.item.audioItem.musicTrack":
-            return self._catalogue().create_track(match)
+            return self._catalogue().create_track(media_path, match)
         else:
-            id = match.id if match else "0"
-            return [
-                self._catalogue().create_model_object(child)
-                for child in self._browse_direct_children(id, path.parts)
-            ]
+            contents = []
+            title_counter = Counter()
+            for child in self._browse_direct_children(match.id if match else "0"):
+                title = child.title
+                child_path = media_path + ((title, title_counter[title]),)
+                title_counter[title] += 1
+                model = self._catalogue().create_model_object(child_path, child)
+                contents.append(model)
+            return contents
 
     def children(self, parent_id: MediaId = "0") -> MediaBrowseSingleLevel:
         """Retrieve information on all children of the given `parent_id`.
@@ -488,14 +501,17 @@ class CXNv2USB(MediaServer):
 
         output = MediaBrowseSingleLevel(
             id=parent_id,
-            children=[
-                child.__dict__ for child in self._browse_direct_children(id, path)
-            ],
+            children=[child.__dict__ for child in self._browse_direct_children(id)],
         )
         # Fix up the returned ids to use the synthetic ones
+        title_counter = Counter()
         for child in output.children:
+            title = child["title"]
+            child_path = path + ((title, title_counter[title]),)
+            title_counter[title] += 1
+
             child["directory_id"] = child["id"]
-            child["id"] = self._catalogue().id_map.get_id(path + (child["title"],))
+            child["id"] = self._catalogue().id_map.get_id(child_path)
         return output
 
     def get_metadata(self, id: MediaId):
@@ -519,16 +535,14 @@ class CXNv2USB(MediaServer):
         """Traverses a path of titles, returning the _BrowseResult."""
         try:
             directory_id = "0"
-            path_so_far = []
             child = None
-            for part in parts:
-                children = self._browse_direct_children(directory_id, path_so_far)
-                index = [child.title for child in children].index(part)
-                child = children[index]
+            for title, index in parts:
+                children = self._browse_direct_children(directory_id)
+                matching = [child for child in children if child.title == title]
+                child = matching[index]
                 directory_id = child.id
-                path_so_far.append(part)
             return child
-        except ValueError:
+        except IndexError:
             raise VibinNotFoundError(f"Could not find path '{parts}'")
 
     # -------------------------------------------------------------------------
@@ -553,28 +567,36 @@ class CXNv2USB(MediaServer):
 
     @cache
     def _catalogue(self) -> _Catalogue:
-        # to_fetch is a queue of pairs; the first entry in the pair is a list of
-        # titles forming the path to an item to fetch. The second id is the
-        # ContentDirectory id of the item to be fetched.
-        to_fetch = deque([([], "0")])
-        processed_ids = set()
-        browse_results = []
-        artwork_urls = set()
+        # to_fetch is a queue of pairs containing the path and id of an entry.
+        to_fetch: Deque[tuple[_MediaPath, str]] = deque([((), "0")])
+
+        # browse_results is a list of pairs containing the path and result of
+        # browsing an entry.
+        browse_results: list[tuple[_MediaPath, _BrowseResult]] = []
+
+        processed_ids: set[str] = set()
+        artwork_urls: set[str] = set()
         log_interval = 30
 
         next_log_time = time.time() + log_interval
         while to_fetch:
-            (path, id) = to_fetch.popleft()
+            path, id = to_fetch.popleft()
             processed_ids.add(id)
-            for child in self._browse_direct_children(id, path):
-                browse_results.append(child)
+
+            title_counter = Counter()
+            for child in self._browse_direct_children(id):
+                child_path = path + ((child.title, title_counter[child.title]),)
+                title_counter[child.title] += 1
+
+                browse_results.append((child_path, child))
+
                 if child.album_art_uri:
                     artwork_urls.add(child.album_art_uri)
                 if (
                     child.type.startswith("object.container")
                     and not child.id in processed_ids
                 ):
-                    to_fetch.append((path + [child.title], child.id))
+                    to_fetch.append((child_path, child.id))
 
                 if time.time() > next_log_time:
                     logger.info(
@@ -597,9 +619,7 @@ class CXNv2USB(MediaServer):
 
         return _Catalogue(browse_results, artwork)
 
-    def _browse_direct_children(
-        self, id, parent_path: Iterable[str]
-    ) -> list[_BrowseResult]:
+    def _browse_direct_children(self, id) -> list[_BrowseResult]:
         """Fetches children of the given id, using ContentDirectory.Browse."""
 
         # Note: the ContentDirectory spec says that RequestedCount can be zero
@@ -624,6 +644,6 @@ class CXNv2USB(MediaServer):
             )
 
         return [
-            _BrowseResult(tuple(parent_path), result)
+            _BrowseResult(result)
             for result in ElementTree.fromstring(response["Result"])
         ]
