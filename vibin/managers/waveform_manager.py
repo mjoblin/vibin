@@ -57,7 +57,9 @@ class WaveformManager:
             # Retrieve the audio file and temporarily store it locally. Give the
             # audio file to the audiowaveform tool for processing.
 
-            with tempfile.NamedTemporaryFile(prefix="vibin_", suffix=track_id) as flac_file:
+            with tempfile.NamedTemporaryFile(
+                prefix="vibin_", suffix=track_id
+            ) as flac_file:
                 with requests.get(audio_file, stream=True) as response:
                     shutil.copyfileobj(response.raw, flac_file)
 
@@ -95,19 +97,34 @@ class WaveformManager:
                     capture_output=True,
                 )
 
+                if waveform_data.stderr:
+                    raise VibinError(
+                        f"Error running audiowaveform tool: {waveform_data.stderr.decode('utf-8')}"
+                    )
+
                 if data_format == "json":
-                    return json.loads(waveform_data.stdout.decode("utf-8"))
+                    try:
+                        return json.loads(waveform_data.stdout.decode("utf-8"))
+                    except json.JSONDecodeError as e:
+                        raise VibinError(
+                            f"Got invalid JSON from audiowaveform tool: {e}"
+                        )
                 else:
                     return waveform_data.stdout
         except FileNotFoundError:
             raise VibinMissingDependencyError("audiowaveform")
         except KeyError as e:
-            raise VibinError(f"Could not find any file information for track: {track_id}")
+            raise VibinError(
+                f"Could not find any file information for track: {track_id}"
+            )
         except IndexError as e:
-            raise VibinError(f"Could not find .flac or .wav file URL for track: {track_id}")
+            raise VibinError(
+                f"Could not find .flac or .wav file URL for track: {track_id}"
+            )
         except xml.parsers.expat.ExpatError as e:
             logger.error(f"Could not convert XML to JSON for track: {track_id}: {e}")
         except VibinError as e:
             logger.error(e)
+            raise
 
         return None

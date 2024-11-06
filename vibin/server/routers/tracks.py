@@ -3,7 +3,7 @@ import math
 
 from fastapi import APIRouter, Header, HTTPException, Response
 
-from vibin import VibinMissingDependencyError, VibinNotFoundError
+from vibin import VibinError, VibinMissingDependencyError, VibinNotFoundError
 from vibin.logger import logger
 from vibin.models import LyricsQuery, Track
 from vibin.server.dependencies import (
@@ -227,7 +227,6 @@ def track_waveform(
     tags=["Tracks"],
 )
 def track_rms(track_id: str):
-
     try:
         waveform = get_vibin_instance().waveform_manager.waveform_for_track(
             track_id, data_format="json"
@@ -236,6 +235,17 @@ def track_rms(track_id: str):
         raise HTTPException(
             status_code=404,
             detail=f"Cannot calculate RMS due to missing dependency: {e}",
+        )
+    except VibinError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot calculate RMS: {e}",
+        )
+
+    if waveform is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot calculate RMS: Waveform data unexpectedly empty",
         )
 
     samples = waveform["data"]
