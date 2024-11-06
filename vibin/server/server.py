@@ -3,11 +3,11 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
-from vibin import VibinError
+from vibin import VibinDeviceError, VibinError, VibinMissingDependencyError
 from vibin.constants import VIBIN_PORT, VIBIN_VER
 from vibin.logger import logger
 from vibin.server.dependencies import (
@@ -208,6 +208,36 @@ def server_start(
     vibin_app.include_router(media_server_proxy_router)
     vibin_app.include_router(websocket_server_router)
     vibin_app.include_router(upnp_events_router)
+
+    # -------------------------------------------------------------------------
+    # Configure top-level unhandled exception handlers.
+    #
+    # Many routes will handle these exceptions in route-specific ways, but we
+    # add some generic handlers here just in case.
+    # -------------------------------------------------------------------------
+
+    @vibin_app.exception_handler(VibinDeviceError)
+    async def device_exception_handler(request, exc: VibinDeviceError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Unhandled Vibin device error: {exc}"},
+        )
+
+    @vibin_app.exception_handler(VibinMissingDependencyError)
+    async def missing_dependency_exception_handler(
+        request, exc: VibinMissingDependencyError
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": f"Required dependency unavailable: {exc}"},
+        )
+    
+    @vibin_app.exception_handler(VibinError)
+    async def vibin_error_exception_handler(request, exc: VibinError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Unhandled Vibin error: {exc}"},
+        )
 
     # -------------------------------------------------------------------------
     # Start the FastAPI application via uvicorn.
