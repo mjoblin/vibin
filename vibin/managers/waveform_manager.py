@@ -1,6 +1,5 @@
 from functools import lru_cache
 import json
-from json import JSONDecodeError
 from pathlib import Path
 import shutil
 import subprocess
@@ -106,7 +105,7 @@ class WaveformManager:
                 if data_format == "json":
                     try:
                         return json.loads(waveform_data.stdout.decode("utf-8"))
-                    except JSONDecodeError as e:
+                    except json.JSONDecodeError as e:
                         raise VibinError(
                             f"Got invalid JSON from audiowaveform tool: {e}"
                         )

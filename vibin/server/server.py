@@ -231,7 +231,7 @@ def server_start(
             status_code=503,
             content={"detail": f"Required dependency unavailable: {exc}"},
         )
-    
+
     @vibin_app.exception_handler(VibinError)
     async def vibin_error_exception_handler(request, exc: VibinError):
         return JSONResponse(
