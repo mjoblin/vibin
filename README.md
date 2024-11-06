@@ -47,8 +47,13 @@ pip install .
 **Note:** If `.\venv-vibin\Scripts\Activate` returns an error about script execution being disabled,
 then you need to enable script execution on your system. To do this, start PowerShell as an
 administrator (right-click the PowerShell application icon and choose "Run as administrator"), then
-run the command `Set-ExecutionPolicy RemoteSigned`. Then retry the `.\venv-vibin\Scripts\Activate`
-step.
+run the command:
+
+```
+Set-ExecutionPolicy RemoteSigned
+```
+
+Now resume from the `.\venv-vibin\Scripts\Activate` step above.
 
 ### 2. Use `vibin` to install the Web browser UI
 
