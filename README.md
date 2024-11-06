@@ -15,8 +15,64 @@
   UI, etc.
 
 > `vibin` can in theory be extended to support other streamers, media servers, and amplifiers.
-> Currently it has only been used with the Cambridge Audio CXNv2 streamer (via StreamMagic and
-> UPnP), a NAS running Asset UPnP, USB media connected to the streamer, and a Hegel H120 amplifier.
+> Currently it has only been used with Cambridge Audio StreamMagic streamers, USB media
+> connected to the streamer, a NAS running Asset UPnP, and a Hegel H120 amplifier.
+
+## Quick start
+
+The following assumes you already have Python 3.10 (or higher) and Git installed.
+
+### 1. Install `vibin`
+
+#### Mac, Linux
+
+```
+git clone https://github.com/mjoblin/vibin.git
+cd vibin
+python -m venv venv-vibin
+source venv-vibin/bin/activate
+pip install .
+```
+
+#### Windows PowerShell
+
+```
+git clone https://github.com/mjoblin/vibin.git
+cd vibin
+python -m venv venv-vibin
+.\venv-vibin\Scripts\Activate
+pip install .
+```
+
+**Note:** If `.\venv-vibin\Scripts\Activate` returns an error about script execution being disabled,
+then you need to enable script execution on your system. To do this, start PowerShell as an
+administrator (right-click the PowerShell application icon and choose "Run as administrator"), then
+run the command:
+
+```
+Set-ExecutionPolicy RemoteSigned
+```
+
+Now resume from the `.\venv-vibin\Scripts\Activate` step above.
+
+### 2. Use `vibin` to install the Web browser UI
+
+```
+vibin installui
+```
+
+### 3. Start the `vibin` server
+
+```
+vibin serve
+```
+
+`vibin` will take a few seconds to start up. When ready, it will display a log line such as
+`Uvicorn running on http://0.0.0.0:8080` at which point the Web UI can be loaded into a browser
+at `http://localhost:8080`.
+
+Run `vibin --help` to see all commandline options. To see all the `serve` options, run
+`vibin serve --help`.
 
 ## Overview
 
