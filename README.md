@@ -22,7 +22,7 @@
 
 The following assumes you already have Python 3.10 (or higher) and Git installed.
 
-### Install `vibin`
+### 1. Install `vibin`
 
 #### Mac, Linux
 
@@ -44,18 +44,19 @@ python -m venv venv-vibin
 pip install .
 ```
 
-Note: If `.\venv-vibin\Scripts\Activate` results in an error about running scripts being disabled,
-you need to enable script execution on your system. To do this, start PowerShell as an administrator
-(right-click the PowerShell application icon and choose "Run as administrator", then run the command
-`Set-ExecutionPolicy RemoteSigned`. Then try the `.\venv-vibin\Scripts\Activate` step again).
+**Note:** If `.\venv-vibin\Scripts\Activate` returns an error about script execution being disabled,
+then you need to enable script execution on your system. To do this, start PowerShell as an
+administrator (right-click the PowerShell application icon and choose "Run as administrator"), then
+run the command `Set-ExecutionPolicy RemoteSigned`. Then retry the `.\venv-vibin\Scripts\Activate`
+step.
 
-### Use `vibin` to install the Web browser UI
+### 2. Use `vibin` to install the Web browser UI
 
 ```
 vibin installui
 ```
 
-### Start the `vibin` server
+### 3. Start the `vibin` server
 
 ```
 vibin serve
