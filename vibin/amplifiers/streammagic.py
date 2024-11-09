@@ -136,17 +136,20 @@ class StreamMagic(Amplifier):
         pass
 
     @property
+    def max_volume(self) -> int | None:
+        """Maximum volume level, if available."""
+        return self.device_state.max_volume
+
+    @property
     def volume(self) -> float | None:
-        """Current volume (0-1)."""
+        """Current volume (zero to max_volume), if known."""
         return self.device_state.volume
 
     @volume.setter
-    def volume(self, volume: float) -> None:
-        """Set the volume (0-1)."""
-        if "volume" in self.device_state.supported_actions and self._max_volume_step:
-            self._send_state_request(
-                "volume_step", str(round(volume * self._max_volume_step))
-            )
+    def volume(self, volume: int) -> None:
+        """Set the volume (zero to max_volume). No-op if not supported."""
+        if "volume" in self.device_state.supported_actions:
+            self._send_state_request("volume_step", str(volume))
 
     def volume_up(self) -> None:
         """Increase the volume by one unit."""
@@ -255,11 +258,8 @@ class StreamMagic(Amplifier):
                 supported_actions=["volume", "mute", "volume_up_down"],
                 power="on" if self._state_data["power"] else "off",
                 mute="on" if self._state_data["mute"] else "off",
-                volume=(
-                    self._state_data["volume_step"] / self._max_volume_step
-                    if self._max_volume_step
-                    else None
-                ),
+                max_volume=self._max_volume_step,
+                volume=self._state_data["volume_step"],
                 sources=None,
             )
         elif self._state_data and self._state_data["cbus"] in ["amplifier", "receiver"]:
@@ -268,6 +268,7 @@ class StreamMagic(Amplifier):
                 supported_actions=["volume_up_down"],
                 power="on" if self._state_data["power"] else "off",
                 mute=None,
+                max_volume=None,
                 volume=None,
                 sources=None,
             )
@@ -277,6 +278,7 @@ class StreamMagic(Amplifier):
                 supported_actions=[],
                 power="on" if self._state_data["power"] else "off",
                 mute=None,
+                max_volume=None,
                 volume=None,
                 sources=None,
             )
@@ -286,6 +288,7 @@ class StreamMagic(Amplifier):
                 supported_actions=[],
                 power=None,
                 mute=None,
+                max_volume=None,
                 volume=None,
                 sources=None,
             )

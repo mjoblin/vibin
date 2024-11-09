@@ -123,14 +123,20 @@ class Amplifier(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def volume(self) -> float | None:
-        """Current volume (0-1), if known."""
+    def max_volume(self) -> int | None:
+        """Maximum volume level, if available."""
+        pass
+
+    @property
+    @abstractmethod
+    def volume(self) -> int | None:
+        """Current volume (zero to max_volume), if known."""
         pass
 
     @volume.setter
     @abstractmethod
-    def volume(self, volume: float) -> None:
-        """Set the volume (0-1). No-op if not supported."""
+    def volume(self, volume: int) -> None:
+        """Set the volume (zero to max_volume). No-op if not supported."""
         pass
 
     @abstractmethod
