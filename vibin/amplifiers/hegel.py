@@ -132,6 +132,7 @@ class Hegel(Amplifier):
             supported_actions=self.supported_actions,
             power=self.power,
             mute=self.mute,
+            max_volume=self.max_volume,
             volume=self.volume,
             sources=self.audio_sources,
         )
@@ -187,24 +188,27 @@ class Hegel(Amplifier):
         self._cmd_queue.put_nowait(HegelCommand(name="p", parameter="t"))
 
     @property
-    def volume(self) -> float:
-        """Current volume (0-1)."""
+    def max_volume(self) -> int | None:
+        """Maximum volume level."""
+        return 100
+
+    @property
+    def volume(self) -> int:
+        """Current volume (zero to max_volume)."""
         try:
             vol = self._state["v"]
 
             if vol is None:
                 return 0
 
-            return int(vol) / 100
+            return int(vol)
         except (TypeError, ValueError) as e:
             raise VibinError(f"Could determine normalized Hegel volume: {e}")
 
     @volume.setter
-    def volume(self, volume: float) -> None:
-        """Set the volume (0-1)."""
-        self._cmd_queue.put_nowait(
-            HegelCommand(name="v", parameter=str(int(volume * 100)))
-        )
+    def volume(self, volume: int) -> None:
+        """Set the volume (zero to max_volume)."""
+        self._cmd_queue.put_nowait(HegelCommand(name="v", parameter=str(volume)))
 
     def volume_up(self) -> None:
         """Increase the volume by one unit."""

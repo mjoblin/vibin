@@ -144,7 +144,8 @@ class AmplifierState(UPnPDeviceState):
     supported_actions: list[AmplifierAction]
     power: PowerState | None
     mute: MuteState | None
-    volume: float | None
+    max_volume: int | None
+    volume: int | None
     sources: AudioSources | None = AudioSources()
 
 

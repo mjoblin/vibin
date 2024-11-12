@@ -257,8 +257,16 @@ def amplifier_volume_down():
     response_class=Response,
 )
 @requires_amplifier(actions=["volume"])
-def amplifier_volume_set(volume: Annotated[float, Path(ge=0.0, le=1.0)]):
+def amplifier_volume_set(volume: int):
     try:
+        amplifier = get_vibin_instance().amplifier
+
+        if volume < 0:
+            raise HTTPException(status_code=400, detail="Volume out of range")
+
+        if amplifier.max_volume and volume > amplifier.max_volume:
+            raise HTTPException(status_code=400, detail="Volume out of range")
+
         get_vibin_instance().amplifier.volume = volume
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
