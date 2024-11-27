@@ -118,8 +118,8 @@ class StreamMagic(Amplifier):
 
     @property
     def power(self) -> PowerState | None:
-        """Power state."""
-        return self.device_state.power
+        """Power state. Not supported."""
+        return None
 
     @power.setter
     def power(self, state: PowerState) -> None:
@@ -256,7 +256,7 @@ class StreamMagic(Amplifier):
             return AmplifierState(
                 name=self._device.friendly_name,
                 supported_actions=["volume", "mute", "volume_up_down"],
-                power="on" if self._state_data["power"] else "off",
+                power=None,
                 mute="on" if self._state_data["mute"] else "off",
                 max_volume=self._max_volume_step,
                 volume=self._state_data["volume_step"],
@@ -266,7 +266,7 @@ class StreamMagic(Amplifier):
             return AmplifierState(
                 name=self._device.friendly_name,
                 supported_actions=["volume_up_down"],
-                power="on" if self._state_data["power"] else "off",
+                power=None,
                 mute=None,
                 max_volume=None,
                 volume=None,
@@ -276,7 +276,7 @@ class StreamMagic(Amplifier):
             return AmplifierState(
                 name=self._device.friendly_name,
                 supported_actions=[],
-                power="on" if self._state_data["power"] else "off",
+                power=None,
                 mute=None,
                 max_volume=None,
                 volume=None,
