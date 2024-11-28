@@ -311,7 +311,6 @@ def _determine_amplifier_device(
                 device
                 for device in devices
                 if "MediaRenderer" in device.device_type
-                and device != streamer_device
             ]
 
             if len(media_renderers) == 1:
