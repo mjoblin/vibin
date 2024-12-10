@@ -29,7 +29,7 @@ The following assumes you already have Python 3.10 (or higher) and Git installed
 ```
 git clone https://github.com/mjoblin/vibin.git
 cd vibin
-python -m venv venv-vibin
+python3 -m venv venv-vibin
 source venv-vibin/bin/activate
 pip install .
 ```
@@ -39,7 +39,7 @@ pip install .
 ```
 git clone https://github.com/mjoblin/vibin.git
 cd vibin
-python -m venv venv-vibin
+python3 -m venv venv-vibin
 .\venv-vibin\Scripts\Activate
 pip install .
 ```
