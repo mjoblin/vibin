@@ -409,29 +409,38 @@ def determine_streamer_class(streamer_device, streamer_type):
     known_streamers_by_model.update(model_to_streamer)
 
     # Determine which Streamer implementation to use
-    try:
-        if streamer_type is None:
-            streamer_class = known_streamers_by_model[streamer_device.model_name]
-        else:
-            # A specific Streamer implementation was requested.
-            streamer_class = next(
-                (
-                    streamer for streamer in known_streamers
-                    if streamer.__name__ == streamer_type
-                ),
-                None
-            )
+    streamer_class = None
 
-            if streamer_class is None:
-                raise VibinError(
-                    f"Could not find Vibin implementation for requested "
-                    + f"streamer type: {streamer_type}"
-                )
-    except KeyError:
-        raise VibinError(
-            f"Could not find Vibin implementation for streamer model "
-            + f"'{streamer_device.model_name}'"
+    if streamer_type is None:
+        # Match the device's model name against the known models, ignoring
+        # case and whitespace in an attempt to be reasonably flexible
+        model_fuzzy = streamer_device.model_name.lower().replace(" ", "")
+
+        for (known_model, klass) in known_streamers_by_model.items():
+            if known_model.lower().replace(" ", "") == model_fuzzy:
+                streamer_class = klass
+                break
+
+        if streamer_class is None:
+            raise VibinError(
+                f"Could not find Vibin implementation for streamer model "
+                + f"'{streamer_device.model_name}'"
+            )
+    else:
+        # A specific Streamer implementation was requested.
+        streamer_class = next(
+            (
+                streamer for streamer in known_streamers
+                if streamer.__name__ == streamer_type
+            ),
+            None
         )
+
+        if streamer_class is None:
+            raise VibinError(
+                f"Could not find Vibin implementation for requested "
+                + f"streamer type: {streamer_type}"
+            )
 
     return streamer_class
 
