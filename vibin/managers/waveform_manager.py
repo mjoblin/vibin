@@ -97,10 +97,13 @@ class WaveformManager:
                     capture_output=True,
                 )
 
-                if waveform_data.stderr:
-                    raise VibinError(
-                        f"Error running audiowaveform tool: {waveform_data.stderr.decode('utf-8')}"
-                    )
+                if waveform_data.returncode != 0:
+                    error_msg = f"[code: {waveform_data.returncode}]"
+
+                    if waveform_data.stderr:
+                        error_msg += f" {waveform_data.stderr.decode('utf-8')}"
+
+                    raise VibinError(f"Error running audiowaveform tool: {error_msg}")
 
                 if data_format == "json":
                     try:
