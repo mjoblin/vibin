@@ -192,6 +192,7 @@ class ConnectionManager:
             "CurrentlyPlaying",
             "Favorites",
             "Presets",
+            "Queue",
             "System",
             "UPnPProperties",
         ]:

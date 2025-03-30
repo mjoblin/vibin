@@ -259,6 +259,39 @@ class TransportPlayheadPositionPayload(BaseModel):
 
 # Streamer's active playlist --------------------------------------------------
 
+class QueueItemMetadata(BaseModel):
+    """"""
+    class_: str | None = Field(..., alias="class")
+    source: str | None
+    name: str | None
+    title: str | None
+    art_url: str | None
+    track_number: int | None
+    duration: int | None
+    genre: str | None
+    album: str | None
+    artist: str | None
+
+
+class QueueItem(BaseModel):
+    """"""
+    id: int | None
+    position: int | None
+    metadata: QueueItemMetadata | None
+
+
+class Queue(BaseModel):
+    """ """
+    start: int | None
+    count: int | None
+    total: int | None
+    play_postition: int | None
+    play_id: int | None
+    presettable: bool | None
+    items: list[QueueItem] | None
+
+
+
 
 class ActivePlaylistEntry(BaseModel):
     """A single entry in the streamer's active playlist."""
@@ -338,7 +371,9 @@ class CurrentlyPlaying(BaseModel):
     album_media_id: MediaId | None
     track_media_id: MediaId | None
     active_track: ActiveTrack = ActiveTrack()
+    # TODO: Remove playlist
     playlist: ActivePlaylist = ActivePlaylist()
+    queue: Queue = Queue()
     format: MediaFormat = MediaFormat()
     stream: MediaStream = MediaStream()
 

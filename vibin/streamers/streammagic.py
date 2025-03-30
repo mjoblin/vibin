@@ -45,6 +45,7 @@ from vibin.models import (
     PlaylistModifyAction,
     PowerState,
     Presets,
+    Queue,
     StreamerDeviceDisplay,
     StreamerState,
     TransportAction,
@@ -135,6 +136,7 @@ class StreamMagic(Streamer):
 
         self._upnp_properties: UPnPProperties = {}
         self._currently_playing: CurrentlyPlaying = CurrentlyPlaying()
+        self._queue = Queue()
         self._transport_state: TransportState = TransportState()
         self._device_display_raw = {}
         self._cached_playlist_entries: list[ActivePlaylistEntry] = []
@@ -144,11 +146,11 @@ class StreamMagic(Streamer):
         self._instance_id = 0  # StreamMagic implements a static AVTransport instance
         self._websocket_thread = None
 
-        self._uu_vol_control = device.UuVolControl
+        # self._uu_vol_control = device.UuVolControl
         self._av_transport = device.AVTransport
-        self._playlist_extension = device.PlaylistExtension
+        # self._playlist_extension = device.PlaylistExtension
 
-        self._playlist_id_array = None
+        self._playlist_id_array = None  # TODO: Remove?
 
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
@@ -156,18 +158,18 @@ class StreamMagic(Streamer):
                 UPnPServiceName("AVTransport"),
                 UPnPPropertyName("LastChange"),
             ): self._upnp_last_change_event_handler,
-            (
-                UPnPServiceName("PlaylistExtension"),
-                UPnPPropertyName("IdArray"),
-            ): self._upnp_playlist_id_array_event_handler,
-            (
-                UPnPServiceName("UuVolControl"),
-                UPnPPropertyName("CurrentPlaylistTrackID"),
-            ): self._upnp_current_playlist_track_id_event_handler,
-            (
-                UPnPServiceName("UuVolControl"),
-                UPnPPropertyName("PlaybackXML"),
-            ): self._upnp_current_playback_event_handler,
+            # (
+            #     UPnPServiceName("PlaylistExtension"),
+            #     UPnPPropertyName("IdArray"),
+            # ): self._upnp_playlist_id_array_event_handler,
+            # (
+            #     UPnPServiceName("UuVolControl"),
+            #     UPnPPropertyName("CurrentPlaylistTrackID"),
+            # ): self._upnp_current_playlist_track_id_event_handler,
+            # (
+            #     UPnPServiceName("UuVolControl"),
+            #     UPnPPropertyName("PlaybackXML"),
+            # ): self._upnp_current_playback_event_handler,
         }
 
         # Configure thread for managing UPnP subscriptions
@@ -185,8 +187,8 @@ class StreamMagic(Streamer):
                 subscription_callback_base=self._upnp_subscription_callback_base,
                 services=[
                     self._av_transport,
-                    self._playlist_extension,
-                    self._uu_vol_control,
+                    # self._playlist_extension,
+                    # self._uu_vol_control,
                 ],
             )
             self._upnp_subscription_manager_thread.start()
@@ -268,14 +270,14 @@ class StreamMagic(Streamer):
 
         # See if any currently-playing media IDs can be found.
         try:
-            response = self._device.UuVolControl.GetPlaybackDetails(
-                NavigatorId=self._navigator_id
-            )
+            # response = self._device.UuVolControl.GetPlaybackDetails(
+            #     NavigatorId=self._navigator_id
+            # )
 
             # Determine the currently-streamed URL, and use it to extract IDs.
-            stream_url = untangle.parse(
-                response["RetPlaybackXML"]
-            ).reciva.playback_details.stream.url.cdata
+            # stream_url = untangle.parse(
+            #     response["RetPlaybackXML"]
+            # ).reciva.playback_details.stream.url.cdata
 
             this_album_id, this_track_id = self._album_and_track_ids_from_file(stream_url)
 
@@ -285,14 +287,16 @@ class StreamMagic(Streamer):
             # TODO: Investigate which exceptions to handle
             logger.info(f"No currently-playing local media IDs found")
 
-        # Figure out what the current active playlist looks like.
-        self._playlist_id_array = None
-        self._set_current_playlist_entries()
+        # Figure out what the current queue looks like.
+        self._playlist_id_array = None # TODO: Remove?
+        self._set_current_playlist_entries() # TODO: Remove
+        self._set_queue()
 
         # Current playlist track index.
         try:
-            response = self._device.UuVolControl.GetCurrentPlaylistTrack()
-            self._set_current_playlist_track_index(response["CurrentPlaylistTrackID"])
+            # response = self._device.UuVolControl.GetCurrentPlaylistTrack()
+            # self._set_current_playlist_track_index(response["CurrentPlaylistTrackID"])
+            pass
         except Exception:
             # TODO
             pass
@@ -442,8 +446,8 @@ class StreamMagic(Streamer):
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
         )
 
-        repeat_state = self._playlist_extension.Repeat()
-        self._transport_state.repeat = "all" if repeat_state["aRepeat"] is True else "off"
+        # repeat_state = self._playlist_extension.Repeat()
+        # self._transport_state.repeat = "all" if repeat_state["aRepeat"] is True else "off"
 
         return self._transport_state.repeat
 
@@ -454,8 +458,8 @@ class StreamMagic(Streamer):
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
         )
 
-        shuffle_state = self._playlist_extension.Shuffle()
-        self._transport_state.shuffle = "all" if shuffle_state["aShuffle"] is True else "off"
+        # shuffle_state = self._playlist_extension.Shuffle()
+        # self._transport_state.shuffle = "all" if shuffle_state["aShuffle"] is True else "off"
 
         return self._transport_state.shuffle
 
@@ -497,6 +501,13 @@ class StreamMagic(Streamer):
     def playlist(self) -> ActivePlaylist:
         return self._currently_playing.playlist
 
+
+    # TODO:
+    #
+    # curl -vvv 'http://streamer.local/smoip/queue/move?id=4924416&to=0&from=13' | jq
+    # curl -vvv 'http://streamer.local/smoip/queue/add?action=PLAY_FROM_HERE&didl=' | jq
+
+
     @retry_on_bad_navigator
     def modify_playlist(
         self,
@@ -508,29 +519,32 @@ class StreamMagic(Streamer):
             if action == "INSERT":
                 # INSERT. This works for Tracks only (not Albums).
                 # TODO: Add check to ensure metadata is for a Track.
-                result = self._uu_vol_control.InsertPlaylistTrack(
-                    InsertPosition=insert_index, TrackData=metadata
-                )
+                # result = self._uu_vol_control.InsertPlaylistTrack(
+                #     InsertPosition=insert_index, TrackData=metadata
+                # )
+                pass
             else:
-                # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-                queue_folder_response = self._uu_vol_control.QueueFolder(
-                    ServerUDN=self._media_server.device_udn,
-                    Action=action,
-                    NavigatorId=self._navigator_id,
-                    ExtraInfo="",
-                    DIDL=metadata,
-                )
-
-                if queue_folder_response["Result"] == "BAD_NAVIGATOR":
-                    logger.warning("StreamMagic navigator is bad")
-                    raise StreamMagicBadNavigatorError()
+                # # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
+                # queue_folder_response = self._uu_vol_control.QueueFolder(
+                #     ServerUDN=self._media_server.device_udn,
+                #     Action=action,
+                #     NavigatorId=self._navigator_id,
+                #     ExtraInfo="",
+                #     DIDL=metadata,
+                # )
+                #
+                # if queue_folder_response["Result"] == "BAD_NAVIGATOR":
+                #     logger.warning("StreamMagic navigator is bad")
+                #     raise StreamMagicBadNavigatorError()
+                pass
         except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
             # TODO: Look at using VibinDeviceError wherever things like
             #   _uu_vol_control are being used.
             raise VibinDeviceError(e)
 
     def play_playlist_index(self, index: int):
-        self._uu_vol_control.SetCurrentPlaylistTrack(CurrentPlaylistTrackID=index)
+        # self._uu_vol_control.SetCurrentPlaylistTrack(CurrentPlaylistTrackID=index)
+        pass
 
     def play_playlist_id(self, playlist_id: int):
         try:
@@ -610,6 +624,7 @@ class StreamMagic(Streamer):
     # Additional helpers (not part of Streamer interface).
     # =========================================================================
 
+    # TODO: Should be able to remove this once UuVolControl dependency is gone
     def _initialize_navigator(self):
         """Initialize the StreamMagic navigator.
 
@@ -619,39 +634,41 @@ class StreamMagic(Streamer):
         navigator name and receiving a unique navigator ID in return. This
         navigator ID is then used for some streamer calls.
         """
-        nav_check = self.device.UuVolControl.IsRegisteredNavigatorName(
-            NavigatorName=self._navigator_name
-        )
+        self._navigator_id = None
 
-        if nav_check["IsRegistered"]:
-            # Navigator is already registered.
-            self._navigator_id = nav_check["RetNavigatorId"]
-        else:
-            # Need to request a navigator.
-            self._navigator_id = None
-
-            try:
-                new_nav = self.device.UuVolControl.RegisterNamedNavigator(
-                    NewNavigatorName=self._navigator_name
-                )
-
-                try:
-                    self._navigator_id = new_nav["RetNavigatorId"]
-                except KeyError:
-                    raise VibinDeviceError(
-                        f"Could not acquire StreamMagic navigator: {new_nav}"
-                    )
-
-                logger.info(
-                    f"StreamMagic navigator name: {self._navigator_name} "
-                    + f"id: {self._navigator_id}"
-                )
-            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-                logger.error(
-                    "Could not acquire StreamMagic navigator. If device is in "
-                    + "standby, power it on and try again."
-                )
-                raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
+        # nav_check = self.device.UuVolControl.IsRegisteredNavigatorName(
+        #     NavigatorName=self._navigator_name
+        # )
+        #
+        # if nav_check["IsRegistered"]:
+        #     # Navigator is already registered.
+        #     self._navigator_id = nav_check["RetNavigatorId"]
+        # else:
+        #     # Need to request a navigator.
+        #     self._navigator_id = None
+        #
+        #     try:
+        #         new_nav = self.device.UuVolControl.RegisterNamedNavigator(
+        #             NewNavigatorName=self._navigator_name
+        #         )
+        #
+        #         try:
+        #             self._navigator_id = new_nav["RetNavigatorId"]
+        #         except KeyError:
+        #             raise VibinDeviceError(
+        #                 f"Could not acquire StreamMagic navigator: {new_nav}"
+        #             )
+        #
+        #         logger.info(
+        #             f"StreamMagic navigator name: {self._navigator_name} "
+        #             + f"id: {self._navigator_id}"
+        #         )
+        #     except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+        #         logger.error(
+        #             "Could not acquire StreamMagic navigator. If device is in "
+        #             + "standby, power it on and try again."
+        #         )
+        #         raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
 
     def _release_navigator(self):
         """Release the StreamMagic navigator."""
@@ -661,7 +678,7 @@ class StreamMagic(Streamer):
                     f"Releasing StreamMagic navigator; name: {self._navigator_name} " +
                     f"id: {self._navigator_id}"
                 )
-                self._uu_vol_control.ReleaseNavigator(NavigatorId=self._navigator_id)
+                # self._uu_vol_control.ReleaseNavigator(NavigatorId=self._navigator_id)
             except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
                 logger.error(f"Could not release StreamMagic navigator: {e}")
 
@@ -767,6 +784,17 @@ class StreamMagic(Streamer):
                 + f"'{source_id}', setting to empty AudioSource"
             )
 
+    def _set_queue(self):
+        """Set the current queue in local state."""
+        queue = self._retrieve_queue()
+
+        self._queue = queue
+        self._on_update("Queue", self._queue)
+
+        # TODO: Remove
+        self._currently_playing.queue = queue
+        self._send_currently_playing_update()
+
     def _set_current_playlist_entries(self):
         """Set the active playlist entries in local state."""
         playlist_entries = self._retrieve_active_playlist_entries()
@@ -791,110 +819,124 @@ class StreamMagic(Streamer):
     def _retrieve_active_playlist_array(self) -> list[int]:
         """Retrieve the active playlist ID array from the streamer."""
         try:
-            response = self._device.PlaylistExtension.IdArray()
-
-            # The array comes back as base64-encoded array of ints.
-            playlist_encoded = response["aIdArray"]
-            playlist_decoded = base64.b64decode(playlist_encoded)
-            playlist_array = array.array("I", playlist_decoded)
-
-            if sys.byteorder == "little":
-                playlist_array.byteswap()
-
-            return list(playlist_array)
+            # response = self._device.PlaylistExtension.IdArray()
+            #
+            # # The array comes back as base64-encoded array of ints.
+            # playlist_encoded = response["aIdArray"]
+            # playlist_decoded = base64.b64decode(playlist_encoded)
+            # playlist_array = array.array("I", playlist_decoded)
+            #
+            # if sys.byteorder == "little":
+            #     playlist_array.byteswap()
+            #
+            # return list(playlist_array)
+            pass
         except Exception:
             # TODO: What exception gets thrown here?
             logger.warning("Could not determine the streamer's active playlist IDs")
             return []
 
-    def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
-        """Retrieve the active playlist entries from the streamer."""
-        playlist_entry_ids = self._retrieve_active_playlist_array()
-
-        # Retrieve the playlist via UPnP.
-        # TODO: Can this information be plucked from a streamer WebSocket
-        #   message? If so, would that path be simpler?
-        response = self._device.PlaylistExtension.ReadList(
-            aIdList=",".join([str(id) for id in playlist_entry_ids])
+    def _retrieve_queue(self) -> Queue:
+        """"""
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/queue/list"
         )
 
-        key_tag_map = {
-            "album": "upnp:album",
-            "artist": "upnp:artist",
-            "genre": "upnp:genre",
-            "albumArtURI": "upnp:albumArtURI",
-            "originalTrackNumber": "upnp:originalTrackNumber",
-            "title": "dc:title",
-        }
+        payload = response.json()
+        queue = Queue.validate(payload["data"]) # TODO: Handle invalid payload
 
-        playlist_entries = etree.fromstring(response["aMetaDataList"])
+        return queue
 
-        # Construct a sanitized playlist entry for each of the raw entries
-        # retrieved via UPnP. Store all entries in a map keyed by entry ID.
-        entry_id_to_playlist_entry = {}
+    def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
+        """Retrieve the active playlist entries from the streamer."""
+        pass
 
-        for index, playlist_entry in enumerate(playlist_entries):
-            id = int(playlist_entry.findtext("Id").replace("l", ""))
-            uri = playlist_entry.findtext("Uri")
-
-            metadata_str = playlist_entry.findtext("MetaData")
-            metadata_elem = etree.fromstring(metadata_str)
-            ns = metadata_elem.nsmap
-
-            item_elem = metadata_elem.find("item", namespaces=ns)
-
-            entry_data = {
-                "id": id,
-                "index": index,
-                "uri": uri,
-                "trackMediaId": None,
-                "albumMediaId": None,
-            }
-
-            for key, tag in key_tag_map.items():
-                entry_data[key] = item_elem.findtext(tag, namespaces=ns)
-
-            entry_data["duration"] = item_elem.find("res", namespaces=ns).attrib[
-                "duration"
-            ]
-
-            this_album_id, this_track_id = self._album_and_track_ids_from_file(uri)
-
-            entry_data["albumMediaId"] = this_album_id
-            entry_data["trackMediaId"] = this_track_id
-
-            entry_id_to_playlist_entry[id] = entry_data
-
-        results = []
-
-        # Create an array of playlist entries, in the same order as the ID list
-        # retrieved earlier. This ID list is the source of truth for entry order.
-        for playlist_entry_id in playlist_entry_ids:
-            try:
-                results.append(entry_id_to_playlist_entry[playlist_entry_id])
-            except KeyError:
-                pass
-
-        # Check whether the playlist has changed from the last time the playlist
-        # was cached in local state. If the playlist has changed then we'll want
-        # to announce that.
-        cached_playlist_media_ids = [
-            entry.trackMediaId for entry in self._cached_playlist_entries
-        ]
-        active_playlist_media_ids = [entry["trackMediaId"] for entry in results]
-
-        # Coerce the playlist into a list of PlaylistEntry objects
-        results_as_entries = [ActivePlaylistEntry(**result) for result in results]
-
-        if cached_playlist_media_ids != active_playlist_media_ids:
-            # NOTE: All changes to the active playlist should be detected here,
-            #   regardless of where they originated (a Vibin client, another
-            #   app like the StreamMagic iOS app, etc).
-            self._on_playlist_modified(results_as_entries)
-
-        self._cached_playlist_entries = results_as_entries
-
-        return results_as_entries
+        # playlist_entry_ids = self._retrieve_active_playlist_array()
+        #
+        # # Retrieve the playlist via UPnP.
+        # # TODO: Can this information be plucked from a streamer WebSocket
+        # #   message? If so, would that path be simpler?
+        # response = self._device.PlaylistExtension.ReadList(
+        #     aIdList=",".join([str(id) for id in playlist_entry_ids])
+        # )
+        #
+        # key_tag_map = {
+        #     "album": "upnp:album",
+        #     "artist": "upnp:artist",
+        #     "genre": "upnp:genre",
+        #     "albumArtURI": "upnp:albumArtURI",
+        #     "originalTrackNumber": "upnp:originalTrackNumber",
+        #     "title": "dc:title",
+        # }
+        #
+        # playlist_entries = etree.fromstring(response["aMetaDataList"])
+        #
+        # # Construct a sanitized playlist entry for each of the raw entries
+        # # retrieved via UPnP. Store all entries in a map keyed by entry ID.
+        # entry_id_to_playlist_entry = {}
+        #
+        # for index, playlist_entry in enumerate(playlist_entries):
+        #     id = int(playlist_entry.findtext("Id").replace("l", ""))
+        #     uri = playlist_entry.findtext("Uri")
+        #
+        #     metadata_str = playlist_entry.findtext("MetaData")
+        #     metadata_elem = etree.fromstring(metadata_str)
+        #     ns = metadata_elem.nsmap
+        #
+        #     item_elem = metadata_elem.find("item", namespaces=ns)
+        #
+        #     entry_data = {
+        #         "id": id,
+        #         "index": index,
+        #         "uri": uri,
+        #         "trackMediaId": None,
+        #         "albumMediaId": None,
+        #     }
+        #
+        #     for key, tag in key_tag_map.items():
+        #         entry_data[key] = item_elem.findtext(tag, namespaces=ns)
+        #
+        #     entry_data["duration"] = item_elem.find("res", namespaces=ns).attrib[
+        #         "duration"
+        #     ]
+        #
+        #     this_album_id, this_track_id = self._album_and_track_ids_from_file(uri)
+        #
+        #     entry_data["albumMediaId"] = this_album_id
+        #     entry_data["trackMediaId"] = this_track_id
+        #
+        #     entry_id_to_playlist_entry[id] = entry_data
+        #
+        # results = []
+        #
+        # # Create an array of playlist entries, in the same order as the ID list
+        # # retrieved earlier. This ID list is the source of truth for entry order.
+        # for playlist_entry_id in playlist_entry_ids:
+        #     try:
+        #         results.append(entry_id_to_playlist_entry[playlist_entry_id])
+        #     except KeyError:
+        #         pass
+        #
+        # # Check whether the playlist has changed from the last time the playlist
+        # # was cached in local state. If the playlist has changed then we'll want
+        # # to announce that.
+        # cached_playlist_media_ids = [
+        #     entry.trackMediaId for entry in self._cached_playlist_entries
+        # ]
+        # active_playlist_media_ids = [entry["trackMediaId"] for entry in results]
+        #
+        # # Coerce the playlist into a list of PlaylistEntry objects
+        # results_as_entries = [ActivePlaylistEntry(**result) for result in results]
+        #
+        # if cached_playlist_media_ids != active_playlist_media_ids:
+        #     # NOTE: All changes to the active playlist should be detected here,
+        #     #   regardless of where they originated (a Vibin client, another
+        #     #   app like the StreamMagic iOS app, etc).
+        #     self._on_playlist_modified(results_as_entries)
+        #
+        # self._cached_playlist_entries = results_as_entries
+        #
+        # return results_as_entries
 
     # -------------------------------------------------------------------------
     # Helpers to send messages back to Vibin
@@ -943,6 +985,7 @@ class StreamMagic(Streamer):
 
         return result
 
+    # TODO: Replace with a websocket listen on the /queue ?
     def _upnp_playlist_id_array_event_handler(
         self, service_name: UPnPServiceName, property_value: str
     ):
@@ -1032,11 +1075,12 @@ class StreamMagic(Streamer):
         # TODO: Can this be removed once last seen track and album IDs are
         #   extracted from a StreamMagic WebSocket update.
         try:
-            self._determine_current_media_ids(
-                self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
-                    "playback-details"
-                ]
-            )
+            pass
+            # self._determine_current_media_ids(
+            #     self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
+            #         "playback-details"
+            #     ]
+            # )
         except KeyError:
             pass
 
@@ -1060,6 +1104,9 @@ class StreamMagic(Streamer):
 
         # Request preset updates.
         await websocket.send('{"path": "/presets/list", "params": {"update": 1}}')
+
+        # Request queue updates.
+        await websocket.send('{"path": "/queue/info", "params": {"update": 1}}')
 
         # Request power updates (on/off).
         await websocket.send('{"path": "/system/power", "params": {"update": 100}}')
@@ -1196,6 +1243,15 @@ class StreamMagic(Streamer):
                     self._send_system_update()
             except KeyError:
                 pass
+        elif update_dict["path"] == "/queue/info":
+            # Queue -----------------------------------------------------------
+            #
+            # We treat this as just an announcement that the queue has changed
+            # in some way. The payload we receive here is just a small amount
+            # of information, so we ignore it and instead request the full
+            # queue state from the streamer.
+
+            self._set_queue()
         elif update_dict["path"] == "/presets/list":
             # Presets ---------------------------------------------------------
 
