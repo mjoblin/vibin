@@ -14,6 +14,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
+from defusedxml.xmlrpc import defused_gzip_decode
 from lxml import etree
 import requests
 import untangle
@@ -495,7 +496,97 @@ class StreamMagic(Streamer):
             return []
 
     # -------------------------------------------------------------------------
+    # Queue
+
+    @property
+    def queue(self) -> Queue:
+        return self._queue
+
+    # TODO:
+    #
+    # curl -vvv 'http://streamer.local/smoip/queue/move?id=4924416&to=0&from=13' | jq
+    # curl -vvv 'http://streamer.local/smoip/queue/add?action=PLAY_FROM_HERE&didl=' | jq
+
+    @retry_on_bad_navigator # TODO: Remove decorator?
+    def modify_queue(
+        self,
+        metadata: str,
+        action: PlaylistModifyAction = "REPLACE", # TODO: Fix
+        insert_index: int | None = None,  # Only used by INSERT action
+    ):
+        try:
+            if action == "INSERT":
+                # INSERT. This works for Tracks only (not Albums).
+                # TODO: Add check to ensure metadata is for a Track.
+                # result = self._uu_vol_control.InsertPlaylistTrack(
+                #     InsertPosition=insert_index, TrackData=metadata
+                # )
+                pass
+            else:
+                # # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
+                # queue_folder_response = self._uu_vol_control.QueueFolder(
+                #     ServerUDN=self._media_server.device_udn,
+                #     Action=action,
+                #     NavigatorId=self._navigator_id,
+                #     ExtraInfo="",
+                #     DIDL=metadata,
+                # )
+                #
+                # if queue_folder_response["Result"] == "BAD_NAVIGATOR":
+                #     logger.warning("StreamMagic navigator is bad")
+                #     raise StreamMagicBadNavigatorError()
+                pass
+        except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+            # TODO: Look at using VibinDeviceError wherever things like
+            #   _uu_vol_control are being used.
+            raise VibinDeviceError(e)
+
+    def play_queue_item_position(self, position: int):
+        # Find the queue item id associated with the given position, and then
+        # play that queue item id.
+        #
+        # Note: /smoip/zone/play_control does appear to accept a
+        # "queue_position" key, but it returns with the message "At least one
+        # parameter required".
+
+        try:
+            position_queue_id = [
+                item for item in self.queue.items if item.position == position
+            ][0]
+
+            self.play_queue_item_id(position_queue_id)
+        except (AttributeError, IndexError):
+            raise VibinNotFoundError(
+                f"Could not find Queue item with position: {position}"
+            )
+
+    def play_queue_item_id(self, queue_id: int):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/zone/play_control",
+            json={"queue_id": queue_id},
+        )
+
+    def queue_clear(self):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/delete",
+            json={"start": 0, "delete_all": True},
+        )
+
+    def queue_delete_item(self, queue_item_id: int):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/delete",
+            json={"ids": [queue_item_id]},
+        )
+
+    def queue_move_item(self, queue_item_id: int, from_index: int, to_index: int):
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/move",
+            json={"id": queue_item_id, "from": from_index, "to": to_index},
+        )
+
+    # -------------------------------------------------------------------------
     # Active Playlist
+    # TODO: Deprecate
 
     @property
     def playlist(self) -> ActivePlaylist:
@@ -789,6 +880,9 @@ class StreamMagic(Streamer):
         queue = self._retrieve_queue()
 
         self._queue = queue
+        logger.warning("")
+        logger.warning(f"QUEUE: {queue}")
+        logger.warning("")
         self._on_update("Queue", self._queue)
 
         # TODO: Remove
@@ -844,6 +938,8 @@ class StreamMagic(Streamer):
 
         payload = response.json()
         queue = Queue.validate(payload["data"]) # TODO: Handle invalid payload
+
+        logger.warning(f"Queue: {queue}")
 
         return queue
 

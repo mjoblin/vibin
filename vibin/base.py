@@ -348,6 +348,7 @@ class Vibin:
                 payload=FavoritesPayload(favorites=self.favorites_manager.all),
             ),
             UpdateMessage(message_type="Presets", payload=self.streamer.presets),
+            UpdateMessage(message_type="Queue", payload=self.streamer.queue),
             UpdateMessage(
                 message_type="StoredPlaylists",
                 payload=self.playlists_manager.stored_playlists,

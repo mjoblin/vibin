@@ -11,6 +11,7 @@ from vibin.models import (
     PlaylistModifyAction,
     PowerState,
     Presets,
+    Queue,
     StreamerDeviceDisplay,
     StreamerState,
     TransportAction,
@@ -235,7 +236,67 @@ class Streamer(metaclass=ABCMeta):
         pass
 
     # -------------------------------------------------------------------------
+    # Queue
+
+    @property
+    @abstractmethod
+    def queue(self) -> Queue:
+        """The current Queue."""
+        pass
+
+    @abstractmethod
+    def modify_queue(
+        self,
+        metadata: str,
+        action: PlaylistModifyAction = "REPLACE", # TODO: Update for Queue
+        insert_index: int | None = None,
+    ):
+        """Modify the active playlist.
+
+        Modifying the playlist takes the media represented by `metadata` and
+        applies one of the following `action`s:
+
+         * `"APPEND"`: Append to the end of the playlist. (Track or Album).
+         * `"INSERT"`: Insert into the playlist at location `insert_index`.
+           (Track only).
+         * `"PLAY_FROM_HERE"`: Replace the playlist with the Track's entire
+           Album, and plays the Track. (Track only).
+         * `"PLAY_NEXT"`: Insert into the playlist after the current entry.
+           (Track or Album).
+         * `"PLAY_NOW"`: Insert into the playlist at the current entry. (Track
+           or Album).
+         * `"REPLACE"`: Replace the playlist. (Track or Album).
+        """
+        pass
+
+    @abstractmethod
+    def play_queue_item_id(self, queue_id: int):
+        """Play a Queue item by ID."""
+        pass
+
+    @abstractmethod
+    def play_queue_item_position(self, index: int):
+        """Play a Queue item by position."""
+        pass
+
+    @abstractmethod
+    def queue_clear(self):
+        """Clear the Queue."""
+        pass
+
+    @abstractmethod
+    def queue_delete_item(self, queue_id: int):
+        """Remove an item from the Queue by item ID."""
+        pass
+
+    @abstractmethod
+    def queue_move_item(self, queue_id: int, from_index: int, to_index: int):
+        """Move a Queue item to another index position in the Queue."""
+        pass
+
+    # -------------------------------------------------------------------------
     # Active Playlist
+    # TODO: Deprecate these
 
     @property
     @abstractmethod

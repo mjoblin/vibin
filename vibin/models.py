@@ -257,11 +257,11 @@ class TransportPlayheadPositionPayload(BaseModel):
     position: TransportPosition
 
 
-# Streamer's active playlist --------------------------------------------------
+# Streamer's queue ------------------------------------------------------------
 
 class QueueItemMetadata(BaseModel):
-    """"""
-    class_: str | None = Field(..., alias="class")
+    """TODO"""
+    class_field: str | None = Field(..., alias="class")
     source: str | None
     name: str | None
     title: str | None
@@ -274,22 +274,34 @@ class QueueItemMetadata(BaseModel):
 
 
 class QueueItem(BaseModel):
-    """"""
+    """TODO"""
     id: int | None
     position: int | None
     metadata: QueueItemMetadata | None
 
+    # TODO: Implement album and track media id determination
+    albumMediaId: str | None
+    trackMediaId: str | None
+
+
+# TODO: This _emit_aliases approach is a hack. It's a hint to
+#   message_payload_to_str() in websocket_server.py to whether Pydantic's
+#   by_alias should be True or False when emitting the model. Ideally we'd
+#   have a better approach to deciding whether a field alias should be
+#   used when emitting a model from the WebSocket server or the REST API.
 
 class Queue(BaseModel):
     """ """
+    _emit_aliases = False
+
     start: int | None
     count: int | None
     total: int | None
-    play_postition: int | None
+    # Fix play_position typo
+    play_position: int | None = Field(None, alias="play_postition")
     play_id: int | None
     presettable: bool | None
     items: list[QueueItem] | None
-
 
 
 
@@ -371,9 +383,12 @@ class CurrentlyPlaying(BaseModel):
     album_media_id: MediaId | None
     track_media_id: MediaId | None
     active_track: ActiveTrack = ActiveTrack()
-    # TODO: Remove playlist
+
+    # TODO: Remove playlist and queue
+    # TODO: Is CurrentlyPlaying even needed?
     playlist: ActivePlaylist = ActivePlaylist()
     queue: Queue = Queue()
+
     format: MediaFormat = MediaFormat()
     stream: MediaStream = MediaStream()
 
