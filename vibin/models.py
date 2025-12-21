@@ -260,26 +260,24 @@ class TransportPlayheadPositionPayload(BaseModel):
 # Streamer's queue ------------------------------------------------------------
 
 class QueueItemMetadata(BaseModel):
-    """TODO"""
+    """Metadata for a streamer queue item."""
     class_field: str | None = Field(..., alias="class")
     source: str | None
     name: str | None
     title: str | None
     art_url: str | None
     track_number: int | None
-    duration: int | None
+    duration: int | None  # Duration in seconds
     genre: str | None
     album: str | None
     artist: str | None
 
 
 class QueueItem(BaseModel):
-    """TODO"""
+    """A single streamer queue item."""
     id: int | None
     position: int | None
     metadata: QueueItemMetadata | None
-
-    # TODO: Implement album and track media id determination
     albumMediaId: str | None
     trackMediaId: str | None
 
@@ -291,7 +289,7 @@ class QueueItem(BaseModel):
 #   used when emitting a model from the WebSocket server or the REST API.
 
 class Queue(BaseModel):
-    """ """
+    """The streamer's current queue."""
     _emit_aliases = False
 
     start: int | None
@@ -319,7 +317,7 @@ class ActivePlaylistEntry(BaseModel):
     title: str | None
     uri: str | None
     albumMediaId: str | None
-    trackMediaId: str | None
+    trackMediaId: str | None  # TODO: Implement trackMediaId support
 
 
 class ActivePlaylist(BaseModel):
