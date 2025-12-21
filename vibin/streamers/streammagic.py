@@ -1,7 +1,6 @@
 import array
 import atexit
 import base64
-import functools
 import json
 import math
 import pathlib
@@ -10,14 +9,12 @@ import re
 import sys
 from typing import Literal, Any
 from urllib.parse import urlparse, quote
-import uuid
 import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
 from defusedxml.xmlrpc import defused_gzip_decode
 from lxml import etree
 import requests
-import untangle
 import upnpclient
 from upnpclient.marshal import marshal_value
 from websockets.legacy.client import WebSocketClientProtocol
@@ -74,38 +71,11 @@ from vibin.utils import UPnPSubscriptionManagerThread, WebsocketThread
 
 # TODO: This class would benefit from some overall refactoring. Its current
 #  implementation isn't very clear and is showing its hacked-together history.
-# TODO: Investigate migrating from UPnP to SMOIP where possible.
+# TODO: Investigate replacing AVTransport UPnP subscription with SMOIP WebSocket.
+#  This is the only remaining UPnP subscription. If SMOIP WebSocket provides
+#  equivalent transport state info, the UPnP infrastructure could be removed.
 # TODO: Consider using httpx instead of requests, and making some of these
 #   methods (particularly the ones that use SMOIP) async.
-# TODO: Consider using upnpclient.SOAPError more for error handling.
-# TODO: Consider using upnpclient.UPNPError more for error handling.
-# TODO: Can end up with multiple UPnP subscriptions to each service.
-
-
-class StreamMagicBadNavigatorError(Exception):
-    pass
-
-
-def retry_on_bad_navigator(method):
-    """Decorator to retry the method call on StreamMagicBadNavigatorError."""
-    @functools.wraps(method)
-    def wrapper_retry_on_bad_navigator(self, *method_args, **method_kwargs):
-        try:
-            # Invoke the decorated method.
-            return method(self, *method_args, **method_kwargs)
-        except StreamMagicBadNavigatorError:
-            # If the decorated method raised StreamMagicBadNavigatorError then
-            # attempt to acquire a fresh navigator from the streamer. Only try
-            # this once.
-            logger.info("Attempting to re-acquire StreamMagic navigator")
-            self._initialize_navigator()
-
-            try:
-                return method(self, *method_args, **method_kwargs)
-            except StreamMagicBadNavigatorError:
-                raise VibinDeviceError(f"Could not re-acquire StreamMagic navigator")
-
-    return wrapper_retry_on_bad_navigator
 
 
 class StreamMagic(Streamer):
@@ -142,9 +112,7 @@ class StreamMagic(Streamer):
         self._instance_id = 0  # StreamMagic implements a static AVTransport instance
         self._websocket_thread = None
 
-        # self._uu_vol_control = device.UuVolControl
         self._av_transport = device.AVTransport
-        # self._playlist_extension = device.PlaylistExtension
 
         # Set up UPnP event handlers.
         self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
@@ -152,18 +120,6 @@ class StreamMagic(Streamer):
                 UPnPServiceName("AVTransport"),
                 UPnPPropertyName("LastChange"),
             ): self._upnp_last_change_event_handler,
-            # (
-            #     UPnPServiceName("PlaylistExtension"),
-            #     UPnPPropertyName("IdArray"),
-            # ): self._upnp_playlist_id_array_event_handler,
-            # (
-            #     UPnPServiceName("UuVolControl"),
-            #     UPnPPropertyName("CurrentPlaylistTrackID"),
-            # ): self._upnp_current_playlist_track_id_event_handler,
-            # (
-            #     UPnPServiceName("UuVolControl"),
-            #     UPnPPropertyName("PlaybackXML"),
-            # ): self._upnp_current_playback_event_handler,
         }
 
         # Configure thread for managing UPnP subscriptions
@@ -181,8 +137,6 @@ class StreamMagic(Streamer):
                 subscription_callback_base=self._upnp_subscription_callback_base,
                 services=[
                     self._av_transport,
-                    # self._playlist_extension,
-                    # self._uu_vol_control,
                 ],
             )
             self._upnp_subscription_manager_thread.start()
@@ -191,18 +145,6 @@ class StreamMagic(Streamer):
         ET.register_namespace("dc", "http://purl.org/dc/elements/1.1/")
         ET.register_namespace("upnp", "urn:schemas-upnp-org:metadata-1-0/upnp/")
         ET.register_namespace("dlna", "urn:schemas-dlna-org:metadata-1-0/")
-
-        # This unique navigator name ensures that multiple vibins can run
-        # concurrently. This unique-navigator approach is done because vibin
-        # releases the navigator when it shuts down, which can cause problems
-        # for other still-running vibins which might have been using that
-        # navigator. This may or me not be how navigators are intended to be
-        # used. This approach also assumes the streamer is automatically
-        # cleaning up old navigators (if vibin's navigator release fails for
-        # some reason).
-        self._navigator_name = f"vibin-{str(uuid.uuid4())[:8]}"
-        self._navigator_id = None
-        self._initialize_navigator()
 
         atexit.register(self.on_shutdown)
 
@@ -231,8 +173,6 @@ class StreamMagic(Streamer):
         # Keep track of last seen ("currently playing") track and album IDs.
         # This is done to facilitate injecting this information into payloads
         # which want it, but it isn't already there when sent from the streamer.
-        # Future updates to the track and album IDs come in via UPnP updates
-        # (see self._determine_current_media_ids()).
         self._set_last_seen_media_ids(None, None)
 
     @property
@@ -262,25 +202,6 @@ class StreamMagic(Streamer):
         # Perform any StreamMagic-related startup checks which need to wait
         # until the MediaServer and Amplifier have been initialized.
 
-        # See if any currently-playing media IDs can be found.
-        try:
-            # response = self._device.UuVolControl.GetPlaybackDetails(
-            #     NavigatorId=self._navigator_id
-            # )
-
-            # Determine the currently-streamed URL, and use it to extract IDs.
-            # stream_url = untangle.parse(
-            #     response["RetPlaybackXML"]
-            # ).reciva.playback_details.stream.url.cdata
-
-            this_album_id, this_track_id = self._album_and_track_ids_from_file(stream_url)
-
-            logger.info(f"Found currently-playing local media IDs")
-            self._set_last_seen_media_ids(this_album_id, this_track_id)
-        except Exception:
-            # TODO: Investigate which exceptions to handle
-            logger.info(f"No currently-playing local media IDs found")
-
         # Figure out what the current queue looks like.
         self._set_queue()
 
@@ -291,7 +212,6 @@ class StreamMagic(Streamer):
         logger.info("StreamMagic disconnect requested")
         self._disconnected = True
 
-        self._release_navigator()
         self._upnp_subscription_manager_queue.put_nowait("SHUTDOWN")
 
         if self._websocket_thread:
@@ -429,9 +349,6 @@ class StreamMagic(Streamer):
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_repeat={state}"
         )
 
-        # repeat_state = self._playlist_extension.Repeat()
-        # self._transport_state.repeat = "all" if repeat_state["aRepeat"] is True else "off"
-
         return self._transport_state.repeat
 
     def shuffle(
@@ -440,9 +357,6 @@ class StreamMagic(Streamer):
         requests.get(
             f"http://{self._device_hostname}/smoip/zone/play_control?mode_shuffle={state}"
         )
-
-        # shuffle_state = self._playlist_extension.Shuffle()
-        # self._transport_state.shuffle = "all" if shuffle_state["aShuffle"] is True else "off"
 
         return self._transport_state.shuffle
 
@@ -613,10 +527,6 @@ class StreamMagic(Streamer):
 
         property_set = etree.fromstring(event)
 
-        # TODO: Migrate to untangle
-        # parsed = untangle.parse(event)
-        # parsed.e_propertyset.children[0].LastChange.cdata
-
         for property in property_set:
             property_element = property[0]
 
@@ -631,64 +541,6 @@ class StreamMagic(Streamer):
     # =========================================================================
     # Additional helpers (not part of Streamer interface).
     # =========================================================================
-
-    # TODO: Should be able to remove this once UuVolControl dependency is gone
-    def _initialize_navigator(self):
-        """Initialize the StreamMagic navigator.
-
-        The navigator appears to be a unique identifier required to invoke some
-        UPnP calls on the StreamMagic streamer; specifically UuVolControl calls.
-        This method requests a navigator from the streamer, supplying vibin's
-        navigator name and receiving a unique navigator ID in return. This
-        navigator ID is then used for some streamer calls.
-        """
-        self._navigator_id = None
-
-        # nav_check = self.device.UuVolControl.IsRegisteredNavigatorName(
-        #     NavigatorName=self._navigator_name
-        # )
-        #
-        # if nav_check["IsRegistered"]:
-        #     # Navigator is already registered.
-        #     self._navigator_id = nav_check["RetNavigatorId"]
-        # else:
-        #     # Need to request a navigator.
-        #     self._navigator_id = None
-        #
-        #     try:
-        #         new_nav = self.device.UuVolControl.RegisterNamedNavigator(
-        #             NewNavigatorName=self._navigator_name
-        #         )
-        #
-        #         try:
-        #             self._navigator_id = new_nav["RetNavigatorId"]
-        #         except KeyError:
-        #             raise VibinDeviceError(
-        #                 f"Could not acquire StreamMagic navigator: {new_nav}"
-        #             )
-        #
-        #         logger.info(
-        #             f"StreamMagic navigator name: {self._navigator_name} "
-        #             + f"id: {self._navigator_id}"
-        #         )
-        #     except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-        #         logger.error(
-        #             "Could not acquire StreamMagic navigator. If device is in "
-        #             + "standby, power it on and try again."
-        #         )
-        #         raise VibinDeviceError(f"Could not acquire StreamMagic navigator: {e}")
-
-    def _release_navigator(self):
-        """Release the StreamMagic navigator."""
-        if self._navigator_id is not None:
-            try:
-                logger.info(
-                    f"Releasing StreamMagic navigator; name: {self._navigator_name} " +
-                    f"id: {self._navigator_id}"
-                )
-                # self._uu_vol_control.ReleaseNavigator(NavigatorId=self._navigator_id)
-            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-                logger.error(f"Could not release StreamMagic navigator: {e}")
 
     # -------------------------------------------------------------------------
     # Static
@@ -734,46 +586,6 @@ class StreamMagic(Streamer):
 
     # -------------------------------------------------------------------------
     # State setters
-
-    def _determine_current_media_ids(self, details):
-        """Set current media ids from an incoming `details` UPnP event.
-
-        This exists only to set the last seen track and album IDs, which are
-        extracted from the current streaming filename. This assumes that the
-        filename being streamed contains these IDs.
-
-        TODO: Can the last seen track and album IDs be set from information
-            coming in from the WebSocket instead.
-        """
-        # If the current playback details includes the streamed filename, then
-        # extract the Track ID and Album ID.
-        try:
-            stream_url = details["stream"]["url"]
-            this_album_id, this_track_id = self._album_and_track_ids_from_file(
-                stream_url
-            )
-
-            send_update = True
-
-            if this_album_id and this_track_id:
-                if this_track_id != self._last_seen_track_id:
-                    self._set_last_seen_media_ids(this_album_id, this_track_id)
-                else:
-                    send_update = False
-            else:
-                # A streamed file was found, but the track and album ids could
-                # not be determined. Play it safe and set the IDs to None to
-                # ensure clients aren't provided incorrect/misleading ids.
-                self._set_last_seen_media_ids(None, None)
-
-            # Force send of a CurrentlyPlaying message to ensure any listening
-            # clients get the new track/album id information without having
-            # to wait for a normal CurrentlyPlaying update.
-            if send_update:
-                self._send_currently_playing_update()
-        except KeyError:
-            # No streamed filename found in the playback details
-            pass
 
     def _set_active_audio_source(self, source_id: str):
         """Set the active audio source to the one matching the `source_id`."""
@@ -896,23 +708,6 @@ class StreamMagic(Streamer):
 
         return result
 
-    def _upnp_current_playback_event_handler(
-        self, service_name: UPnPServiceName, property_value: str
-    ):
-        """Handle "PlaybackXML" UPnP events from the UuVolControl service.
-
-        The PlaybackXML event contains media stream information.
-        """
-        # Extract current Stream details from playback information.
-        parsed = untangle.parse(property_value)
-
-        try:
-            self._currently_playing.stream = MediaStream(
-                url=parsed.children[0].playback_details.stream.url.cdata
-            )
-        except (IndexError, AttributeError):
-            pass
-
     def _set_upnp_property(
         self,
         service_name: UPnPServiceName,
@@ -957,17 +752,8 @@ class StreamMagic(Streamer):
                     )
 
     def _set_vibin_upnp_properties(self):
-        # TODO: Can this be removed once last seen track and album IDs are
-        #   extracted from a StreamMagic WebSocket update.
-        try:
-            pass
-            # self._determine_current_media_ids(
-            #     self._upnp_properties["UuVolControl"]["PlaybackJSON"]["reciva"][
-            #         "playback-details"
-            #     ]
-            # )
-        except KeyError:
-            pass
+        # Currently a no-op. Kept for potential future UPnP property processing.
+        pass
 
     # =========================================================================
     # WebSocket connection to StreamMagic streamer.
