@@ -942,7 +942,7 @@ class StreamMagic(Streamer):
             return []
 
     def _retrieve_queue(self) -> Queue:
-        """Retrieve the current queue from the streamer via SMOIP API."""
+        """Retrieve the current queue from the streamer via SMOIP."""
         response = requests.get(
             f"http://{self._device_hostname}/smoip/queue/list"
         )
@@ -950,30 +950,32 @@ class StreamMagic(Streamer):
         payload = response.json()
         queue = Queue.validate(payload["data"])
 
-        # Populate albumMediaId for each queue item by extracting from art_url
-        if queue.items:
+        # Populate albumMediaId and trackMediaId for each queue item by looking
+        # up the album (by title + artist) and track (by album + track number)
+        # in the media server.
+        if queue.items and self._media_server:
             for item in queue.items:
-                if item.metadata and item.metadata.art_url:
-                    item.albumMediaId = self._album_id_from_art_url(
-                        item.metadata.art_url
+                if item.metadata and item.metadata.album and item.metadata.artist:
+                    # Find the album by title + artist
+                    album = self._media_server.album_by_title_and_artist(
+                        item.metadata.album,
+                        item.metadata.artist
                     )
 
+                    if album:
+                        item.albumMediaId = album.id
+
+                        # Find the track by album + track number
+                        if item.metadata.track_number:
+                            track = self._media_server.track_by_album_and_track_number(
+                                album.id,
+                                item.metadata.track_number
+                            )
+
+                            if track:
+                                item.trackMediaId = track.id
+
         return queue
-
-    def _album_id_from_art_url(self, art_url: str) -> MediaId | None:
-        """Extract album ID from queue item art_url.
-
-        The art_url from queue items follows the pattern:
-        http://{media_server}/aa/{album_id}/cover.jpg?size=0
-
-        Example: http://192.168.50.55:26125/aa/1884263651397289/cover.jpg?size=0
-        Returns: "1884263651397289"
-        """
-        if not art_url:
-            return None
-
-        match = re.search(r'/aa/(\d+)/', art_url)
-        return match.group(1) if match else None
 
     def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
         """Retrieve the active playlist entries from the streamer."""

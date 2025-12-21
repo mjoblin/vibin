@@ -205,6 +205,38 @@ class MediaServer(metaclass=ABCMeta):
         """Extract Media Ids from the given filename."""
         pass
 
+    # Concrete Album and Track finder helpers.
+
+    def album_by_title_and_artist(self, title: str, artist: str) -> Album | None:
+        """Find an album by its title and artist name.
+
+        This method performs a case-sensitive match on both title and artist.
+        Returns None if no matching album is found.
+        """
+        for album in self.albums:
+            if album.title == title and album.artist == artist:
+                return album
+
+        return None
+
+    def track_by_album_and_track_number(
+        self, album_id: MediaId, track_number: int
+    ) -> Track | None:
+        """Find a track by its album ID and track number.
+
+        Args:
+            album_id: The MediaId of the album containing the track.
+            track_number: The original track number (1-based) on the album.
+
+        Returns:
+            The matching Track, or None if not found.
+        """
+        for track in self.album_tracks(album_id):
+            if track.original_track_number == track_number:
+                return track
+
+        return None
+
     # -------------------------------------------------------------------------
     # Browsing
 
