@@ -21,7 +21,6 @@ from vibin.server.routers import (
     browse_router,
     favorites_router,
     media_server_proxy_router,
-    playlist_router, # TODO: Deprecate
     presets_router,
     queue_router,
     stored_playlists_router,
@@ -128,10 +127,7 @@ def server_start(
         {"name": "Tracks", "description": "Interact with Media Server Tracks"},
         {"name": "Browse", "description": "Browse media on the Media Server"},
         {"name": "Transport", "description": "Interact with the Streamer's transport"},
-        {
-            "name": "Active Playlist",
-            "description": "Interact with the Streamer's Active Playlist",
-        },
+        {"name": "Queue", "description": "Interact with the Streamer's Queue"},
         {"name": "Presets", "description": "Interact with the Streamer's Presets"},
         {"name": "Stored Playlists", "description": "Interact with Stored Playlists"},
         {"name": "Favorites", "description": "Interact with Favorites"},
@@ -193,9 +189,8 @@ def server_start(
     vibin_app.include_router(artists_router, prefix="/api")
     vibin_app.include_router(browse_router, prefix="/api")
     vibin_app.include_router(favorites_router, prefix="/api")
-    vibin_app.include_router(playlist_router, prefix="/api")
-    vibin_app.include_router(presets_router, prefix="/api")
     vibin_app.include_router(queue_router, prefix="/api")
+    vibin_app.include_router(presets_router, prefix="/api")
     vibin_app.include_router(stored_playlists_router, prefix="/api")
     vibin_app.include_router(system_router, prefix="/api")
     vibin_app.include_router(tracks_router, prefix="/api")

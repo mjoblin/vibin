@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 import upnpclient
@@ -295,47 +295,20 @@ class Queue(BaseModel):
     start: int | None
     count: int | None
     total: int | None
-    # Fix play_position typo
-    play_position: int | None = Field(None, alias="play_postition")
+    # Streamer sends "play_postition" (typo), we rename to queue_index to more
+    # clearly distinguish from track playback position.
+    queue_index: int | None = Field(None, alias="play_postition")
     play_id: int | None
     presettable: bool | None
     items: list[QueueItem] | None
 
 
-
-class ActivePlaylistEntry(BaseModel):
-    """A single entry in the streamer's active playlist."""
-
-    album: str | None
-    albumArtURI: str | None
-    artist: str | None
-    duration: str | None
-    genre: str | None
-    id: int | None
-    index: int | None
-    originalTrackNumber: str | None
-    title: str | None
-    uri: str | None
-    albumMediaId: str | None
-    trackMediaId: str | None  # TODO: Implement trackMediaId support
-
-
-class ActivePlaylist(BaseModel):
-    """The streamer's active playlist."""
-
-    current_track_index: int | None
-    entries: list[ActivePlaylistEntry] = []
-
-
-class ActivePlaylistModifyPayload(BaseModel):
-    """A modification request to the streamer's active playlist."""
+class QueueModifyPayload(BaseModel):
+    """Payload for modifying the queue with multiple Media IDs."""
 
     action: PlaylistModifyAction
-    max_count: int | None
     media_ids: list[MediaId]
-
-
-PlaylistModifiedHandler = Callable[[list[ActivePlaylistEntry]], None]
+    max_count: int | None = None
 
 
 # Currently playing -----------------------------------------------------------
@@ -376,17 +349,12 @@ class ActiveTrack(BaseModel):
 
 
 class CurrentlyPlaying(BaseModel):
-    """The state of what is currently playing, track and playlist."""
+    """What is currently playing on the streamer."""
 
     album_media_id: MediaId | None
     track_media_id: MediaId | None
     active_track: ActiveTrack = ActiveTrack()
-
-    # TODO: Remove playlist and queue
-    # TODO: Is CurrentlyPlaying even needed?
-    playlist: ActivePlaylist = ActivePlaylist()
     queue: Queue = Queue()
-
     format: MediaFormat = MediaFormat()
     stream: MediaStream = MediaStream()
 

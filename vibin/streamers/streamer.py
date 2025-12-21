@@ -5,9 +5,7 @@ import upnpclient
 
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    ActivePlaylist,
     CurrentlyPlaying,
-    PlaylistModifiedHandler,
     PlaylistModifyAction,
     PowerState,
     Presets,
@@ -56,8 +54,6 @@ class Streamer(metaclass=ABCMeta):
             passed to the implementation's `on_upnp_event()`.
         * `on_update`: A callback to invoke when a message is ready to be sent
             back to Vibin.
-        * `on_playlist_modified`: A callback to invoke when the streamer's
-            active playlist has been modified.
     """
 
     model_name = "VibinStreamer"
@@ -68,7 +64,6 @@ class Streamer(metaclass=ABCMeta):
         device: upnpclient.Device,
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
-        on_playlist_modified: PlaylistModifiedHandler | None = None,
     ):
         pass
 
@@ -295,66 +290,6 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def queue_move_item(self, queue_id: int, from_index: int, to_index: int):
         """Move a Queue item to another index position in the Queue."""
-        pass
-
-    # -------------------------------------------------------------------------
-    # Active Playlist
-    # TODO: Deprecate these
-
-    @property
-    @abstractmethod
-    def playlist(self) -> ActivePlaylist:
-        """The current Active Playlist."""
-        pass
-
-    @abstractmethod
-    def modify_playlist(
-        self,
-        metadata: str,
-        action: PlaylistModifyAction = "REPLACE",
-        insert_index: int | None = None,
-    ):
-        """Modify the active playlist.
-
-        Modifying the playlist takes the media represented by `metadata` and
-        applies one of the following `action`s:
-
-         * `"APPEND"`: Append to the end of the playlist. (Track or Album).
-         * `"INSERT"`: Insert into the playlist at location `insert_index`.
-           (Track only).
-         * `"PLAY_FROM_HERE"`: Replace the playlist with the Track's entire
-           Album, and plays the Track. (Track only).
-         * `"PLAY_NEXT"`: Insert into the playlist after the current entry.
-           (Track or Album).
-         * `"PLAY_NOW"`: Insert into the playlist at the current entry. (Track
-           or Album).
-         * `"REPLACE"`: Replace the playlist. (Track or Album).
-        """
-        pass
-
-    @abstractmethod
-    def play_playlist_index(self, index: int):
-        """Play a playlist entry by index."""
-        pass
-
-    @abstractmethod
-    def play_playlist_id(self, playlist_id: int):
-        """Play a playlist entry by playlist entry ID."""
-        pass
-
-    @abstractmethod
-    def playlist_clear(self):
-        """Clear the playlist."""
-        pass
-
-    @abstractmethod
-    def playlist_delete_entry(self, playlist_id: int):
-        """Remove an entry from the playlist by entry ID."""
-        pass
-
-    @abstractmethod
-    def playlist_move_entry(self, playlist_id: int, from_index: int, to_index: int):
-        """Move a playlist entry to another index position in the playlist."""
         pass
 
     # -------------------------------------------------------------------------
