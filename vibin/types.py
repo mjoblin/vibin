@@ -119,7 +119,7 @@ TransportAction = Literal[
     "toggle_playback",
 ]
 
-TransportRepeatState = Literal["off", "all"]
+TransportRepeatState = Literal["off", "one", "all"]
 
 TransportShuffleState = Literal["off", "all"]
 
