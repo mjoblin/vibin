@@ -378,21 +378,21 @@ class Vibin:
     @requires_media_server()
     def play_id(self, media_id: MediaId):
         """Play the provided media ID. This replaces the active streamer playlist."""
-        self.playlists_manager.clear_streamer_playlist()
-        self.playlists_manager.modify_streamer_playlist_with_id(media_id, "REPLACE")
+        self.playlists_manager.clear_streamer_queue()
+        self.playlists_manager.modify_streamer_queue_with_id(media_id, "REPLACE")
         self._last_played_id = media_id
 
     @requires_media_server()
     def play_ids(self, media_ids: list[MediaId], max_count: int = 10):
         """Play the provided media IDs. This replaces the active streamer playlist."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for media_id in media_ids[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(media_id, "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(media_id, "APPEND")
 
         if len(media_ids) > 0:
-            self.playlists_manager.play_streamer_playlist_index(0)
+            self.playlists_manager.play_streamer_queue_index(0)
             self._last_played_id = media_ids[0]
         else:
             self._last_played_id = None
@@ -400,24 +400,24 @@ class Vibin:
     @requires_media_server()
     def play_favorite_albums(self, max_count: int = 10):
         """Play all favorited Albums (up to max_count)."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(album["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(album["media_id"], "APPEND")
 
-        self.playlists_manager.play_streamer_playlist_index(0)
+        self.playlists_manager.play_streamer_queue_index(0)
 
     @requires_media_server()
     def play_favorite_tracks(self, max_count: int = 100):
         """Play all favorited Tracks (up to max_count)."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(track["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(track["media_id"], "APPEND")
 
-        self.playlists_manager.play_streamer_playlist_index(0)
+        self.playlists_manager.play_streamer_queue_index(0)
 
     def on_update(self, handler: UpdateMessageHandler):
         """Register a handler to receive system update messages.

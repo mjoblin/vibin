@@ -96,7 +96,7 @@ def playlist_modify_single_entry(
     action: PlaylistModifyAction = "REPLACE",
     insert_index: int | None = None,
 ):
-    get_vibin_instance().playlists_manager.modify_streamer_playlist_with_id(
+    get_vibin_instance().playlists_manager.modify_streamer_queue_with_id(
         media_id, action, insert_index
     )
 

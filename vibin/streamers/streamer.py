@@ -21,6 +21,7 @@ from vibin.models import (
     UPnPServiceSubscriptions,
 )
 from vibin.types import (
+    MediaId,
     SeekTarget,
     TransportPosition,
     UpdateMessageHandler,
@@ -247,25 +248,27 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def modify_queue(
         self,
-        metadata: str,
-        action: PlaylistModifyAction = "REPLACE", # TODO: Update for Queue
-        insert_index: int | None = None,
+        didl: str,
+        action: PlaylistModifyAction = "REPLACE",
+        play_from_id: MediaId | None = None,
     ):
-        """Modify the active playlist.
+        """Modify the queue by adding media.
 
-        Modifying the playlist takes the media represented by `metadata` and
-        applies one of the following `action`s:
-
-         * `"APPEND"`: Append to the end of the playlist. (Track or Album).
-         * `"INSERT"`: Insert into the playlist at location `insert_index`.
-           (Track only).
-         * `"PLAY_FROM_HERE"`: Replace the playlist with the Track's entire
-           Album, and plays the Track. (Track only).
-         * `"PLAY_NEXT"`: Insert into the playlist after the current entry.
-           (Track or Album).
-         * `"PLAY_NOW"`: Insert into the playlist at the current entry. (Track
-           or Album).
-         * `"REPLACE"`: Replace the playlist. (Track or Album).
+        Args:
+            didl: DIDL-Lite XML metadata for the media (album or track).
+            action: How to add the media to the queue:
+                * "REPLACE": Replace the entire queue. Does not affect playback.
+                * "APPEND": Append to the end of the queue. Does not affect
+                  playback.
+                * "PLAY_NEXT": Insert after the currently playing track. Does
+                  not affect playback.
+                * "PLAY_NOW": Insert after the currently playing track and
+                  immediately start playing the new media.
+                * "PLAY_FROM_HERE": Replace the queue with an album and start
+                  playing from a specific track (requires play_from_id).
+            play_from_id: Only used with PLAY_FROM_HERE action. Specifies the
+                track ID within the album to start playing from. Ignored for
+                all other actions.
         """
         pass
 

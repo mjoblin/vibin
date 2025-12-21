@@ -56,6 +56,7 @@ from vibin.models import (
     UPnPServiceSubscriptions,
 )
 from vibin.types import (
+    MediaId,
     SeekTarget,
     TransportPosition,
     UPnPServiceName,
@@ -502,44 +503,51 @@ class StreamMagic(Streamer):
     def queue(self) -> Queue:
         return self._queue
 
-    # TODO:
-    #
-    # curl -vvv 'http://streamer.local/smoip/queue/move?id=4924416&to=0&from=13' | jq
-    # curl -vvv 'http://streamer.local/smoip/queue/add?action=PLAY_FROM_HERE&didl=' | jq
-
-    @retry_on_bad_navigator # TODO: Remove decorator?
     def modify_queue(
         self,
-        metadata: str,
-        action: PlaylistModifyAction = "REPLACE", # TODO: Fix
-        insert_index: int | None = None,  # Only used by INSERT action
+        didl: str,
+        action: PlaylistModifyAction = "REPLACE",
+        play_from_id: MediaId | None = None,
     ):
-        try:
-            if action == "INSERT":
-                # INSERT. This works for Tracks only (not Albums).
-                # TODO: Add check to ensure metadata is for a Track.
-                # result = self._uu_vol_control.InsertPlaylistTrack(
-                #     InsertPosition=insert_index, TrackData=metadata
-                # )
-                pass
-            else:
-                # # REPLACE, PLAY_NOW, PLAY_NEXT, PLAY_FROM_HERE, APPEND
-                # queue_folder_response = self._uu_vol_control.QueueFolder(
-                #     ServerUDN=self._media_server.device_udn,
-                #     Action=action,
-                #     NavigatorId=self._navigator_id,
-                #     ExtraInfo="",
-                #     DIDL=metadata,
-                # )
-                #
-                # if queue_folder_response["Result"] == "BAD_NAVIGATOR":
-                #     logger.warning("StreamMagic navigator is bad")
-                #     raise StreamMagicBadNavigatorError()
-                pass
-        except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
-            # TODO: Look at using VibinDeviceError wherever things like
-            #   _uu_vol_control are being used.
-            raise VibinDeviceError(e)
+        """Add media to the queue using the SMOIP API.
+
+        Args:
+            didl: DIDL-Lite XML metadata for the media (album or track).
+            action: How to add the media to the queue:
+                * "REPLACE": Replace the entire queue. Does not affect playback.
+                * "APPEND": Append to the end of the queue. Does not affect
+                  playback.
+                * "PLAY_NEXT": Insert after the currently playing track. Does
+                  not affect playback.
+                * "PLAY_NOW": Insert after the currently playing track and
+                  immediately start playing the new media.
+                * "PLAY_FROM_HERE": Replace the queue with an album and start
+                  playing from a specific track (requires play_from_id).
+            play_from_id: Only used with PLAY_FROM_HERE action. Specifies the
+                track ID within the album to start playing from. Ignored for
+                all other actions.
+        """
+        if not self._media_server:
+            raise VibinError("Cannot modify queue: no media server configured")
+
+        params = {
+            "action": action,
+            "didl": didl,
+            "server_udn": self._media_server.device_udn,
+        }
+
+        if action == "PLAY_FROM_HERE" and play_from_id:
+            params["play_from_id"] = play_from_id
+
+        response = requests.get(
+            f"http://{self._device_hostname}/smoip/queue/add",
+            params=params,
+        )
+
+        if response.status_code != 200:
+            logger.warning(
+                f"Failed to modify queue: {response.status_code} - {response.text}"
+            )
 
     def play_queue_item_position(self, position: int):
         # Find the queue item id associated with the given position, and then
@@ -880,9 +888,6 @@ class StreamMagic(Streamer):
         queue = self._retrieve_queue()
 
         self._queue = queue
-        logger.warning("")
-        logger.warning(f"QUEUE: {queue}")
-        logger.warning("")
         self._on_update("Queue", self._queue)
 
         # TODO: Remove
@@ -931,17 +936,38 @@ class StreamMagic(Streamer):
             return []
 
     def _retrieve_queue(self) -> Queue:
-        """"""
+        """Retrieve the current queue from the streamer via SMOIP API."""
         response = requests.get(
             f"http://{self._device_hostname}/smoip/queue/list"
         )
 
         payload = response.json()
-        queue = Queue.validate(payload["data"]) # TODO: Handle invalid payload
+        queue = Queue.validate(payload["data"])
 
-        logger.warning(f"Queue: {queue}")
+        # Populate albumMediaId for each queue item by extracting from art_url
+        if queue.items:
+            for item in queue.items:
+                if item.metadata and item.metadata.art_url:
+                    item.albumMediaId = self._album_id_from_art_url(
+                        item.metadata.art_url
+                    )
 
         return queue
+
+    def _album_id_from_art_url(self, art_url: str) -> MediaId | None:
+        """Extract album ID from queue item art_url.
+
+        The art_url from queue items follows the pattern:
+        http://{media_server}/aa/{album_id}/cover.jpg?size=0
+
+        Example: http://192.168.50.55:26125/aa/1884263651397289/cover.jpg?size=0
+        Returns: "1884263651397289"
+        """
+        if not art_url:
+            return None
+
+        match = re.search(r'/aa/(\d+)/', art_url)
+        return match.group(1) if match else None
 
     def _retrieve_active_playlist_entries(self) -> list[ActivePlaylistEntry]:
         """Retrieve the active playlist entries from the streamer."""
