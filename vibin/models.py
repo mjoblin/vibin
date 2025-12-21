@@ -349,6 +349,7 @@ class ActiveTrack(BaseModel):
 
 class CurrentlyPlaying(BaseModel):
     """What is currently playing on the streamer."""
+    _emit_aliases = False
 
     album_media_id: MediaId | None
     track_media_id: MediaId | None
