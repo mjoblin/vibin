@@ -295,9 +295,8 @@ class Queue(BaseModel):
     start: int | None
     count: int | None
     total: int | None
-    # Streamer sends "play_postition" (typo), we rename to queue_index to more
-    # clearly distinguish from track playback position.
-    queue_index: int | None = Field(None, alias="play_postition")
+    # Streamer sends "play_postition" (typo), we rename to play_position
+    play_position: int | None = Field(None, alias="play_postition")
     play_id: int | None
     presettable: bool | None
     items: list[QueueItem] | None
