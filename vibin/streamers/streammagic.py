@@ -942,7 +942,7 @@ class StreamMagic(Streamer):
             return []
 
     def _retrieve_queue(self) -> Queue:
-        """Retrieve the current queue from the streamer via SMOIP."""
+        """Retrieve the current queue from the streamer."""
         response = requests.get(
             f"http://{self._device_hostname}/smoip/queue/list"
         )
