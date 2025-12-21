@@ -33,11 +33,11 @@ from vibin.managers import (
 from vibin.amplifiers import Amplifier
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    ActivePlaylistEntry,
     Album,
     CurrentlyPlaying,
     FavoritesPayload,
     MediaBrowseSingleLevel,
+    Queue,
     UPnPServiceSubscriptions,
     SystemState,
     Track,
@@ -123,7 +123,6 @@ class Vibin:
             device=streamer_device,
             upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/streamer",
             on_update=self._on_streamer_update,
-            on_playlist_modified=self._on_streamer_playlist_modified,
         )
 
         logger.info(
@@ -222,7 +221,7 @@ class Vibin:
         self._waveform_manager = WaveformManager(media_server=self.media_server)
 
         # Additional initialization
-        self.playlists_manager.check_for_streamer_playlist_in_store()
+        self.playlists_manager.check_for_streamer_queue_in_store()
         self._subscribe_to_upnp_events()
 
         # Invoke on_startup handlers
@@ -659,15 +658,6 @@ class Vibin:
         """Handle an incoming update message from the amplifier."""
         self._send_update(message_type, data)
 
-    def _on_streamer_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
-        """Handle information on a change to the streamer's active playlist."""
-
-        # Forward the change information to the playlist manager. Note that
-        # it's possible for this handler to be called before the playlist
-        # manager has been initialized, so check first.
-        if hasattr(self, "playlists_manager"):
-            self.playlists_manager.on_streamer_playlist_modified(playlist_entries)
-
     def _send_update(self, message_type: UpdateMessageType, data: Any):
         """Send an update message to all registered update handlers."""
         if message_type == "System":
@@ -678,6 +668,11 @@ class Vibin:
             # TODO: This feels a bit hacky. Perhaps devices should have
             #   another way of announcing changes to their state.
             data = self.system_state
+        elif message_type == "Queue":
+            # When the queue changes, notify the playlists manager so it can
+            # track whether the queue matches a stored playlist.
+            if hasattr(self, "playlists_manager") and isinstance(data, Queue):
+                self.playlists_manager.on_queue_modified(data.items or [])
 
         for handler in self._on_update_handlers:
             handler(message_type, data)

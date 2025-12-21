@@ -8,7 +8,7 @@ from tinydb.table import Table
 from vibin import VibinError, VibinNotFoundError
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    ActivePlaylistEntry,
+    QueueItem,
     StoredPlaylist,
     StoredPlaylists,
     StoredPlaylistStatus,
@@ -77,12 +77,12 @@ class PlaylistsManager:
 
         self._stored_playlist_status = StoredPlaylistStatus()
         self._cached_stored_playlist: StoredPlaylist | None = None
-        self._ignore_playlist_updates = False
+        self._ignore_queue_updates = False
 
     def clear_streamer_queue(self):
-        """Clear the streamer's active playlist."""
+        """Clear the streamer's queue."""
         self._reset_stored_playlist_status(send_update=True)
-        self._streamer.playlist_clear()
+        self._streamer.queue_clear()
 
     @requires_media_server()
     def modify_streamer_queue(
@@ -133,8 +133,8 @@ class PlaylistsManager:
         )
 
     def play_streamer_queue_index(self, index: int):
-        """Play the given index in the streamer's active queue."""
-        self._streamer.play_playlist_index(index)
+        """Play the given index (position) in the streamer's queue."""
+        self._streamer.play_queue_item_position(index)
 
     @property
     def stored_playlists(self) -> StoredPlaylists:
@@ -187,14 +187,14 @@ class PlaylistsManager:
         # the system has fully dealt with adding entries to the active playlist
         # -- but it's better than doing nothing.
 
-        self._ignore_playlist_updates = True
+        self._ignore_queue_updates = True
 
         for entry_id in playlist.entry_ids:
             self._streamer.modify_queue(
                 self._media_server.get_metadata(entry_id), action="APPEND"
             )
 
-        self._ignore_playlist_updates = False
+        self._ignore_queue_updates = False
 
         self._reset_stored_playlist_status(
             active_id=stored_playlist_id, is_synced=True, is_activating=False, send_update=True
@@ -208,8 +208,8 @@ class PlaylistsManager:
         metadata: dict[str, any] | None = None,
         replace: bool = True,
     ) -> StoredPlaylist:
-        """Store the streamer's active queue as a stored playlist."""
-        active_playlist = self._streamer.playlist
+        """Store the streamer's queue as a stored playlist."""
+        queue_items = self._streamer.queue.items or []
         now = time.time()
         new_playlist_id = str(uuid.uuid4())
 
@@ -220,7 +220,7 @@ class PlaylistsManager:
                 name=metadata["name"] if metadata and "name" in metadata else "Unnamed",
                 created=now,
                 updated=now,
-                entry_ids=[entry.trackMediaId for entry in active_playlist.entries],
+                entry_ids=[item.trackMediaId for item in queue_items if item.trackMediaId],
             )
 
             with DB_ACCESS_LOCK_PLAYLISTS:
@@ -238,7 +238,7 @@ class PlaylistsManager:
             # Updates to an existing playlist
             updates = {
                 "updated": now,
-                "entry_ids": [entry.trackMediaId for entry in active_playlist.entries],
+                "entry_ids": [item.trackMediaId for item in queue_items if item.trackMediaId],
             }
 
             if metadata and "name" in metadata:
@@ -324,71 +324,69 @@ class PlaylistsManager:
         except IndexError:
             raise VibinError(f"Could not update Playlist Id: {playlist_id}")
 
-    def check_for_streamer_playlist_in_store(self):
-        """Check if the streamer's active queue matching a stored playlist."""
-        streamer_playlist_entries = self._streamer.playlist.entries
+    def check_for_streamer_queue_in_store(self):
+        """Check if the streamer's queue matches a stored playlist."""
+        queue_items = self._streamer.queue.items or []
 
-        if len(streamer_playlist_entries) <= 0:
+        if len(queue_items) <= 0:
             self._reset_stored_playlist_status(send_update=True)
             return
 
-        # See if there's a stored playlist which matches the currently-active
-        # streamer playlist (same media ids in the same order). If there's more
+        # See if there's a stored playlist which matches the current
+        # streamer queue (same media ids in the same order). If there's more
         # than one, then pick the one most recently updated.
-        active_playlist_media_ids = [
-            entry.trackMediaId for entry in streamer_playlist_entries
+        queue_media_ids = [
+            item.trackMediaId for item in queue_items if item.trackMediaId
         ]
 
         with DB_ACCESS_LOCK_PLAYLISTS:
             stored_playlists_as_dicts = [StoredPlaylist(**p) for p in self._db.all()]
 
         try:
-            stored_playlist_matching_active = sorted(
+            stored_playlist_matching_queue = sorted(
                 [
                     playlist
                     for playlist in stored_playlists_as_dicts
-                    if playlist.entry_ids == active_playlist_media_ids
+                    if playlist.entry_ids == queue_media_ids
                 ],
                 key=operator.attrgetter("updated"),
                 reverse=True,
             )[0]
 
-            self._stored_playlist_status.active_id = stored_playlist_matching_active.id
+            self._stored_playlist_status.active_id = stored_playlist_matching_queue.id
             self._stored_playlist_status.is_active_synced_with_store = True
-            self._cached_stored_playlist = stored_playlist_matching_active
+            self._cached_stored_playlist = stored_playlist_matching_queue
         except IndexError:
             self._reset_stored_playlist_status(send_update=False)
             self._cached_stored_playlist = None
 
         self._send_stored_playlists_update()
 
-    def on_streamer_playlist_modified(
-        self, playlist_entries: list[ActivePlaylistEntry]
-    ):
-        """Invoked whenever the streamer's active queue is changed.
+    def on_queue_modified(self, queue_items: list[QueueItem]):
+        """Invoked whenever the streamer's queue is changed.
 
         Determines whether the changed queue on the streamer should update
         the current stored playlist status information.
         """
         if (
-            not self._ignore_playlist_updates
+            not self._ignore_queue_updates
             and self._stored_playlist_status.active_id
             and self._streamer
         ):
-            # The playlist has been modified. If a stored playlist is active
-            # then compare this playlist against the stored playlist and
+            # The queue has been modified. If a stored playlist is active
+            # then compare this queue against the stored playlist and
             # set the status appropriately. The goal here is to ensure that
-            # we catch the playlist differing from the stored playlist, or
-            # matching the stored playlist (which can happen during playlist
+            # we catch the queue differing from the stored playlist, or
+            # matching the stored playlist (which can happen during queue
             # editing when entries are moved, deleted, added, etc).
 
             # NOTE:
             #
             # If Vibin is tracking an active stored playlist, and another app
-            # replaces the streamer playlist, then Vibin will treat that
+            # replaces the streamer queue, then Vibin will treat that
             # replacement as an *update to the active stored playlist* rather
-            # than a "replace playlist and no longer consider this an active
-            # stored playlist" action. The playlist changes won't actually be
+            # than a "replace queue and no longer consider this an active
+            # stored playlist" action. The queue changes won't actually be
             # persisted unless the user requests it, but the behavior might
             # feel inconsistent.
 
@@ -397,7 +395,7 @@ class PlaylistsManager:
             )
 
             self._stored_playlist_status.is_active_synced_with_store = (
-                self._streamer_playlist_matches_stored(playlist_entries)
+                self._queue_matches_stored(queue_items)
             )
 
             if (
@@ -413,16 +411,14 @@ class PlaylistsManager:
     def _send_stored_playlists_update(self):
         self._updates_handler("StoredPlaylists", self.stored_playlists)
 
-    def _streamer_playlist_matches_stored(
-        self, streamer_playlist: list[ActivePlaylistEntry]
-    ):
+    def _queue_matches_stored(self, queue_items: list[QueueItem]):
         if not self._cached_stored_playlist:
             return False
 
-        streamer_playlist_ids = [entry.trackMediaId for entry in streamer_playlist]
+        queue_media_ids = [item.trackMediaId for item in queue_items if item.trackMediaId]
         stored_playlist_ids = self._cached_stored_playlist.entry_ids
 
-        return streamer_playlist_ids == stored_playlist_ids
+        return queue_media_ids == stored_playlist_ids
 
     def _reset_stored_playlist_status(
         self,
