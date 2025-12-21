@@ -9,7 +9,7 @@ import queue
 import re
 import sys
 from typing import Literal, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -530,23 +530,29 @@ class StreamMagic(Streamer):
         if not self._media_server:
             raise VibinError("Cannot modify queue: no media server configured")
 
-        params = {
-            "action": action,
-            "didl": didl,
-            "server_udn": self._media_server.device_udn,
-        }
+        # The SMOIP API is sensitive to URL encoding. Using requests' params={}
+        # doesn't encode special characters (like = and ?) inside the DIDL
+        # the way the streamer expects. Manually construct the URL with proper
+        # encoding using quote() with safe="" to encode all special characters.
+        server_udn = self._media_server.device_udn
+        encoded_didl = quote(didl, safe="")
+
+        url = (
+            f"http://{self._device_hostname}/smoip/queue/add"
+            f"?action={action}"
+            f"&didl={encoded_didl}"
+            f"&server_udn={server_udn}"
+        )
 
         if action == "PLAY_FROM_HERE" and play_from_id:
-            params["play_from_id"] = play_from_id
+            url += f"&play_from_id={play_from_id}"
 
-        response = requests.get(
-            f"http://{self._device_hostname}/smoip/queue/add",
-            params=params,
-        )
+        response = requests.get(url)
 
         if response.status_code != 200:
             logger.warning(
-                f"Failed to modify queue: {response.status_code} - {response.text}"
+                f"Failed to modify queue: action={action} :: "
+                f"Response: {response.status_code} - {response.text}"
             )
 
     def play_queue_item_position(self, position: int):
