@@ -109,9 +109,7 @@ def queue_modify_single_item(
     response_class=Response,
 )
 def queue_move_item(item_id: int, from_position: int, to_position: int):
-    get_vibin_instance().streamer.queue_move_item(
-        item_id, from_position, to_position
-    )
+    get_vibin_instance().streamer.queue_move_item(item_id, from_position, to_position)
 
 
 @queue_router.post(

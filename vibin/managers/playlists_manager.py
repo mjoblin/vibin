@@ -197,7 +197,10 @@ class PlaylistsManager:
         self._ignore_queue_updates = False
 
         self._reset_stored_playlist_status(
-            active_id=stored_playlist_id, is_synced=True, is_activating=False, send_update=True
+            active_id=stored_playlist_id,
+            is_synced=True,
+            is_activating=False,
+            send_update=True,
         )
 
         return StoredPlaylist(**playlist_dict)
@@ -220,7 +223,9 @@ class PlaylistsManager:
                 name=metadata["name"] if metadata and "name" in metadata else "Unnamed",
                 created=now,
                 updated=now,
-                entry_ids=[item.trackMediaId for item in queue_items if item.trackMediaId],
+                entry_ids=[
+                    item.trackMediaId for item in queue_items if item.trackMediaId
+                ],
             )
 
             with DB_ACCESS_LOCK_PLAYLISTS:
@@ -238,7 +243,9 @@ class PlaylistsManager:
             # Updates to an existing playlist
             updates = {
                 "updated": now,
-                "entry_ids": [item.trackMediaId for item in queue_items if item.trackMediaId],
+                "entry_ids": [
+                    item.trackMediaId for item in queue_items if item.trackMediaId
+                ],
             }
 
             if metadata and "name" in metadata:
@@ -390,9 +397,7 @@ class PlaylistsManager:
             # persisted unless the user requests it, but the behavior might
             # feel inconsistent.
 
-            prior_sync_state = (
-                self._stored_playlist_status.is_active_synced_with_store
-            )
+            prior_sync_state = self._stored_playlist_status.is_active_synced_with_store
 
             self._stored_playlist_status.is_active_synced_with_store = (
                 self._queue_matches_stored(queue_items)
@@ -415,7 +420,9 @@ class PlaylistsManager:
         if not self._cached_stored_playlist:
             return False
 
-        queue_media_ids = [item.trackMediaId for item in queue_items if item.trackMediaId]
+        queue_media_ids = [
+            item.trackMediaId for item in queue_items if item.trackMediaId
+        ]
         stored_playlist_ids = self._cached_stored_playlist.entry_ids
 
         return queue_media_ids == stored_playlist_ids

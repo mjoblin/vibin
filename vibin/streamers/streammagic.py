@@ -184,7 +184,9 @@ class StreamMagic(Streamer):
         if state == "on" and self._device_state.power != "on":
             requests.get(f"http://{self._device_hostname}/smoip/system/power?power=ON")
         elif state == "off":
-            requests.get(f"http://{self._device_hostname}/smoip/system/power?power=NETWORK")
+            requests.get(
+                f"http://{self._device_hostname}/smoip/system/power?power=NETWORK"
+            )
 
     def power_toggle(self):
         requests.get(f"http://{self._device_hostname}/smoip/system/power?power=toggle")
@@ -570,9 +572,7 @@ class StreamMagic(Streamer):
 
     def _retrieve_queue(self) -> Queue:
         """Retrieve the current queue from the streamer."""
-        response = requests.get(
-            f"http://{self._device_hostname}/smoip/queue/list"
-        )
+        response = requests.get(f"http://{self._device_hostname}/smoip/queue/list")
 
         payload = response.json()
         queue = Queue.validate(payload["data"])
@@ -585,8 +585,7 @@ class StreamMagic(Streamer):
                 if item.metadata and item.metadata.album and item.metadata.artist:
                     # Find the album by title + artist
                     album = self._media_server.album_by_title_and_artist(
-                        item.metadata.album,
-                        item.metadata.artist
+                        item.metadata.album, item.metadata.artist
                     )
 
                     if album:
@@ -595,8 +594,7 @@ class StreamMagic(Streamer):
                         # Find the track by album + track number
                         if item.metadata.track_number:
                             track = self._media_server.track_by_album_and_track_number(
-                                album.id,
-                                item.metadata.track_number
+                                album.id, item.metadata.track_number
                             )
 
                             if track:
@@ -682,9 +680,7 @@ class StreamMagic(Streamer):
                 current_track_info["title"] = current_track_info["station"]
 
             try:
-                self._currently_playing.active_track = ActiveTrack(
-                    **current_track_info
-                )
+                self._currently_playing.active_track = ActiveTrack(**current_track_info)
             except KeyError:
                 pass
 
@@ -727,7 +723,9 @@ class StreamMagic(Streamer):
                             if active_track.artist is None:
                                 active_track.artist = current_queue_item.metadata.artist
                             if active_track.duration is None:
-                                active_track.duration = current_queue_item.metadata.duration
+                                active_track.duration = (
+                                    current_queue_item.metadata.duration
+                                )
                 except (IndexError, KeyError, TypeError) as e:
                     pass
 

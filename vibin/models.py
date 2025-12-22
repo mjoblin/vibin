@@ -259,8 +259,10 @@ class TransportPlayheadPositionPayload(BaseModel):
 
 # Streamer's queue ------------------------------------------------------------
 
+
 class QueueItemMetadata(BaseModel):
     """Metadata for a streamer queue item."""
+
     class_field: str | None = Field(..., alias="class")
     source: str | None
     name: str | None
@@ -275,6 +277,7 @@ class QueueItemMetadata(BaseModel):
 
 class QueueItem(BaseModel):
     """A single streamer queue item."""
+
     id: int | None
     position: int | None
     metadata: QueueItemMetadata | None
@@ -288,8 +291,10 @@ class QueueItem(BaseModel):
 #   have a better approach to deciding whether a field alias should be
 #   used when emitting a model from the WebSocket server or the REST API.
 
+
 class Queue(BaseModel):
     """The streamer's current queue."""
+
     _emit_aliases = False
 
     start: int | None
@@ -349,6 +354,7 @@ class ActiveTrack(BaseModel):
 
 class CurrentlyPlaying(BaseModel):
     """What is currently playing on the streamer."""
+
     _emit_aliases = False
 
     album_media_id: MediaId | None

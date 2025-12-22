@@ -31,6 +31,7 @@ from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
 # http://upnp.org/specs/av/UPnP-av-ContentDirectory-v4-Service.pdf
 # -----------------------------------------------------------------------------
 
+
 class MediaServer(metaclass=ABCMeta):
     """
     Manage a media server for Vibin.
