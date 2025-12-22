@@ -1,25 +1,15 @@
-import array
 import atexit
-import base64
 import json
 import math
-import pathlib
-import queue
-import re
-import sys
 from typing import Literal, Any
 from urllib.parse import urlparse, quote
 import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
-from defusedxml.xmlrpc import defused_gzip_decode
-from lxml import etree
 import requests
 import upnpclient
-from upnpclient.marshal import marshal_value
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
-import xmltodict
 
 from vibin import (
     utils,
@@ -36,7 +26,6 @@ from vibin.models import (
     AudioSources,
     CurrentlyPlaying,
     MediaFormat,
-    MediaStream,
     PlaylistModifyAction,
     PowerState,
     Presets,
@@ -53,14 +42,11 @@ from vibin.types import (
     MediaId,
     SeekTarget,
     TransportPosition,
-    UPnPServiceName,
     UpdateMessageHandler,
-    UPnPPropertyName,
     UPnPProperties,
-    UPnPPropertyChangeHandlers,
 )
 from vibin.streamers import Streamer
-from vibin.utils import UPnPSubscriptionManagerThread, WebsocketThread
+from vibin.utils import WebsocketThread
 
 
 # See Streamer interface for method documentation.
@@ -71,9 +57,6 @@ from vibin.utils import UPnPSubscriptionManagerThread, WebsocketThread
 
 # TODO: This class would benefit from some overall refactoring. Its current
 #  implementation isn't very clear and is showing its hacked-together history.
-# TODO: Investigate replacing AVTransport UPnP subscription with SMOIP WebSocket.
-#  This is the only remaining UPnP subscription. If SMOIP WebSocket provides
-#  equivalent transport state info, the UPnP infrastructure could be removed.
 # TODO: Consider using httpx instead of requests, and making some of these
 #   methods (particularly the ones that use SMOIP) async.
 
@@ -84,12 +67,11 @@ class StreamMagic(Streamer):
     def __init__(
         self,
         device: upnpclient.Device,
-        upnp_subscription_callback_base: str | None = None,
+        upnp_subscription_callback_base: str | None = None,  # Deprecated, unused
         on_update: UpdateMessageHandler | None = None,
     ):
         """Implement the Streamer interface for StreamMagic streamers."""
         self._device = device
-        self._upnp_subscription_callback_base = upnp_subscription_callback_base
         self._on_update = on_update
 
         self._device_hostname = urlparse(device.location).hostname
@@ -101,7 +83,6 @@ class StreamMagic(Streamer):
             display=StreamerDeviceDisplay(),
         )
 
-        self._upnp_properties: UPnPProperties = {}
         self._currently_playing: CurrentlyPlaying = CurrentlyPlaying()
         self._queue = Queue()
         self._transport_state: TransportState = TransportState()
@@ -109,37 +90,7 @@ class StreamMagic(Streamer):
 
         self._disconnected = False
         self._media_server: MediaServer | None = None
-        self._instance_id = 0  # StreamMagic implements a static AVTransport instance
         self._websocket_thread = None
-
-        self._av_transport = device.AVTransport
-
-        # Set up UPnP event handlers.
-        self._upnp_property_change_handlers: UPnPPropertyChangeHandlers = {
-            (
-                UPnPServiceName("AVTransport"),
-                UPnPPropertyName("LastChange"),
-            ): self._upnp_last_change_event_handler,
-        }
-
-        # Configure thread for managing UPnP subscriptions
-        self._upnp_subscription_manager_queue = queue.Queue()
-
-        if self._upnp_subscription_callback_base is None:
-            self._upnp_subscription_manager_thread = None
-            logger.warning(
-                "No UPnP subscription base provided; cannot subscribe to UPnP events"
-            )
-        else:
-            self._upnp_subscription_manager_thread = UPnPSubscriptionManagerThread(
-                device=self._device,
-                cmd_queue=self._upnp_subscription_manager_queue,
-                subscription_callback_base=self._upnp_subscription_callback_base,
-                services=[
-                    self._av_transport,
-                ],
-            )
-            self._upnp_subscription_manager_thread.start()
 
         ET.register_namespace("", "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/")
         ET.register_namespace("dc", "http://purl.org/dc/elements/1.1/")
@@ -212,8 +163,6 @@ class StreamMagic(Streamer):
         logger.info("StreamMagic disconnect requested")
         self._disconnected = True
 
-        self._upnp_subscription_manager_queue.put_nowait("SHUTDOWN")
-
         if self._websocket_thread:
             logger.info(f"Stopping WebSocket thread for {self.name}")
             self._websocket_thread.stop()
@@ -262,9 +211,6 @@ class StreamMagic(Streamer):
 
     # -------------------------------------------------------------------------
     # Transport
-    #
-    # Interacting with the transport is currently a mix of UPnP requests and
-    # SMOIP HTTP requests.
 
     @property
     def transport_state(self) -> TransportState:
@@ -274,19 +220,21 @@ class StreamMagic(Streamer):
         if self._transport_state.play_state == "play":
             return
 
-        if "toggle_playback" in self._transport_state.active_controls:
-            self.toggle_playback()
-        else:
-            self._av_transport.Play(InstanceID=self._instance_id, Speed="1")
+        if "toggle_playback" not in self._transport_state.active_controls:
+            logger.warning("Play requested but toggle_playback not in active controls")
+            return
+
+        self.toggle_playback()
 
     def pause(self):
         if self._transport_state.play_state == "pause":
             return
 
-        if "toggle_playback" in self._transport_state.active_controls:
-            self.toggle_playback()
-        else:
-            self._av_transport.Pause(InstanceID=self._instance_id)
+        if "toggle_playback" not in self._transport_state.active_controls:
+            logger.warning("Pause requested but toggle_playback not in active controls")
+            return
+
+        self.toggle_playback()
 
     def toggle_playback(self):
         requests.get(
@@ -294,7 +242,13 @@ class StreamMagic(Streamer):
         )
 
     def stop(self):
-        self._av_transport.Stop(InstanceID=self._instance_id)
+        if "stop" not in self._transport_state.active_controls:
+            logger.warning("Stop requested but stop not in active controls")
+            return
+
+        requests.get(
+            f"http://{self._device_hostname}/smoip/zone/play_control?action=stop"
+        )
 
     def seek(self, target: SeekTarget):
         if "seek" not in self.active_transport_controls:
@@ -302,32 +256,34 @@ class StreamMagic(Streamer):
             #   features.
             raise VibinError("Seek currently unavailable")
 
-        target_hmmss = None
+        target_secs = None
 
         # TODO: Fix handling of float vs. int. All numbers come in as floats,
         #   so what to do with 1/1.0 is ambiguous (here we treat is as 1 second
         #   not the end of the 0-1 normalized range).
         if isinstance(target, float):
             if target == 0:
-                target_hmmss = utils.secs_to_hmmss(0)
+                target_secs = 0
             elif target < 1:
-                media_info = self._av_transport.GetMediaInfo(InstanceID=0)
-                duration_secs = utils.hmmss_to_secs(media_info["MediaDuration"])
+                # Normalized seek (0.0 to 1.0 represents beginning to end)
+                duration = self._currently_playing.active_track.duration
 
-                target_hmmss = utils.secs_to_hmmss(math.floor(duration_secs * target))
+                if duration:
+                    target_secs = math.floor(duration * target)
+                else:
+                    logger.warning("Cannot seek: track duration unknown")
+                    return
             else:
-                target_hmmss = utils.secs_to_hmmss(int(target))
+                target_secs = int(target)
         elif isinstance(target, str):
             if not utils.is_hmmss(target):
                 raise VibinInputError("Time must be in h:mm:ss format")
+            target_secs = utils.hmmss_to_secs(target)
 
-            target_hmmss = target
-
-        if target_hmmss:
-            self._av_transport.Seek(
-                InstanceID=self._instance_id,
-                Unit="ABS_TIME",
-                Target=target_hmmss,
+        if target_secs is not None:
+            requests.post(
+                f"http://{self._device_hostname}/smoip/zone/play_control",
+                json={"zone": "ZONE1", "position": target_secs},
             )
         else:
             logger.warning(f"Unable to seek to {target}")
@@ -509,34 +465,21 @@ class StreamMagic(Streamer):
         )
 
     # -------------------------------------------------------------------------
-    # UPnP
+    # UPnP (no-op stubs - StreamMagic uses SMOIP instead of UPnP)
 
     def subscribe_to_upnp_events(self) -> None:
-        self._upnp_subscription_manager_queue.put_nowait("SUBSCRIBE")
+        pass
 
     @property
     def upnp_properties(self) -> UPnPProperties:
-        return self._upnp_properties
+        return {}
 
     @property
     def upnp_subscriptions(self) -> UPnPServiceSubscriptions:
-        return self._upnp_subscription_manager_thread.subscriptions
+        return {}
 
-    def on_upnp_event(self, service_name: UPnPServiceName, event: str):
-        logger.debug(f"{self.name} received {service_name} event:\n\n{event}\n")
-
-        property_set = etree.fromstring(event)
-
-        for property in property_set:
-            property_element = property[0]
-
-            self._set_upnp_property(
-                service_name=service_name,
-                property_name=property_element.tag,
-                property_value_xml=property_element.text,
-            )
-
-        self._set_vibin_upnp_properties()
+    def on_upnp_event(self, service_name: str, event: str):
+        pass
 
     # =========================================================================
     # Additional helpers (not part of Streamer interface).
@@ -672,88 +615,6 @@ class StreamMagic(Streamer):
 
     def _send_transport_state_update(self):
         self._on_update("TransportState", self.transport_state)
-
-    # -------------------------------------------------------------------------
-    # UPnP event handling
-    # -------------------------------------------------------------------------
-
-    def _upnp_last_change_event_handler(
-        self,
-        service_name: UPnPServiceName,
-        property_value: str,
-    ):
-        """Handle "LastChange" UPnP events. from the AVTransport service."""
-        nested_element = etree.fromstring(property_value)
-        instance_element = nested_element.find(
-            "InstanceID", namespaces=nested_element.nsmap
-        )
-
-        result = {}
-
-        for parameter in instance_element:
-            param_name = etree.QName(parameter)
-
-            try:
-                _, marshaled_value = marshal_value(
-                    self._device[service_name].statevars[param_name.localname][
-                        "datatype"
-                    ],
-                    parameter.get("val"),
-                )
-
-                result[param_name.localname] = marshaled_value
-            except KeyError:
-                # TODO: Log
-                pass
-
-        return result
-
-    def _set_upnp_property(
-        self,
-        service_name: UPnPServiceName,
-        property_name: UPnPPropertyName,
-        property_value_xml: str,
-    ):
-        if service_name not in self._upnp_properties:
-            self._upnp_properties[service_name] = {}
-
-        if upnp_property_handler := self._upnp_property_change_handlers.get(
-            (service_name, property_name)
-        ):
-            self._upnp_properties[service_name][property_name] = upnp_property_handler(
-                service_name, property_value_xml
-            )
-        else:
-            _, marshaled_value = marshal_value(
-                self._device[service_name].statevars[property_name]["datatype"],
-                property_value_xml,
-            )
-
-            self._upnp_properties[service_name][property_name] = marshaled_value
-
-        # For each state var which contains XML text (i.e. any field name ending
-        # in "XML"), we attempt to create a JSON equivalent.
-        if property_name.endswith("XML"):
-            json_var_name = f"{property_name[0:-3]}JSON"
-            xml = property_value_xml
-
-            if xml:
-                # TODO: This is not scalable (but html.escape also escapes tags)
-                xml = xml.replace("&", "&amp;")
-
-                try:
-                    self._upnp_properties[service_name][
-                        json_var_name
-                    ] = xmltodict.parse(xml)
-                except xml.parsers.expat.ExpatError as e:
-                    logger.error(
-                        f"Could not convert XML to JSON for "
-                        + f"{service_name}:{property_name}: {e}"
-                    )
-
-    def _set_vibin_upnp_properties(self):
-        # Currently a no-op. Kept for potential future UPnP property processing.
-        pass
 
     # =========================================================================
     # WebSocket connection to StreamMagic streamer.
