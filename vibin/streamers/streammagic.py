@@ -417,11 +417,11 @@ class StreamMagic(Streamer):
         # parameter required".
 
         try:
-            position_queue_id = [
+            queue_item = [
                 item for item in self.queue.items if item.position == position
             ][0]
 
-            self.play_queue_item_id(position_queue_id)
+            self.play_queue_item_id(queue_item.id)
         except (AttributeError, IndexError):
             raise VibinNotFoundError(
                 f"Could not find Queue item with position: {position}"
