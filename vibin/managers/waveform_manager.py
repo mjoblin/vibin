@@ -1,6 +1,6 @@
 from functools import lru_cache
 import json
-from pathlib import Path
+import pathlib
 import shutil
 import subprocess
 import tempfile
@@ -72,9 +72,9 @@ class WaveformManager:
                         "--bits",
                         "8",
                         "--input-filename",
-                        str(Path(tempfile.gettempdir(), str(flac_file.name))),
+                        flac_file.name,
                         "--input-format",
-                        Path(audio_file).suffix[1:],
+                        pathlib.Path(audio_file).suffix[1:],
                         "--output-format",
                         data_format,
                     ]

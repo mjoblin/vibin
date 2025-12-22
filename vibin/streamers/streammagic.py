@@ -729,6 +729,21 @@ class StreamMagic(Streamer):
                 except (IndexError, KeyError, TypeError) as e:
                     pass
 
+            # Set the media IDs from the current queue item if available.
+            # The queue items have albumMediaId and trackMediaId populated
+            # from media server lookups in _retrieve_queue().
+            try:
+                queue_play_position = self._queue.play_position
+
+                if queue_play_position is not None and self._queue.items:
+                    current_queue_item = self._queue.items[queue_play_position]
+                    self._set_last_seen_media_ids(
+                        current_queue_item.albumMediaId,
+                        current_queue_item.trackMediaId,
+                    )
+            except (IndexError, KeyError, TypeError):
+                pass
+
             self._send_currently_playing_update()
             self._send_transport_state_update()
         elif update_dict["path"] == "/zone/play_state/position":
