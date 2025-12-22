@@ -28,7 +28,7 @@ def queue() -> Queue:
 
 @queue_router.post(
     "/play/id/{item_id}",
-    summary="Play a Queue item, by item ID",
+    summary="Play a Queue Item, by Item ID",
     tags=["Queue"],
     response_class=Response,
 )
@@ -38,7 +38,7 @@ def queue_play_item_id(item_id: int):
 
 @queue_router.post(
     "/play/position/{item_position}",
-    summary="Play a Queue item, by item position",
+    summary="Play a Queue Item, by Item position",
     tags=["Queue"],
     response_class=Response,
 )
@@ -76,7 +76,7 @@ def queue_play_favorite_tracks(max_count: int = 100):
     tags=["Queue"],
     response_class=Response,
 )
-def queue_modify_multiple_entries(payload: QueueModifyPayload):
+def queue_modify_multiple_items(payload: QueueModifyPayload):
     if payload.action != "REPLACE":
         raise HTTPException(
             status_code=400,
@@ -104,7 +104,7 @@ def queue_modify_single_item(
 
 @queue_router.post(
     "/move/{item_id}",
-    summary="Move a Queue item to a different position",
+    summary="Move a Queue Item to a different position",
     tags=["Queue"],
     response_class=Response,
 )
@@ -124,7 +124,7 @@ def queue_clear():
 
 @queue_router.post(
     "/delete/{item_id}",
-    summary="Remove a Queue item",
+    summary="Remove a Queue Item",
     tags=["Queue"],
     response_class=Response,
 )
