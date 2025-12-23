@@ -258,6 +258,11 @@ class MediaServer(metaclass=ABCMeta):
         """Get Media Server metadata on an item by MediaId."""
         pass
 
+    @abstractmethod
+    def get_audio_file_url(self, track_id: MediaId) -> str | None:
+        """Get the audio file URL for a track by MediaId."""
+        pass
+
     # -------------------------------------------------------------------------
     # UPnP
 

@@ -4,16 +4,20 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+from urllib.parse import urlparse
 
 import requests
-import xml
-import xmltodict
 
 from vibin import VibinError, VibinMissingDependencyError
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.types import MediaId, WaveformFormat
 from vibin.utils import requires_media_server
+
+
+def _is_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in ("http", "https")
 
 
 class WaveformManager:
@@ -33,35 +37,43 @@ class WaveformManager:
     @requires_media_server()
     def waveform_for_track(
         self,
-        track_id: MediaId,
+        track_id_or_url: MediaId | str,
         data_format: WaveformFormat = "json",
         width: int = 800,
         height: int = 250,
     ) -> dict | str | bytes | None:
         """Generate the waveform for a track.
 
-        The waveform can be an image (png) or raw text data (json or dat). The
-        width and height parameters are used for png only.
+        Args:
+            track_id_or_url: Either a MediaId (track ID) or a direct URL to an
+                audio file. URLs are detected via urlparse (must have http/https
+                scheme). If a MediaId is provided, the audio URL is looked up
+                from the media server.
+            data_format: Output format - "json", "dat", or "png".
+            width: Width for png output.
+            height: Height for png output.
+
+        Returns:
+            Waveform data as dict (json), str (dat), or bytes (png), or None on error.
         """
         try:
-            track_info = xmltodict.parse(self._media_server.get_metadata(track_id))
-
-            audio_files = [
-                file
-                for file in track_info["DIDL-Lite"]["item"]["res"]
-                if file["#text"].endswith(".flac") or file["#text"].endswith(".wav")
-            ]
-
-            audio_file = audio_files[0]["#text"]
+            if _is_url(track_id_or_url):
+                audio_file = track_id_or_url
+            else:
+                audio_file = self._media_server.get_audio_file_url(track_id_or_url)
+                if not audio_file:
+                    raise VibinError(
+                        f"Could not find audio file URL for track: {track_id_or_url}"
+                    )
 
             # Retrieve the audio file and temporarily store it locally. Give the
             # audio file to the audiowaveform tool for processing.
 
             with tempfile.NamedTemporaryFile(
-                prefix="vibin_", suffix=track_id
-            ) as flac_file:
+                prefix="vibin_", suffix=pathlib.Path(audio_file).suffix
+            ) as audio_temp_file:
                 with requests.get(audio_file, stream=True) as response:
-                    shutil.copyfileobj(response.raw, flac_file)
+                    shutil.copyfileobj(response.raw, audio_temp_file)
 
                 # Explanation for 8-bit data (--bits 8):
                 # https://github.com/bbc/peaks.js#pre-computed-waveform-data
@@ -72,7 +84,7 @@ class WaveformManager:
                         "--bits",
                         "8",
                         "--input-filename",
-                        flac_file.name,
+                        audio_temp_file.name,
                         "--input-format",
                         pathlib.Path(audio_file).suffix[1:],
                         "--output-format",
@@ -116,16 +128,6 @@ class WaveformManager:
                     return waveform_data.stdout
         except FileNotFoundError:
             raise VibinMissingDependencyError("audiowaveform")
-        except KeyError as e:
-            raise VibinError(
-                f"Could not find any file information for track: {track_id}"
-            )
-        except IndexError as e:
-            raise VibinError(
-                f"Could not find .flac or .wav file URL for track: {track_id}"
-            )
-        except xml.parsers.expat.ExpatError as e:
-            logger.error(f"Could not convert XML to JSON for track: {track_id}: {e}")
         except VibinError as e:
             logger.error(e)
             raise

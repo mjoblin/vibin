@@ -26,6 +26,7 @@ from vibin.models import (
     AudioSources,
     CurrentlyPlaying,
     MediaFormat,
+    MediaStream,
     PlaylistModifyAction,
     PowerState,
     Presets,
@@ -566,6 +567,13 @@ class StreamMagic(Streamer):
 
         self._currently_playing.album_media_id = album_id
         self._currently_playing.track_media_id = track_id
+
+        # Populate stream URL from media server
+        if track_id and self._media_server:
+            audio_url = self._media_server.get_audio_file_url(track_id)
+            self._currently_playing.stream = MediaStream(url=audio_url)
+        else:
+            self._currently_playing.stream = MediaStream(url=None)
 
     # -------------------------------------------------------------------------
     # Queue helpers
