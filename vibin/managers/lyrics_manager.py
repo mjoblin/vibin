@@ -36,6 +36,15 @@ class LyricsManager:
         self._media_server = media_server
         self._external_service = genius_service
 
+    @property
+    def is_enabled(self) -> bool:
+        """Whether lyrics functionality is available."""
+        return (
+            self._media_server is not None
+            and self._external_service is not None
+            and self._external_service.token is not None
+        )
+
     @requires_external_service_token
     @requires_media_server()
     def lyrics_for_track(

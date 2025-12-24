@@ -29,6 +29,16 @@ class WaveformManager:
 
     def __init__(self, media_server: MediaServer):
         self._media_server = media_server
+        self._audiowaveform_available = shutil.which("audiowaveform") is not None
+
+    @property
+    def is_enabled(self) -> bool:
+        """Whether waveform generation is available.
+
+        Requires both a media server and the audiowaveform binary in PATH.
+        Cached at initialization to ensure consistency with waveform cache.
+        """
+        return self._media_server is not None and self._audiowaveform_available
 
     # TODO: Investigate storing waveforms in a persistent cache/DB rather than
     #   relying on @lru_cache.
