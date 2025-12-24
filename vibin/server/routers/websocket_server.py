@@ -305,7 +305,13 @@ class ConnectionManager:
 
     def get_status(self) -> VibinStatus:
         """Return the current Vibin server status."""
-        return server_status(websocket_clients=self.client_details())
+        vibin = get_vibin_instance()
+
+        return server_status(
+            websocket_clients=self.client_details(),
+            lyrics_enabled=vibin.lyrics_manager.is_enabled,
+            waveforms_enabled=vibin.waveform_manager.is_enabled,
+        )
 
     def shutdown(self):
         """Handle a shutdown request of the WebSocket server."""
