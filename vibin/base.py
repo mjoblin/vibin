@@ -33,11 +33,11 @@ from vibin.managers import (
 from vibin.amplifiers import Amplifier
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    ActivePlaylistEntry,
     Album,
     CurrentlyPlaying,
     FavoritesPayload,
     MediaBrowseSingleLevel,
+    Queue,
     UPnPServiceSubscriptions,
     SystemState,
     Track,
@@ -123,7 +123,6 @@ class Vibin:
             device=streamer_device,
             upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/streamer",
             on_update=self._on_streamer_update,
-            on_playlist_modified=self._on_streamer_playlist_modified,
         )
 
         logger.info(
@@ -222,7 +221,7 @@ class Vibin:
         self._waveform_manager = WaveformManager(media_server=self.media_server)
 
         # Additional initialization
-        self.playlists_manager.check_for_streamer_playlist_in_store()
+        self.playlists_manager.check_for_streamer_queue_in_store()
         self._subscribe_to_upnp_events()
 
         # Invoke on_startup handlers
@@ -348,6 +347,7 @@ class Vibin:
                 payload=FavoritesPayload(favorites=self.favorites_manager.all),
             ),
             UpdateMessage(message_type="Presets", payload=self.streamer.presets),
+            UpdateMessage(message_type="Queue", payload=self.streamer.queue),
             UpdateMessage(
                 message_type="StoredPlaylists",
                 payload=self.playlists_manager.stored_playlists,
@@ -377,21 +377,21 @@ class Vibin:
     @requires_media_server()
     def play_id(self, media_id: MediaId):
         """Play the provided media ID. This replaces the active streamer playlist."""
-        self.playlists_manager.clear_streamer_playlist()
-        self.playlists_manager.modify_streamer_playlist_with_id(media_id, "REPLACE")
+        self.playlists_manager.clear_streamer_queue()
+        self.playlists_manager.modify_streamer_queue_with_id(media_id, "REPLACE")
         self._last_played_id = media_id
 
     @requires_media_server()
     def play_ids(self, media_ids: list[MediaId], max_count: int = 10):
         """Play the provided media IDs. This replaces the active streamer playlist."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for media_id in media_ids[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(media_id, "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(media_id, "APPEND")
 
         if len(media_ids) > 0:
-            self.playlists_manager.play_streamer_playlist_index(0)
+            self.playlists_manager.play_streamer_queue_index(0)
             self._last_played_id = media_ids[0]
         else:
             self._last_played_id = None
@@ -399,24 +399,24 @@ class Vibin:
     @requires_media_server()
     def play_favorite_albums(self, max_count: int = 10):
         """Play all favorited Albums (up to max_count)."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(album["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(album["media_id"], "APPEND")
 
-        self.playlists_manager.play_streamer_playlist_index(0)
+        self.playlists_manager.play_streamer_queue_index(0)
 
     @requires_media_server()
     def play_favorite_tracks(self, max_count: int = 100):
         """Play all favorited Tracks (up to max_count)."""
-        self.playlists_manager.clear_streamer_playlist()
+        self.playlists_manager.clear_streamer_queue()
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            self.playlists_manager.modify_streamer_playlist_with_id(track["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(track["media_id"], "APPEND")
 
-        self.playlists_manager.play_streamer_playlist_index(0)
+        self.playlists_manager.play_streamer_queue_index(0)
 
     def on_update(self, handler: UpdateMessageHandler):
         """Register a handler to receive system update messages.
@@ -658,15 +658,6 @@ class Vibin:
         """Handle an incoming update message from the amplifier."""
         self._send_update(message_type, data)
 
-    def _on_streamer_playlist_modified(self, playlist_entries: list[ActivePlaylistEntry]):
-        """Handle information on a change to the streamer's active playlist."""
-
-        # Forward the change information to the playlist manager. Note that
-        # it's possible for this handler to be called before the playlist
-        # manager has been initialized, so check first.
-        if hasattr(self, "playlists_manager"):
-            self.playlists_manager.on_streamer_playlist_modified(playlist_entries)
-
     def _send_update(self, message_type: UpdateMessageType, data: Any):
         """Send an update message to all registered update handlers."""
         if message_type == "System":
@@ -677,6 +668,11 @@ class Vibin:
             # TODO: This feels a bit hacky. Perhaps devices should have
             #   another way of announcing changes to their state.
             data = self.system_state
+        elif message_type == "Queue":
+            # When the queue changes, notify the playlists manager so it can
+            # track whether the queue matches a stored playlist.
+            if hasattr(self, "playlists_manager") and isinstance(data, Queue):
+                self.playlists_manager.on_queue_modified(data.items or [])
 
         for handler in self._on_update_handlers:
             handler(message_type, data)

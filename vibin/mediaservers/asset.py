@@ -3,12 +3,15 @@ from pathlib import Path
 import re
 from typing import Any
 from urllib.parse import urlparse
+import xml
 import xml.etree.ElementTree as ET
 
 import upnpclient
 import untangle
+import xmltodict
 
 from vibin import VibinNotFoundError
+from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     Album,
@@ -211,7 +214,8 @@ class Asset(MediaServer):
             parsed_metadata = untangle.parse(album_tracks_xml)
 
             album_tracks = [
-                self._track_from_item(item) for item in parsed_metadata.DIDL_Lite.item
+                track for item in parsed_metadata.DIDL_Lite.item
+                if (track := self._track_from_item(item)) is not None
             ]
 
             for album_track in album_tracks:
@@ -296,22 +300,29 @@ class Asset(MediaServer):
                     this_class = container.upnp_class.cdata
 
                     if this_class.startswith("object.container.album.musicAlbum"):
-                        contents.append(self._album_from_container(container))
+                        if album := self._album_from_container(container):
+                            contents.append(album)
                     elif this_class.startswith("object.container.person.musicArtist"):
-                        contents.append(self._artist_from_container(container))
+                        if artist := self._artist_from_container(container):
+                            contents.append(artist)
                     elif this_class.startswith("object.container"):
-                        contents.append(self._folder_from_container(container))
+                        if folder := self._folder_from_container(container):
+                            contents.append(folder)
             elif "item" in children.DIDL_Lite:
                 for item in children.DIDL_Lite.item:
                     this_class = item.upnp_class.cdata
 
                     if this_class == "object.item.audioItem.musicTrack":
-                        contents.append(self._track_from_item(item))
+                        if track := self._track_from_item(item):
+                            contents.append(track)
 
             return contents
         elif element_type == "item":
             try:
-                return self._track_from_metadata(self.get_metadata(leaf_id))
+                if track := self._track_from_metadata(self.get_metadata(leaf_id)):
+                    return track
+
+                return None
             except VibinNotFoundError as e:
                 return None
 
@@ -338,6 +349,22 @@ class Asset(MediaServer):
         except upnpclient.soap.SOAPProtocolError as e:
             raise VibinNotFoundError(f"Could not find media id {id}")
 
+    def get_audio_file_url(self, track_id: MediaId) -> str | None:
+        """Get the audio file URL for a track by MediaId."""
+        try:
+            metadata = self.get_metadata(track_id)
+            track_info = xmltodict.parse(metadata)
+
+            audio_files = [
+                file
+                for file in track_info["DIDL-Lite"]["item"]["res"]
+                if file["#text"].endswith(".flac") or file["#text"].endswith(".wav")
+            ]
+
+            return audio_files[0]["#text"] if audio_files else None
+        except (KeyError, IndexError, xml.parsers.expat.ExpatError, VibinNotFoundError):
+            return None
+
     # -------------------------------------------------------------------------
     # UPnP
 
@@ -363,39 +390,60 @@ class Asset(MediaServer):
     # Static
 
     @staticmethod
-    def _folder_from_container(container) -> MediaFolder:
+    def _folder_from_container(container) -> MediaFolder | None:
         """Convert a UPnP container to a MediaFolder."""
-        return MediaFolder(
-            creator=container.dc_creator.cdata,
-            title=container.dc_title.cdata,
-            album_art_uri=container.upnp_albumArtURI.cdata,
-            artist=container.upnp_artist.cdata,
-            class_field=container.upnp_class.cdata,
-            genre=container.upnp_genre.cdata,
-        )
+        try:
+            return MediaFolder(
+                creator=container.dc_creator.cdata,
+                title=container.dc_title.cdata,
+                album_art_uri=container.upnp_albumArtURI.cdata,
+                artist=container.upnp_artist.cdata,
+                class_field=container.upnp_class.cdata,
+                genre=container.upnp_genre.cdata,
+            )
+        except AttributeError as e:
+            logger.warning(
+                f"Could not generate MediaFolder from XML container: {e} -> {container}"
+            )
+
+        return None
 
     @staticmethod
-    def _album_from_container(container) -> Album:
+    def _album_from_container(container) -> Album | None:
         """Convert a UPnP container to an Album."""
-        return Album(
-            id=container["id"],
-            title=container.dc_title.cdata,
-            creator=container.dc_creator.cdata,
-            date=container.dc_date.cdata,
-            artist=container.upnp_artist.cdata,
-            genre=container.upnp_genre.cdata,
-            album_art_uri=container.upnp_albumArtURI.cdata,
-        )
+        try:
+            return Album(
+                id=container["id"],
+                title=container.dc_title.cdata,
+                creator=container.dc_creator.cdata,
+                date=container.dc_date.cdata,
+                artist=container.upnp_artist.cdata,
+                genre=container.upnp_genre.cdata,
+                album_art_uri=container.upnp_albumArtURI.cdata,
+            )
+        except AttributeError as e:
+            logger.warning(
+                f"Could not generate Album from XML container: {e} -> {container}"
+            )
+
+        return None
 
     @staticmethod
-    def _artist_from_container(container) -> Artist:
+    def _artist_from_container(container) -> Artist | None:
         """Convert a UPnP container to an Artist."""
-        return Artist(
-            id=container["id"],
-            title=container.dc_title.cdata,
-            genre=container.upnp_genre.cdata,
-            album_art_uri=container.upnp_albumArtURI.cdata,
-        )
+        try:
+            return Artist(
+                id=container["id"],
+                title=container.dc_title.cdata,
+                genre=container.upnp_genre.cdata,
+                album_art_uri=container.upnp_albumArtURI.cdata,
+            )
+        except AttributeError as e:
+            logger.warning(
+                f"Could not generate Artist from XML container: {e} -> {container}"
+            )
+
+        return None
 
     @staticmethod
     def _playable_vibin_type(vibin_type: str) -> bool:
@@ -410,7 +458,7 @@ class Asset(MediaServer):
         return vibin_type in playable_upnp_classes
 
     @staticmethod
-    def _track_from_item(item) -> Track:
+    def _track_from_item(item) -> Track | None:
         """Create a Track from a UPnP item's XML."""
 
         # Determine artist name. A single item can have multiple artists, each
@@ -440,23 +488,32 @@ class Asset(MediaServer):
         # still a valid unique Track Id). We then treat the parentId as the
         # Album Id for Vibin's purposes.
 
-        return Track(
-            id=item["id"].removesuffix(f"-{item['parentID']}"),
-            albumId=item["parentID"],
-            title=item.dc_title.cdata,
-            creator=item.dc_creator.cdata,
-            date=item.dc_date.cdata,
-            artist=artist,
-            album=item.upnp_album.cdata,
-            duration=item.res[0]["duration"],
-            genre=item.upnp_genre.cdata,
-            album_art_uri=item.upnp_albumArtURI.cdata,
-            original_track_number=item.upnp_originalTrackNumber.cdata,
-        )
+        try:
+            return Track(
+                id=item["id"].removesuffix(f"-{item['parentID']}"),
+                albumId=item["parentID"],
+                title=item.dc_title.cdata,
+                creator=item.dc_creator.cdata,
+                # date=item.dc_date.cdata if hasattr(item, "dc_date") else "(Unknown Date)",
+                date=item.dc_date.cdata,
+                artist=artist,
+                album=item.upnp_album.cdata,
+                duration=item.res[0]["duration"],
+                genre=item.upnp_genre.cdata,
+                album_art_uri=item.upnp_albumArtURI.cdata,
+                # original_track_number=item.upnp_originalTrackNumber.cdata if hasattr(item, "upnp_originalTrackNumber") else 0,
+                original_track_number=item.upnp_originalTrackNumber.cdata,
+            )
+        except AttributeError as e:
+            logger.warning(
+                f"Could not generate Track from XML item: {e} -> {item}"
+            )
+
+        return None
 
     # -------------------------------------------------------------------------
 
-    def _album_from_metadata(self, metadata) -> Album:
+    def _album_from_metadata(self, metadata) -> Album | None:
         """Create an Album from the Media Server's item metadata."""
         parsed_metadata = untangle.parse(metadata)
 
@@ -469,7 +526,7 @@ class Asset(MediaServer):
 
         return self._album_from_container(parsed_metadata.DIDL_Lite.container)
 
-    def _artist_from_metadata(self, metadata) -> Artist:
+    def _artist_from_metadata(self, metadata) -> Artist | None:
         """Create an Artist from the Media Server's item metadata."""
         parsed_metadata = untangle.parse(metadata)
 
@@ -482,7 +539,7 @@ class Asset(MediaServer):
 
         return self._artist_from_container(parsed_metadata.DIDL_Lite.container)
 
-    def _track_from_metadata(self, metadata) -> Track:
+    def _track_from_metadata(self, metadata) -> Track | None:
         """Create a Track from the Media Server's item metadata."""
         parsed_metadata = untangle.parse(metadata)
 

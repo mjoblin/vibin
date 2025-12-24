@@ -1,6 +1,7 @@
 import base64
 import threading
 import time
+import xml
 from collections import deque, Counter
 from functools import cache
 from pathlib import Path
@@ -10,6 +11,7 @@ from urllib.request import urlopen
 from xml.etree import ElementTree
 
 import upnpclient
+import xmltodict
 
 from vibin import VibinNotFoundError
 from vibin.logger import logger
@@ -530,6 +532,22 @@ class CXNv2USB(MediaServer):
             return browse_result["Result"]
         except upnpclient.soap.SOAPProtocolError:
             raise VibinNotFoundError(f"Could not find media id {id}")
+
+    def get_audio_file_url(self, track_id: MediaId) -> str | None:
+        """Get the audio file URL for a track by MediaId."""
+        try:
+            metadata = self.get_metadata(track_id)
+            track_info = xmltodict.parse(metadata)
+
+            audio_files = [
+                file
+                for file in track_info["DIDL-Lite"]["item"]["res"]
+                if file["#text"].endswith(".flac") or file["#text"].endswith(".wav")
+            ]
+
+            return audio_files[0]["#text"] if audio_files else None
+        except (KeyError, IndexError, xml.parsers.expat.ExpatError, VibinNotFoundError):
+            return None
 
     def _traverse_path(self, parts: _MediaPath) -> _BrowseResult:
         """Traverses a path of titles, returning the _BrowseResult."""

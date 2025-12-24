@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel, Field
 import upnpclient
@@ -257,42 +257,62 @@ class TransportPlayheadPositionPayload(BaseModel):
     position: TransportPosition
 
 
-# Streamer's active playlist --------------------------------------------------
+# Streamer's queue ------------------------------------------------------------
 
 
-class ActivePlaylistEntry(BaseModel):
-    """A single entry in the streamer's active playlist."""
+class QueueItemMetadata(BaseModel):
+    """Metadata for a streamer queue item."""
 
-    album: str | None
-    albumArtURI: str | None
-    artist: str | None
-    duration: str | None
-    genre: str | None
-    id: int | None
-    index: int | None
-    originalTrackNumber: str | None
+    class_field: str | None = Field(..., alias="class")
+    source: str | None
+    name: str | None
     title: str | None
-    uri: str | None
+    art_url: str | None
+    track_number: int | None
+    duration: int | None  # Duration in seconds
+    genre: str | None
+    album: str | None
+    artist: str | None
+
+
+class QueueItem(BaseModel):
+    """A single streamer queue item."""
+
+    id: int | None
+    position: int | None
+    metadata: QueueItemMetadata | None
     albumMediaId: str | None
     trackMediaId: str | None
 
 
-class ActivePlaylist(BaseModel):
-    """The streamer's active playlist."""
+# TODO: This _emit_aliases approach is a hack. It's a hint to
+#   message_payload_to_str() in websocket_server.py to whether Pydantic's
+#   by_alias should be True or False when emitting the model. Ideally we'd
+#   have a better approach to deciding whether a field alias should be
+#   used when emitting a model from the WebSocket server or the REST API.
 
-    current_track_index: int | None
-    entries: list[ActivePlaylistEntry] = []
+
+class Queue(BaseModel):
+    """The streamer's current queue."""
+
+    _emit_aliases = False
+
+    start: int | None
+    count: int | None
+    total: int | None
+    # Streamer sends "play_postition" (typo), we rename to play_position
+    play_position: int | None = Field(None, alias="play_postition")
+    play_id: int | None
+    presettable: bool | None
+    items: list[QueueItem] | None
 
 
-class ActivePlaylistModifyPayload(BaseModel):
-    """A modification request to the streamer's active playlist."""
+class QueueModifyPayload(BaseModel):
+    """Payload for modifying the queue with multiple Media IDs."""
 
     action: PlaylistModifyAction
-    max_count: int | None
     media_ids: list[MediaId]
-
-
-PlaylistModifiedHandler = Callable[[list[ActivePlaylistEntry]], None]
+    max_count: int | None = None
 
 
 # Currently playing -----------------------------------------------------------
@@ -333,12 +353,14 @@ class ActiveTrack(BaseModel):
 
 
 class CurrentlyPlaying(BaseModel):
-    """The state of what is currently playing, track and playlist."""
+    """What is currently playing on the streamer."""
+
+    _emit_aliases = False
 
     album_media_id: MediaId | None
     track_media_id: MediaId | None
     active_track: ActiveTrack = ActiveTrack()
-    playlist: ActivePlaylist = ActivePlaylist()
+    queue: Queue = Queue()
     format: MediaFormat = MediaFormat()
     stream: MediaStream = MediaStream()
 

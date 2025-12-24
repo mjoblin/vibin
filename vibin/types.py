@@ -25,6 +25,7 @@ WaveformFormat = Literal["dat", "json", "png"]
 
 FavoriteType = Literal["album", "track"]
 
+# TODO: Remove
 # Modifications that can be made to the active streamer playlist
 PlaylistModifyAction = Literal[
     # Add to the end of the playlist. Track or Album.
@@ -41,6 +42,22 @@ PlaylistModifyAction = Literal[
     "REPLACE",
 ]
 
+# Modifications that can be made to the streamer's queue
+QueueModifyAction = Literal[
+    # Add to the end of the queue. Track or Album.
+    "APPEND",
+    # Insert into the queue at the given index. Track only.
+    "INSERT",
+    # Replace the queue with the Track's Album, and plays the Track. Track only.
+    "PLAY_FROM_HERE",
+    # Insert after the current entry. Track or Album.
+    "PLAY_NEXT",
+    # Insert after the current entry and starts playing the new entry. Track or Album.
+    "PLAY_NOW",
+    # Replaces the queue. Track or Album.
+    "REPLACE",
+]
+
 # Messaging -------------------------------------------------------------------
 
 # Message types sent to subscribed clients (over a WebSocket)
@@ -49,6 +66,7 @@ UpdateMessageType = Literal[
     "Favorites",
     "Position",
     "Presets",
+    "Queue",
     "StoredPlaylists",
     "System",
     "TransportState",
@@ -101,7 +119,7 @@ TransportAction = Literal[
     "toggle_playback",
 ]
 
-TransportRepeatState = Literal["off", "all"]
+TransportRepeatState = Literal["off", "one", "all"]
 
 TransportShuffleState = Literal["off", "all"]
 

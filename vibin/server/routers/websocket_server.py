@@ -135,7 +135,11 @@ class ConnectionManager:
             return message_payload
         elif isinstance(message_payload, BaseModel):
             # TODO: Consider "message_payload.json()" instead
-            return json.dumps(message_payload.dict(by_alias=True))
+            return json.dumps(message_payload.dict(
+                by_alias=message_payload._emit_aliases
+                if hasattr(message_payload, "_emit_aliases")
+                else True
+            ))
         else:
             try:
                 return json.dumps(message_payload)
@@ -192,6 +196,7 @@ class ConnectionManager:
             "CurrentlyPlaying",
             "Favorites",
             "Presets",
+            "Queue",
             "System",
             "UPnPProperties",
         ]:
