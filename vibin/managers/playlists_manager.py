@@ -6,10 +6,12 @@ from tinydb import Query
 from tinydb.table import Table
 
 from vibin import VibinError, VibinNotFoundError
+from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     QueueItem,
     StoredPlaylist,
+    StoredPlaylistEntryMetadata,
     StoredPlaylists,
     StoredPlaylistStatus,
 )
@@ -171,6 +173,7 @@ class PlaylistsManager:
             playlist_dict = self._db.get(PlaylistQuery.id == stored_playlist_id)
 
         if playlist_dict is None:
+            self._reset_stored_playlist_status(is_activating=False, send_update=True)
             raise VibinNotFoundError()
 
         playlist = StoredPlaylist(**playlist_dict)
@@ -189,12 +192,26 @@ class PlaylistsManager:
 
         self._ignore_queue_updates = True
 
+        added_count = 0
+        skipped_count = 0
+
         for entry_id in playlist.entry_ids:
-            self._streamer.modify_queue(
-                self._media_server.get_metadata(entry_id), action="APPEND"
-            )
+            try:
+                self._streamer.modify_queue(
+                    self._media_server.get_metadata(entry_id), action="APPEND"
+                )
+                added_count += 1
+            except VibinNotFoundError:
+                logger.warning(f"Skipping entry not found on media server: {entry_id}")
+                skipped_count += 1
 
         self._ignore_queue_updates = False
+
+        if skipped_count > 0:
+            logger.info(
+                f"Playlist activation: {added_count} entries added, "
+                f"{skipped_count} entries skipped (not found on media server)"
+            )
 
         self._reset_stored_playlist_status(
             active_id=stored_playlist_id,
@@ -216,6 +233,17 @@ class PlaylistsManager:
         now = time.time()
         new_playlist_id = str(uuid.uuid4())
 
+        # Build entry_metadata dict keyed by entry_id
+        entry_metadata = {
+            item.trackMediaId: StoredPlaylistEntryMetadata(
+                artist=item.metadata.artist if item.metadata else None,
+                album=item.metadata.album if item.metadata else None,
+                title=item.metadata.title if item.metadata else None,
+            )
+            for item in queue_items
+            if item.trackMediaId
+        }
+
         if self._stored_playlist_status.active_id is None or replace is False:
             # Brand new stored playlist
             playlist_data = StoredPlaylist(
@@ -226,6 +254,7 @@ class PlaylistsManager:
                 entry_ids=[
                     item.trackMediaId for item in queue_items if item.trackMediaId
                 ],
+                entry_metadata=entry_metadata,
             )
 
             with DB_ACCESS_LOCK_PLAYLISTS:
@@ -246,6 +275,10 @@ class PlaylistsManager:
                 "entry_ids": [
                     item.trackMediaId for item in queue_items if item.trackMediaId
                 ],
+                "entry_metadata": {
+                    entry_id: meta.dict()
+                    for entry_id, meta in entry_metadata.items()
+                },
             }
 
             if metadata and "name" in metadata:

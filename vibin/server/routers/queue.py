@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from vibin import VibinNotFoundError
 from vibin.models import Queue, QueueModifyPayload
 from vibin.types import PlaylistModifyAction
 from vibin.server.dependencies import (
@@ -43,7 +44,13 @@ def queue_play_item_id(item_id: int):
     response_class=Response,
 )
 def queue_play_item_position(item_position: int):
-    get_vibin_instance().streamer.play_queue_item_position(item_position)
+    try:
+        get_vibin_instance().streamer.play_queue_item_position(item_position)
+    except VibinNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Queue item not found at position: {item_position}",
+        )
 
 
 @queue_router.post(
