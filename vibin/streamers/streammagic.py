@@ -557,7 +557,17 @@ class StreamMagic(Streamer):
         self._queue = queue
         self._on_update("Queue", self._queue)
 
-        # TODO: Remove
+        # Set media IDs from the current queue item if available
+        if queue.play_position is not None and queue.items:
+            try:
+                current_item = queue.items[queue.play_position]
+                self._set_last_seen_media_ids(
+                    current_item.albumMediaId,
+                    current_item.trackMediaId,
+                )
+            except IndexError:
+                pass
+
         self._currently_playing.queue = queue
         self._send_currently_playing_update()
 
