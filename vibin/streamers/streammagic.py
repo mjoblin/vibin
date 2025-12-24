@@ -154,6 +154,20 @@ class StreamMagic(Streamer):
         # Perform any StreamMagic-related startup checks which need to wait
         # until the MediaServer and Amplifier have been initialized.
 
+        # Determine the current audio source. This is needed before presets are
+        # accessed to ensure is_playing flags are correctly cleared when playing
+        # local media.
+        try:
+            response = requests.get(
+                f"http://{self._device_hostname}/smoip/zone/now_playing"
+            )
+
+            if response.status_code == 200:
+                audio_source_id = response.json()["data"]["source"]["id"]
+                self._set_active_audio_source(audio_source_id)
+        except Exception as e:
+            logger.warning(f"Could not determine current audio source on startup: {e}")
+
         # Figure out what the current queue looks like.
         self._set_queue()
 
@@ -460,12 +474,20 @@ class StreamMagic(Streamer):
         # TODO: Change to local cache data, as received from websocket.
         response = requests.get(f"http://{self._device_hostname}/smoip/presets/list")
 
-        return Presets(**response.json()["data"])
+        presets_data = response.json()["data"]
+        self._fix_stale_preset_is_playing(presets_data)
+
+        return Presets(**presets_data)
 
     def play_preset_id(self, preset_id: int):
         response = requests.get(
             f"http://{self._device_hostname}/smoip/zone/recall_preset?preset={preset_id}"
         )
+
+        # Fetch and broadcast updated preset state. The device updates is_playing
+        # internally but doesn't send WebSocket updates for UPnP presets (like
+        # it does for radio presets).
+        self._send_presets_update()
 
     # -------------------------------------------------------------------------
     # UPnP (no-op stubs - StreamMagic uses SMOIP instead of UPnP)
@@ -535,6 +557,12 @@ class StreamMagic(Streamer):
 
     def _set_active_audio_source(self, source_id: str):
         """Set the active audio source to the one matching the `source_id`."""
+        previous_source_id = (
+            self._device_state.sources.active.id
+            if self._device_state.sources.active
+            else None
+        )
+
         try:
             self._device_state.sources.active = [
                 source
@@ -543,12 +571,47 @@ class StreamMagic(Streamer):
             ][0]
 
             self._send_system_update()
+
+            # When switching to local media, send updated presets with is_playing
+            # cleared, as the device may not send a /presets/list update
+            if source_id == "MEDIA_PLAYER" and previous_source_id != "MEDIA_PLAYER":
+                self._send_presets_update()
+
         except (IndexError, KeyError):
             self._device_state.sources.active = AudioSource()
             logger.warning(
                 "Could not determine active audio source from id "
                 + f"'{source_id}', setting to empty AudioSource"
             )
+
+    def _fix_stale_preset_is_playing(self, presets_data: dict) -> None:
+        """Clear is_playing on non-local-media presets when playing local media.
+
+        The StreamMagic device doesn't always clear is_playing on radio presets
+        when switching to local media playback. This corrects that while leaving
+        local media (album) presets alone so they can still show as playing.
+        """
+        if not (
+            self._device_state.sources.active
+            and self._device_state.sources.active.id == "MEDIA_PLAYER"
+        ):
+            return
+
+        for preset in presets_data.get("presets", []):
+            if not preset.get("class", "").startswith("stream.media"):
+                preset["is_playing"] = False
+
+    def _send_presets_update(self):
+        """Send a Presets update to all clients."""
+        try:
+            response = requests.get(
+                f"http://{self._device_hostname}/smoip/presets/list"
+            )
+            presets_data = response.json()["data"]
+            self._fix_stale_preset_is_playing(presets_data)
+            self._on_update("Presets", presets_data)
+        except Exception as e:
+            logger.warning(f"Could not send presets update: {e}")
 
     def _set_queue(self):
         """Set the current queue in local state."""
@@ -817,7 +880,9 @@ class StreamMagic(Streamer):
         elif update_dict["path"] == "/presets/list":
             # Presets ---------------------------------------------------------
 
-            self._on_update("Presets", update_dict["params"]["data"])
+            presets_data = update_dict["params"]["data"]
+            self._fix_stale_preset_is_playing(presets_data)
+            self._on_update("Presets", presets_data)
         elif update_dict["path"] == "/system/power":
             # System power ----------------------------------------------------
 
