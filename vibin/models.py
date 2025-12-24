@@ -370,12 +370,19 @@ class CurrentlyPlaying(BaseModel):
 StoredPlaylistEntryId = str
 
 
+class StoredPlaylistEntryMetadata(BaseModel):
+    artist: str | None = None
+    album: str | None = None
+    title: str | None = None
+
+
 class StoredPlaylist(BaseModel):
     id: str
     name: str
     created: float
     updated: float
     entry_ids: list[StoredPlaylistEntryId]
+    entry_metadata: dict[StoredPlaylistEntryId, StoredPlaylistEntryMetadata] | None = None
 
 
 class StoredPlaylistStatus(BaseModel):
