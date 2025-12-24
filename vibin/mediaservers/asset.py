@@ -214,7 +214,8 @@ class Asset(MediaServer):
             parsed_metadata = untangle.parse(album_tracks_xml)
 
             album_tracks = [
-                track for item in parsed_metadata.DIDL_Lite.item
+                track
+                for item in parsed_metadata.DIDL_Lite.item
                 if (track := self._track_from_item(item)) is not None
             ]
 
@@ -422,9 +423,19 @@ class Asset(MediaServer):
                 album_art_uri=container.upnp_albumArtURI.cdata,
             )
         except AttributeError as e:
-            logger.warning(
-                f"Could not generate Album from XML container: {e} -> {container}"
-            )
+            # Build a human-readable identifier from available attributes
+            identifiers = []
+
+            if hasattr(container, "dc_title"):
+                identifiers.append(f"album={container.dc_title.cdata!r}")
+            if hasattr(container, "upnp_artist"):
+                identifiers.append(f"artist={container.upnp_artist.cdata!r}")
+            elif hasattr(container, "dc_creator"):
+                identifiers.append(f"creator={container.dc_creator.cdata!r}")
+
+            identifiers.append(f"id={container['id']}")
+
+            logger.warning(f"Could not generate Album ({', '.join(identifiers)}): {e}")
 
         return None
 
@@ -439,9 +450,15 @@ class Asset(MediaServer):
                 album_art_uri=container.upnp_albumArtURI.cdata,
             )
         except AttributeError as e:
-            logger.warning(
-                f"Could not generate Artist from XML container: {e} -> {container}"
-            )
+            # Build a human-readable identifier from available attributes
+            identifiers = []
+
+            if hasattr(container, "dc_title"):
+                identifiers.append(f"name={container.dc_title.cdata!r}")
+
+            identifiers.append(f"id={container['id']}")
+
+            logger.warning(f"Could not generate Artist ({', '.join(identifiers)}): {e}")
 
         return None
 
@@ -505,9 +522,19 @@ class Asset(MediaServer):
                 original_track_number=item.upnp_originalTrackNumber.cdata,
             )
         except AttributeError as e:
-            logger.warning(
-                f"Could not generate Track from XML item: {e} -> {item}"
-            )
+            # Build a human-readable identifier from available attributes
+            identifiers = []
+
+            if hasattr(item, "dc_title"):
+                identifiers.append(f"title={item.dc_title.cdata!r}")
+            if artist != "<Unknown>":
+                identifiers.append(f"artist={artist!r}")
+            if hasattr(item, "upnp_album"):
+                identifiers.append(f"album={item.upnp_album.cdata!r}")
+
+            identifiers.append(f"id={item['id']}")
+
+            logger.warning(f"Could not generate Track ({', '.join(identifiers)}): {e}")
 
         return None
 
