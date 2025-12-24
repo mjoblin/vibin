@@ -196,6 +196,8 @@ _system_version = platform.version()
 
 def server_status(
     websocket_clients: list[WebSocketClientDetails] | None = None,
+    lyrics_enabled: bool = False,
+    waveforms_enabled: bool = False,
 ) -> VibinStatus:
     """Return a VibinStatus instance describing the vibin server."""
 
@@ -211,4 +213,6 @@ def server_status(
         system_platform=_system_platform,
         system_version=_system_version,
         clients=websocket_clients if websocket_clients is not None else [],
+        lyrics_enabled=lyrics_enabled,
+        waveforms_enabled=waveforms_enabled,
     )

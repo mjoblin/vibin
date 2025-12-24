@@ -22,7 +22,13 @@ vibin_router = APIRouter(prefix="/vibin")
     "", summary="Retrieve the current Vibin server status", tags=["Vibin Server"]
 )
 def vibin_status() -> VibinStatus:
-    return server_status(websocket_clients=ws_connection_manager.client_details())
+    vibin = get_vibin_instance()
+
+    return server_status(
+        websocket_clients=ws_connection_manager.client_details(),
+        lyrics_enabled=vibin.lyrics_manager.is_enabled,
+        waveforms_enabled=vibin.waveform_manager.is_enabled,
+    )
 
 
 @vibin_router.post(

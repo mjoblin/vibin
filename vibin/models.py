@@ -69,6 +69,8 @@ class VibinStatus(BaseModel):
     system_platform: str
     system_version: str
     clients: list[WebSocketClientDetails]
+    lyrics_enabled: bool = False
+    waveforms_enabled: bool = False
 
 
 # System (top-level streamer and media server) --------------------------------
