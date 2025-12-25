@@ -88,6 +88,7 @@ def run_coroutine_sync(coro_func: Callable[..., Awaitable[T]]) -> Callable[..., 
 
         try:
             asyncio.get_running_loop()
+
             # We're inside an event loop - run in a separate thread
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(lambda: asyncio.run(bound_coro()))

@@ -50,6 +50,7 @@ class VibinDeviceFactory:
         """
         if cls._instance is None:
             cls._instance = cls()
+
         return cls._instance
 
     async def async_init(self, session: aiohttp.ClientSession | None = None) -> None:
@@ -92,6 +93,7 @@ class VibinDeviceFactory:
             await self.async_init()
 
         device = await self._factory.async_create_device(description_url)
+
         return wrap_device(device)
 
     async def async_close(self) -> None:
@@ -102,6 +104,7 @@ class VibinDeviceFactory:
         if self._session is not None and self._owns_session:
             await self._session.close()
             self._session = None
+
         self._factory = None
 
     @property

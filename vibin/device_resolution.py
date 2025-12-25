@@ -1,9 +1,3 @@
-"""Device resolution for Vibin.
-
-This module provides functions to discover UPnP devices and determine
-which Vibin implementation classes to use for them.
-"""
-
 import inspect
 import json
 from urllib.parse import urlparse
@@ -68,13 +62,14 @@ def _discover_upnp_devices(timeout: int) -> list[VibinDevice]:
 async def _async_create_device_from_url(url: str) -> VibinDevice:
     """Create a device from a UPnP description URL.
 
-    Creates a fresh factory and session for each call to avoid issues
-    with event loop lifecycle in sync contexts.
+    Creates a fresh factory and session for each call to avoid issues with
+    event loop lifecycle in sync contexts.
     """
     async with aiohttp.ClientSession() as session:
         requester = AiohttpSessionRequester(session, with_sleep=True)
         factory = UpnpFactory(requester, non_strict=True)
         device = await factory.async_create_device(url)
+
         return wrap_device(device)
 
 

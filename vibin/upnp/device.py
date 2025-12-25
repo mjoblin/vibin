@@ -116,5 +116,6 @@ def wrap_device(device: Any) -> VibinDevice:
     # async_upnp_client uses device_url instead of location
     if hasattr(device, "device_url"):
         return AsyncUpnpDeviceAdapter(device)
+
     # Already conforms to VibinDevice protocol
     return device

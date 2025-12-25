@@ -55,6 +55,7 @@ async def async_discover_devices(
     ) -> None:
         """Callback for when a device is discovered."""
         location = ssdp_device.location
+
         if location:
             discovered_locations.add(location)
 
@@ -117,6 +118,7 @@ async def async_discover_device_by_location(location: str) -> VibinDevice:
     """
     factory = VibinDeviceFactory.get_instance()
     await factory.async_init()
+
     return await factory.async_create_device(location)
 
 
