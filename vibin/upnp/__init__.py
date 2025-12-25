@@ -6,6 +6,7 @@ supporting both upnpclient and async_upnp_client libraries.
 
 from vibin.upnp.device import VibinDevice, AsyncUpnpDeviceAdapter, wrap_device
 from vibin.upnp.exceptions import VibinUpnpError, VibinSoapError
+from vibin.upnp.factory import VibinDeviceFactory
 
 __all__ = [
     "VibinDevice",
@@ -13,4 +14,5 @@ __all__ = [
     "wrap_device",
     "VibinUpnpError",
     "VibinSoapError",
+    "VibinDeviceFactory",
 ]
