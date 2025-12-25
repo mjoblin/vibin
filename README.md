@@ -22,6 +22,10 @@
 
 The following assumes you already have Python 3.10 (or higher) and Git installed.
 
+> Note: Currently Python 3.12 is the highest version of Python supported. Python 3.13 or higher
+>   will produce an error during installation due to dependency conflicts (between `upnpclient`
+>   and `lxml`).
+
 ### 1. Install `vibin`
 
 #### Mac, Linux
@@ -100,6 +104,10 @@ times -- such as a Raspberry Pi or a server.
 ### Installing `vibin`
 
 `vibin` requires [Python 3.10] or higher.
+
+> Note: Currently Python 3.12 is the highest version of Python supported. Python 3.13 or higher
+>   will produce an error during installation due to dependency conflicts (between `upnpclient`
+>   and `lxml`).
 
 > The following installs `vibin` into a Python virtual environment. A virtual environment is
 > recommended for isolation/cleanliness, but is not required.
