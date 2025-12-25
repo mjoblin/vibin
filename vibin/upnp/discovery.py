@@ -6,11 +6,14 @@ Provides async device discovery using async_upnp_client's SSDP implementation.
 import asyncio
 from typing import Callable
 
+import aiohttp
+from async_upnp_client.aiohttp import AiohttpSessionRequester
+from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.const import DeviceOrServiceType, SsdpSource
 from async_upnp_client.ssdp_listener import SsdpDevice, SsdpListener
 
 from vibin.logger import logger
-from vibin.upnp.device import VibinDevice
+from vibin.upnp.device import VibinDevice, wrap_device
 from vibin.upnp.factory import VibinDeviceFactory
 
 
@@ -43,11 +46,6 @@ async def async_discover_devices(
             )
         )
     """
-    import aiohttp
-    from async_upnp_client.aiohttp import AiohttpSessionRequester
-    from async_upnp_client.client_factory import UpnpFactory
-    from vibin.upnp.device import wrap_device
-
     discovered_locations: set[str] = set()
 
     def on_device_found(

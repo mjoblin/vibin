@@ -13,9 +13,10 @@ import socket
 import tempfile
 import threading
 import time
-from typing import Any, Callable, Awaitable
+from typing import Callable, Awaitable
 import zipfile
 
+from async_upnp_client.client import UpnpService
 from packaging.version import Version
 from pydantic import BaseModel
 import requests
@@ -24,10 +25,10 @@ from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
 from vibin import VibinError, VibinMissingDependencyError
-from vibin.upnp import VibinDevice, VibinSoapError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from vibin.logger import logger
 from vibin.models import UPnPServiceSubscriptions, UPnPSubscription
+from vibin.upnp import VibinDevice, VibinSoapError
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60
@@ -84,7 +85,7 @@ class UPnPSubscriptionManagerThread(StoppableThread):
         device: VibinDevice,
         cmd_queue: queue.Queue,
         subscription_callback_base: str,
-        services: list[Any],  # UPnP Service objects (library-specific)
+        services: list[UpnpService],
         *args,
         **kwargs,
     ):
@@ -248,7 +249,7 @@ class UPnPSubscriptionManagerThread(StoppableThread):
 
                 logger.warning(f"{fail_message}: {e}")
             except Exception as e:
-                # Catch any other UPnP-related errors from the library
+                # Catch any other UPnP-related errors
                 logger.warning(
                     f"Could not cancel {self._device_name} UPnP subscription for "
                     + f"{service.name}: {e}"

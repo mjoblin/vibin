@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import concurrent.futures
 import threading
 import time
 import xml
@@ -10,8 +12,11 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from xml.etree import ElementTree
 
+import aiohttp
 import xmltodict
+from async_upnp_client.aiohttp import AiohttpSessionRequester
 from async_upnp_client.client import UpnpService
+from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
 
 from vibin import VibinNotFoundError
@@ -783,12 +788,6 @@ class CXNv2USB(MediaServer):
 
         Returns the full Browse result dict including Result, NumberReturned, TotalMatches.
         """
-        import asyncio
-        import concurrent.futures
-        import aiohttp
-        from async_upnp_client.aiohttp import AiohttpSessionRequester
-        from async_upnp_client.client_factory import UpnpFactory
-
         async def _do_browse() -> dict:
             async with aiohttp.ClientSession() as session:
                 requester = AiohttpSessionRequester(session, with_sleep=True)

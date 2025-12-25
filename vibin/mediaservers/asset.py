@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -6,9 +8,12 @@ from urllib.parse import urlparse
 import xml
 import xml.etree.ElementTree as ET
 
+import aiohttp
 import untangle
 import xmltodict
+from async_upnp_client.aiohttp import AiohttpSessionRequester
 from async_upnp_client.client import UpnpService
+from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
 
 from vibin import VibinNotFoundError
@@ -775,12 +780,6 @@ class Asset(MediaServer):
         Creates a fresh aiohttp session for each call to avoid event loop
         lifecycle issues when called from sync code.
         """
-        import asyncio
-        import concurrent.futures
-        import aiohttp
-        from async_upnp_client.aiohttp import AiohttpSessionRequester
-        from async_upnp_client.client_factory import UpnpFactory
-
         async def _do_browse() -> str:
             async with aiohttp.ClientSession() as session:
                 requester = AiohttpSessionRequester(session, with_sleep=True)

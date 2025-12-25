@@ -10,6 +10,8 @@ import json
 from urllib.parse import urlparse
 
 import aiohttp
+from async_upnp_client.aiohttp import AiohttpSessionRequester
+from async_upnp_client.client_factory import UpnpFactory
 import requests
 
 from vibin import VibinError
@@ -22,8 +24,8 @@ import vibin.streamers as streamers
 from vibin.streamers import model_to_streamer, Streamer
 from vibin.upnp import (
     VibinDevice,
-    VibinDeviceFactory,
     async_discover_devices,
+    wrap_device,
 )
 
 _upnp_devices: list[VibinDevice] | None = None
@@ -41,16 +43,17 @@ def _run_async(coro):
     compatibility for sync code that needs to use async discovery.
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         # We're already in an async context, can't use asyncio.run()
         # This shouldn't happen in normal Vibin usage, but handle it gracefully
         raise RuntimeError(
-            "Cannot use sync device discovery from within an async context. "
-            "Use Vibin.async_create() instead."
+            "Cannot use sync device discovery from within an async context."
         )
-    except RuntimeError:
-        # No running loop, we can create one
-        return asyncio.run(coro)
+    except RuntimeError as e:
+        if "no running event loop" in str(e):
+            # No running loop, we can create one
+            return asyncio.run(coro)
+        raise
 
 
 async def _async_discover_all_devices(timeout: int) -> list[VibinDevice]:
@@ -88,11 +91,6 @@ async def _async_create_device_from_url(url: str) -> VibinDevice:
     Creates a fresh factory and session for each call to avoid issues
     with event loop lifecycle in sync contexts.
     """
-    import aiohttp
-    from async_upnp_client.aiohttp import AiohttpSessionRequester
-    from async_upnp_client.client_factory import UpnpFactory
-    from vibin.upnp.device import wrap_device
-
     async with aiohttp.ClientSession() as session:
         requester = AiohttpSessionRequester(session, with_sleep=True)
         factory = UpnpFactory(requester, non_strict=True)
@@ -276,6 +274,7 @@ def _determine_media_server_device(
 
                     for cambridge_device in devices_data:
                         description_url = cambridge_device.get("description_url")
+
                         if not description_url:
                             continue
 
@@ -285,6 +284,7 @@ def _determine_media_server_device(
                                 f"Checking device: {dev.model_name} "
                                 f"({dev.device_type}) at {description_url}"
                             )
+
                             if "MediaServer" in dev.device_type:
                                 return dev
                         except Exception as e:
@@ -297,6 +297,7 @@ def _determine_media_server_device(
                         f"Cambridge Audio device '{streamer_device.friendly_name}' "
                         + f"did not specify a media server device"
                     )
+
                     return None
                 except IndexError:
                     logger.warning(
