@@ -1,7 +1,6 @@
 """UPnP-related exceptions for vibin.
 
-These exceptions provide a library-agnostic way to handle UPnP errors,
-allowing vibin to work with either upnpclient or async_upnp_client.
+These exceptions provide a consistent way to handle UPnP errors.
 """
 
 

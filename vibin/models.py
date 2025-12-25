@@ -1,7 +1,6 @@
 from typing import Any
 
 from pydantic import BaseModel, Field
-import upnpclient
 
 from vibin.types import (
     AmplifierAction,
@@ -503,4 +502,4 @@ class UPnPSubscription(BaseModel):
     next_renewal: int | None
 
 
-UPnPServiceSubscriptions = dict[upnpclient.Service, UPnPSubscription]
+UPnPServiceSubscriptions = dict[Any, UPnPSubscription]  # Key is UPnP Service object

@@ -1,7 +1,8 @@
 """Device abstraction for UPnP libraries.
 
-Provides a unified interface (VibinDevice protocol) that works with both
-upnpclient.Device and async_upnp_client.UpnpDevice.
+Provides a unified interface (VibinDevice protocol) for UPnP devices.
+The AsyncUpnpDeviceAdapter wraps async_upnp_client.UpnpDevice to conform
+to the VibinDevice protocol.
 """
 
 from typing import Protocol, runtime_checkable, Any
@@ -11,8 +12,7 @@ from typing import Protocol, runtime_checkable, Any
 class VibinDevice(Protocol):
     """Protocol defining the device interface vibin needs.
 
-    This protocol is satisfied by upnpclient.Device directly.
-    For async_upnp_client.UpnpDevice, use AsyncUpnpDeviceAdapter.
+    Use AsyncUpnpDeviceAdapter to wrap async_upnp_client.UpnpDevice.
     """
 
     @property
@@ -105,16 +105,16 @@ class AsyncUpnpDeviceAdapter:
 
 
 def wrap_device(device: Any) -> VibinDevice:
-    """Wrap a device from either UPnP library to conform to VibinDevice.
+    """Wrap a UPnP device to conform to VibinDevice protocol.
 
     Args:
-        device: Either an upnpclient.Device or async_upnp_client.UpnpDevice.
+        device: An async_upnp_client.UpnpDevice instance.
 
     Returns:
-        A VibinDevice-compatible object.
+        A VibinDevice-compatible object (AsyncUpnpDeviceAdapter).
     """
-    # async_upnp_client uses device_url, upnpclient uses location
+    # async_upnp_client uses device_url instead of location
     if hasattr(device, "device_url"):
         return AsyncUpnpDeviceAdapter(device)
-    # upnpclient.Device already satisfies VibinDevice protocol
+    # Already conforms to VibinDevice protocol
     return device

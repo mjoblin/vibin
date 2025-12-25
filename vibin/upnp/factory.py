@@ -1,7 +1,6 @@
 """Async device factory for vibin.
 
-Provides an async factory for creating UPnP devices using async_upnp_client,
-which coexists with the sync upnpclient during migration.
+Provides an async factory for creating UPnP devices using async_upnp_client.
 """
 
 import aiohttp

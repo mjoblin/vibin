@@ -1,9 +1,16 @@
+"""Device resolution for Vibin.
+
+This module provides functions to discover UPnP devices and determine
+which Vibin implementation classes to use for them.
+"""
+
+import asyncio
 import inspect
 import json
 from urllib.parse import urlparse
 
+import aiohttp
 import requests
-import upnpclient
 
 from vibin import VibinError
 from vibin.amplifiers import model_to_amplifier, Amplifier
@@ -13,15 +20,45 @@ import vibin.mediaservers as mediaservers
 from vibin.mediaservers import MediaServer, model_to_media_server
 import vibin.streamers as streamers
 from vibin.streamers import model_to_streamer, Streamer
+from vibin.upnp import (
+    VibinDevice,
+    VibinDeviceFactory,
+    async_discover_devices,
+)
 
-_upnp_devices = None
+_upnp_devices: list[VibinDevice] | None = None
 
 
 # =============================================================================
-# UPnP device discovery; Streamer/MediaServer class instance determination
+# UPnP device discovery (sync wrappers around async functions)
 # =============================================================================
 
-def _discover_upnp_devices(timeout: int):
+
+def _run_async(coro):
+    """Run an async coroutine synchronously.
+
+    Creates a new event loop if needed. This is used to provide backward
+    compatibility for sync code that needs to use async discovery.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # We're already in an async context, can't use asyncio.run()
+        # This shouldn't happen in normal Vibin usage, but handle it gracefully
+        raise RuntimeError(
+            "Cannot use sync device discovery from within an async context. "
+            "Use Vibin.async_create() instead."
+        )
+    except RuntimeError:
+        # No running loop, we can create one
+        return asyncio.run(coro)
+
+
+async def _async_discover_all_devices(timeout: int) -> list[VibinDevice]:
+    """Async discovery of all UPnP devices."""
+    return await async_discover_devices(timeout=timeout)
+
+
+def _discover_upnp_devices(timeout: int) -> list[VibinDevice]:
     """Perform a UPnP discovery of all devices on the local network.
 
     Found devices are cached in case this gets called more than once. This
@@ -33,7 +70,7 @@ def _discover_upnp_devices(timeout: int):
         return _upnp_devices
 
     logger.info("Discovering UPnP devices...")
-    devices = upnpclient.discover(timeout=timeout)
+    devices = _run_async(_async_discover_all_devices(timeout))
 
     for device in devices:
         logger.info(
@@ -45,9 +82,32 @@ def _discover_upnp_devices(timeout: int):
     return _upnp_devices
 
 
+async def _async_create_device_from_url(url: str) -> VibinDevice:
+    """Create a device from a UPnP description URL.
+
+    Creates a fresh factory and session for each call to avoid issues
+    with event loop lifecycle in sync contexts.
+    """
+    import aiohttp
+    from async_upnp_client.aiohttp import AiohttpSessionRequester
+    from async_upnp_client.client_factory import UpnpFactory
+    from vibin.upnp.device import wrap_device
+
+    async with aiohttp.ClientSession() as session:
+        requester = AiohttpSessionRequester(session, with_sleep=True)
+        factory = UpnpFactory(requester, non_strict=True)
+        device = await factory.async_create_device(url)
+        return wrap_device(device)
+
+
+def _create_device_from_url(url: str) -> VibinDevice:
+    """Sync wrapper to create a device from a UPnP description URL."""
+    return _run_async(_async_create_device_from_url(url))
+
+
 def _determine_streamer_device(
     streamer_input: str | None, discovery_timeout: int
-) -> upnpclient.Device | None:
+) -> VibinDevice | None:
     """Attempt to find a streamer on the network.
 
     Heuristic:
@@ -92,8 +152,8 @@ def _determine_streamer_device(
         )
 
         try:
-            return upnpclient.Device(streamer_input)
-        except requests.RequestException:
+            return _create_device_from_url(streamer_input)
+        except Exception:
             raise VibinError(
                 f"Could not find a UPnP device at the provided streamer URL: {streamer_input}"
             )
@@ -119,13 +179,13 @@ def _determine_streamer_device(
                     ][0]
 
                     try:
-                        return upnpclient.Device(streamer["description_url"])
+                        return _create_device_from_url(streamer["description_url"])
                     except KeyError:
                         raise VibinError(
                             f"Cambridge Audio device found at {streamer_input}, "
                             + f"but it did not have a description_url"
                         )
-                    except requests.RequestException:
+                    except Exception:
                         raise VibinError(
                             f"Cambridge Audio device found at {streamer_input}, "
                             + f"but its description_url was unsuccessful: "
@@ -174,8 +234,8 @@ def _determine_streamer_device(
 def _determine_media_server_device(
     media_server_input: str | None,
     discovery_timeout: int,
-    streamer_device: upnpclient.Device,
-) -> upnpclient.Device | None:
+    streamer_device: VibinDevice,
+) -> VibinDevice | None:
     """Attempt to find a media server on the network.
 
     Heuristic:
@@ -209,16 +269,35 @@ def _determine_media_server_device(
                 try:
                     # The Cambridge response includes a list of devices. Iterate
                     # over each of those looking for the first MediaServer.
-                    media_server = [
-                        cambridge_device
-                        for cambridge_device in response.json()["data"]["devices"]
-                        if "MediaServer"
-                        in upnpclient.Device(
-                            cambridge_device["description_url"]
-                        ).device_type
-                    ][0]
+                    devices_data = response.json()["data"]["devices"]
+                    logger.info(
+                        f"Cambridge Audio device reported {len(devices_data)} UPnP devices"
+                    )
 
-                    return upnpclient.Device(media_server["description_url"])
+                    for cambridge_device in devices_data:
+                        description_url = cambridge_device.get("description_url")
+                        if not description_url:
+                            continue
+
+                        try:
+                            dev = _create_device_from_url(description_url)
+                            logger.info(
+                                f"Checking device: {dev.model_name} "
+                                f"({dev.device_type}) at {description_url}"
+                            )
+                            if "MediaServer" in dev.device_type:
+                                return dev
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to create device from {description_url}: {e}"
+                            )
+                            continue
+
+                    logger.warning(
+                        f"Cambridge Audio device '{streamer_device.friendly_name}' "
+                        + f"did not specify a media server device"
+                    )
+                    return None
                 except IndexError:
                     logger.warning(
                         f"Cambridge Audio device '{streamer_device.friendly_name}' "
@@ -256,8 +335,8 @@ def _determine_media_server_device(
         )
 
         try:
-            return upnpclient.Device(media_server_input)
-        except requests.RequestException:
+            return _create_device_from_url(media_server_input)
+        except Exception:
             raise VibinError(
                 f"Could not find a UPnP device at the provided media server URL: {media_server_input}"
             )
@@ -283,8 +362,8 @@ def _determine_media_server_device(
 def _determine_amplifier_device(
     amplifier_input: str | None,
     discovery_timeout: int,
-    streamer_device: upnpclient.Device,
-) -> upnpclient.Device | None:
+    streamer_device: VibinDevice,
+) -> VibinDevice | None:
     """Attempt to find an amplifier on the network.
 
     Heuristic:
@@ -321,7 +400,7 @@ def _determine_amplifier_device(
                 return [
                     device
                     for device in media_renderers
-                    if device != streamer_device
+                    if device.udn != streamer_device.udn
                 ][0]
         except IndexError:
             # No MediaRenderers is not an error state for amplifiers (amplifiers
@@ -337,8 +416,8 @@ def _determine_amplifier_device(
         )
 
         try:
-            return upnpclient.Device(amplifier_input)
-        except requests.RequestException:
+            return _create_device_from_url(amplifier_input)
+        except Exception:
             raise VibinError(
                 f"Could not find a UPnP device at the provided amplifier URL: {amplifier_input}"
             )
@@ -366,7 +445,7 @@ def determine_devices(
     media_server_input: str | bool | None,
     amplifier_input: str | bool | None,
     discovery_timeout: int = 5,
-) -> (upnpclient.Device, upnpclient.Device | None, upnpclient.Device | None):
+) -> tuple[VibinDevice, VibinDevice | None, VibinDevice | None]:
     """Attempt to locate a streamer and (optionally) a media server on the network."""
 
     streamer_device = _determine_streamer_device(streamer_input, discovery_timeout)
@@ -392,7 +471,7 @@ def determine_devices(
     return streamer_device, media_server_device, amplifier_device
 
 
-def determine_streamer_class(streamer_device, streamer_type):
+def determine_streamer_class(streamer_device: VibinDevice, streamer_type: str | None):
     """Determine which Streamer implementation matches the streamer_device."""
 
     # Build a list of all known Streamer implementations; and a map of device
@@ -445,7 +524,9 @@ def determine_streamer_class(streamer_device, streamer_type):
     return streamer_class
 
 
-def determine_media_server_class(media_server_device, media_server_type):
+def determine_media_server_class(
+    media_server_device: VibinDevice, media_server_type: str | None
+):
     """Determine which MediaServer implementation matches the media_server_device."""
 
     # Build a list of all known MediaServer implementations; and a map of
@@ -491,7 +572,9 @@ def determine_media_server_class(media_server_device, media_server_type):
     return media_server_class
 
 
-def determine_amplifier_class(amplifier_device, amplifier_type):
+def determine_amplifier_class(
+    amplifier_device: VibinDevice, amplifier_type: str | None
+):
     """Determine which Amplifier implementation matches the amplifier_device."""
 
     # Build a list of all known Amplifier implementations; and a map of

@@ -1,7 +1,6 @@
 """Async UPnP device discovery for vibin.
 
 Provides async device discovery using async_upnp_client's SSDP implementation.
-This coexists with the sync upnpclient.discover() during migration.
 """
 
 import asyncio
@@ -44,6 +43,11 @@ async def async_discover_devices(
             )
         )
     """
+    import aiohttp
+    from async_upnp_client.aiohttp import AiohttpSessionRequester
+    from async_upnp_client.client_factory import UpnpFactory
+    from vibin.upnp.device import wrap_device
+
     discovered_locations: set[str] = set()
 
     def on_device_found(
@@ -72,25 +76,28 @@ async def async_discover_devices(
     logger.info(f"SSDP discovery found {len(discovered_locations)} device locations")
 
     # Create VibinDevice objects from discovered locations
-    factory = VibinDeviceFactory.get_instance()
-    await factory.async_init()
-
+    # Use a fresh session for each discovery to avoid event loop issues
     devices: list[VibinDevice] = []
 
-    for location in discovered_locations:
-        try:
-            device = await factory.async_create_device(location)
+    async with aiohttp.ClientSession() as session:
+        requester = AiohttpSessionRequester(session, with_sleep=True)
+        factory = UpnpFactory(requester, non_strict=True)
 
-            # Apply filter if provided
-            if device_filter is None or device_filter(device):
-                devices.append(device)
-                logger.info(
-                    f"Found: {device.model_name} ('{device.friendly_name}') "
-                    f"from {device.manufacturer}"
-                )
-        except Exception as e:
-            logger.debug(f"Failed to create device from {location}: {e}")
-            # Skip devices that fail to load (network issues, invalid XML, etc.)
+        for location in discovered_locations:
+            try:
+                device = await factory.async_create_device(location)
+                wrapped = wrap_device(device)
+
+                # Apply filter if provided
+                if device_filter is None or device_filter(wrapped):
+                    devices.append(wrapped)
+                    logger.info(
+                        f"Found: {wrapped.model_name} ('{wrapped.friendly_name}') "
+                        f"from {wrapped.manufacturer}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to create device from {location}: {e}")
+                # Skip devices that fail to load (network issues, invalid XML, etc.)
 
     return devices
 

@@ -13,18 +13,18 @@ import socket
 import tempfile
 import threading
 import time
-from typing import Callable, Awaitable
+from typing import Any, Callable, Awaitable
 import zipfile
 
 from packaging.version import Version
 from pydantic import BaseModel
 import requests
-import upnpclient
 import websockets
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
 from vibin import VibinError, VibinMissingDependencyError
+from vibin.upnp import VibinDevice, VibinSoapError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from vibin.logger import logger
 from vibin.models import UPnPServiceSubscriptions, UPnPSubscription
@@ -81,10 +81,10 @@ class StoppableThread(threading.Thread):
 class UPnPSubscriptionManagerThread(StoppableThread):
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         cmd_queue: queue.Queue,
         subscription_callback_base: str,
-        services: list[upnpclient.Service],
+        services: list[Any],  # UPnP Service objects (library-specific)
         *args,
         **kwargs,
     ):
@@ -225,7 +225,7 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                     f"Cancelling {self._device_name} UPnP subscription for {service.name}"
                 )
                 service.cancel_subscription(subscription.id)
-            except (upnpclient.UPNPError, upnpclient.soap.SOAPError) as e:
+            except VibinSoapError as e:
                 logger.warning(
                     f"Could not cancel {self._device_name} UPnP subscription for "
                     + f"{service.name}: {e}"
@@ -247,6 +247,12 @@ class UPnPSubscriptionManagerThread(StoppableThread):
                     pass
 
                 logger.warning(f"{fail_message}: {e}")
+            except Exception as e:
+                # Catch any other UPnP-related errors from the library
+                logger.warning(
+                    f"Could not cancel {self._device_name} UPnP subscription for "
+                    + f"{service.name}: {e}"
+                )
 
         self._subscriptions = {}
 

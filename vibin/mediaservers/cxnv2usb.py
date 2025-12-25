@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 from xml.etree import ElementTree
 
-import upnpclient
 import xmltodict
 from async_upnp_client.client import UpnpService
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
@@ -648,17 +647,10 @@ class CXNv2USB(MediaServer):
         path = self._catalogue().id_map.get_path(id)
         result = self._traverse_path(path)
         try:
-            browse_result = self._device.ContentDirectory.Browse(
-                ObjectID=result.id,
-                BrowseFlag="BrowseMetadata",
-                Filter="*",
-                StartingIndex=0,
-                RequestedCount=0,
-                SortCriteria="",
-            )
+            browse_result = self._sync_browse(result.id, "BrowseMetadata")
             return browse_result["Result"]
-        except upnpclient.soap.SOAPProtocolError:
-            raise VibinNotFoundError(f"Could not find media id {id}")
+        except VibinSoapError as e:
+            raise VibinNotFoundError(f"Could not find media id {id}") from e
 
     def get_audio_file_url(self, track_id: MediaId) -> str | None:
         """Get the audio file URL for a track by MediaId."""
@@ -770,25 +762,71 @@ class CXNv2USB(MediaServer):
         # Note: the ContentDirectory spec says that RequestedCount can be zero
         # to request all entries. CXNv2 doesn't honour this - instead, use a
         # high RequestedCount and potentially repeat the call.
-        response = self._device.ContentDirectory.Browse(
-            ObjectID=id,
-            BrowseFlag="BrowseDirectChildren",
-            Filter="*",
-            StartingIndex=0,
-            RequestedCount=10000,
-            SortCriteria="",
-        )
+        response = self._sync_browse(id, "BrowseDirectChildren", requested_count=10000)
         if response["TotalMatches"] > 10000:
-            response = self._device.ContentDirectory.Browse(
-                ObjectID=id,
-                BrowseFlag="BrowseDirectChildren",
-                Filter="*",
-                StartingIndex=0,
-                RequestedCount=response["TotalMatches"],
-                SortCriteria="",
+            response = self._sync_browse(
+                id, "BrowseDirectChildren", requested_count=response["TotalMatches"]
             )
 
         return [
             _BrowseResult(result)
             for result in ElementTree.fromstring(response["Result"])
         ]
+
+    def _sync_browse(
+        self, object_id: str, browse_flag: str, requested_count: int = 0
+    ) -> dict:
+        """Perform a synchronous UPnP Browse action.
+
+        Creates a fresh aiohttp session for each call to avoid event loop
+        lifecycle issues when called from sync code.
+
+        Returns the full Browse result dict including Result, NumberReturned, TotalMatches.
+        """
+        import asyncio
+        import concurrent.futures
+        import aiohttp
+        from async_upnp_client.aiohttp import AiohttpSessionRequester
+        from async_upnp_client.client_factory import UpnpFactory
+
+        async def _do_browse() -> dict:
+            async with aiohttp.ClientSession() as session:
+                requester = AiohttpSessionRequester(session, with_sleep=True)
+                factory = UpnpFactory(requester, non_strict=True)
+
+                device = await factory.async_create_device(self._device.location)
+                content_directory = device.service(
+                    "urn:schemas-upnp-org:service:ContentDirectory:1"
+                )
+
+                return await content_directory.async_call_action(
+                    "Browse",
+                    ObjectID=object_id,
+                    BrowseFlag=browse_flag,
+                    Filter="*",
+                    StartingIndex=0,
+                    RequestedCount=requested_count,
+                    SortCriteria="",
+                )
+
+        def _run_in_new_loop() -> dict:
+            return asyncio.run(_do_browse())
+
+        try:
+            # Check if we're already in an event loop
+            try:
+                asyncio.get_running_loop()
+                in_loop = True
+            except RuntimeError:
+                in_loop = False
+
+            if in_loop:
+                # Already in an event loop - run in a separate thread
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_run_in_new_loop)
+                    return future.result()
+            else:
+                # Not in an event loop - use asyncio.run directly
+                return asyncio.run(_do_browse())
+        except (UpnpActionError, UpnpActionResponseError) as e:
+            raise VibinSoapError(str(e), getattr(e, "error_code", None)) from e
