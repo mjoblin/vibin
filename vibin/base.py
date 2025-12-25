@@ -20,6 +20,12 @@ from vibin.device_resolution import (
     determine_devices,
     determine_streamer_class,
 )
+from vibin.upnp import (
+    VibinDevice,
+    VibinDeviceFactory,
+    async_discover_devices,
+    async_discover_device_by_location,
+)
 import vibin.external_services as external_services
 from vibin.external_services import ExternalService
 from vibin.logger import logger
@@ -239,6 +245,454 @@ class Vibin:
             + f"streamer:'{'None' if self.streamer is None else self.streamer.name}'; "
             + f"media server:'{'None' if self.media_server is None else self.media_server.name}'"
         )
+
+    # -------------------------------------------------------------------------
+    # Async factory method
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    async def async_create(
+        cls,
+        streamer: str | None = None,
+        streamer_type: str | None = None,
+        media_server: str | bool | None = None,
+        media_server_type: str | None = None,
+        amplifier: str | bool | None = None,
+        amplifier_type: str | None = None,
+        discovery_timeout: int = 5,
+        upnp_subscription_callback_base: str | None = None,
+    ) -> "Vibin":
+        """Async factory method to create a Vibin instance.
+
+        This is the preferred way to create a Vibin instance in async contexts
+        (like FastAPI). It uses async device discovery and initializes media
+        servers with async SOAP capabilities.
+
+        Args:
+            streamer: Streamer identifier (URL, hostname, or friendly name).
+            streamer_type: Specific Streamer class name to use.
+            media_server: Media server identifier, True for auto-discover, False to disable.
+            media_server_type: Specific MediaServer class name to use.
+            amplifier: Amplifier identifier, True for auto-discover, False to disable.
+            amplifier_type: Specific Amplifier class name to use.
+            discovery_timeout: Timeout for UPnP discovery in seconds.
+            upnp_subscription_callback_base: Base URL for UPnP event callbacks.
+
+        Returns:
+            A fully initialized Vibin instance.
+
+        Raises:
+            VibinError: If the streamer cannot be found.
+        """
+        logger.info(f"Async initializing Vibin v{VIBIN_VER}")
+
+        # Initialize the device factory
+        factory = VibinDeviceFactory.get_instance()
+        await factory.async_init()
+
+        # Discover devices asynchronously
+        streamer_device = await cls._async_discover_streamer(
+            streamer, discovery_timeout, factory
+        )
+
+        media_server_device = None
+        if media_server is not False:
+            media_server_device = await cls._async_discover_media_server(
+                media_server, discovery_timeout, streamer_device, factory
+            )
+
+        amplifier_device = None
+        if amplifier is not False:
+            amplifier_device = await cls._async_discover_amplifier(
+                amplifier, discovery_timeout, streamer_device, factory
+            )
+
+        # Create the Vibin instance using the internal init
+        instance = cls.__new__(cls)
+        await instance._async_init_with_devices(
+            streamer_device=streamer_device,
+            streamer_type=streamer_type,
+            media_server_device=media_server_device,
+            media_server_type=media_server_type,
+            amplifier_device=amplifier_device,
+            amplifier_type=amplifier_type,
+            upnp_subscription_callback_base=upnp_subscription_callback_base,
+        )
+
+        return instance
+
+    async def _async_init_with_devices(
+        self,
+        streamer_device: VibinDevice,
+        streamer_type: str | None,
+        media_server_device: VibinDevice | None,
+        media_server_type: str | None,
+        amplifier_device: VibinDevice | None,
+        amplifier_type: str | None,
+        upnp_subscription_callback_base: str | None,
+    ) -> None:
+        """Initialize Vibin with pre-discovered devices.
+
+        This is called by async_create() after async device discovery.
+        """
+        self._on_update_handlers: list[UpdateMessageHandler] = []
+        self._last_played_id = None
+
+        # Configure external services
+        self._external_services: dict[str, ExternalService] = {}
+
+        self._add_external_service(external_services.Discogs, "DISCOGS_ACCESS_TOKEN")
+        self._add_external_service(external_services.Genius, "GENIUS_ACCESS_TOKEN")
+        self._add_external_service(external_services.RateYourMusic, None)
+        self._add_external_service(external_services.Wikipedia, None)
+
+        self._init_db()
+
+        # Set up the Streamer and MediaServer instances
+        self._current_streamer: Streamer | None = None
+        self._current_media_server: MediaServer | None = None
+        self._current_amplifier: Amplifier | None = None
+
+        # Streamer
+        if streamer_device is None:
+            raise VibinError("Could not find streamer on the network")
+
+        streamer_class = determine_streamer_class(streamer_device, streamer_type)
+
+        self._current_streamer = streamer_class(
+            device=streamer_device,
+            upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/streamer",
+            on_update=self._on_streamer_update,
+        )
+
+        logger.info(
+            f"Using streamer UPnP device: {self.streamer.name} ({type(self.streamer).__name__})"
+        )
+
+        # MediaServer
+        if media_server_device:
+            media_server_class = determine_media_server_class(
+                media_server_device, media_server_type
+            )
+
+            self._current_media_server = media_server_class(
+                device=media_server_device,
+                upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/media_server",
+                on_update=self._on_media_server_update,
+            )
+
+            # Initialize async SOAP capabilities if available
+            if hasattr(self._current_media_server, "async_init"):
+                await self._current_media_server.async_init()
+                logger.info("Media server async SOAP initialized")
+
+            # Register the media server with the streamer
+            self._current_streamer.register_media_server(self._current_media_server)
+
+            settings = self.settings
+            self._current_media_server.all_albums_path = settings.all_albums_path
+            self._current_media_server.new_albums_path = settings.new_albums_path
+            self._current_media_server.all_artists_path = settings.all_artists_path
+
+            logger.info(
+                f"Using media server UPnP device: {self.media_server.name} "
+                + f"({type(self.media_server).__name__})"
+            )
+        else:
+            logger.warning(
+                "Not using a local media server; some features will be unavailable"
+            )
+
+        # Amplifier
+        if amplifier_device:
+            amplifier_class = determine_amplifier_class(amplifier_device, amplifier_type)
+
+            self._current_amplifier = amplifier_class(
+                device=amplifier_device,
+                upnp_subscription_callback_base=f"{upnp_subscription_callback_base}/amplifier",
+                on_connect=self._on_amplifier_connect,
+                on_disconnect=self._on_amplifier_disconnect,
+                on_update=self._on_amplifier_update,
+            )
+
+            logger.info(
+                f"Using amplifier UPnP device: {self.amplifier.name} "
+                + f"({type(self.amplifier).__name__})"
+            )
+        else:
+            logger.warning("Not using an amplifier; some features will be unavailable")
+
+        if self.media_server is not None:
+            logger.info("Retrieving local media counts (might take a while)")
+
+            albums = self.media_server.albums
+            tracks = self.media_server.tracks
+
+            logger.info(f"Media server has {len(albums)} albums and {len(tracks)} tracks")
+
+        # Initialize the managers
+        self._favorites_manager = FavoritesManager(
+            db=self._favorites_db,
+            media_server=self.media_server,
+            updates_handler=self._send_update,
+        )
+
+        self._links_manager = LinksManager(
+            db=self._links_db,
+            media_server=self.media_server,
+            external_services=self._external_services,
+        )
+
+        self._lyrics_manager = LyricsManager(
+            db=self._lyrics_db,
+            media_server=self.media_server,
+            genius_service=self._external_services.get("Genius"),
+        )
+
+        self._playlists_manager = PlaylistsManager(
+            db=self._playlists_db,
+            media_server=self.media_server,
+            streamer=self.streamer,
+            updates_handler=self._send_update,
+        )
+
+        self._waveform_manager = WaveformManager(media_server=self.media_server)
+
+        # Additional initialization
+        self.playlists_manager.check_for_streamer_queue_in_store()
+        self._subscribe_to_upnp_events()
+
+        # Invoke on_startup handlers
+        self.streamer.on_startup()
+
+        if self.media_server is not None:
+            self.media_server.on_startup()
+
+        if self.amplifier is not None:
+            self.amplifier.on_startup()
+
+    @classmethod
+    async def _async_discover_streamer(
+        cls,
+        streamer_input: str | None,
+        timeout: int,
+        factory: VibinDeviceFactory,
+    ) -> VibinDevice:
+        """Async version of streamer discovery."""
+        from urllib.parse import urlparse
+        import aiohttp
+
+        if streamer_input is None or streamer_input == "":
+            # Auto-discover Cambridge Audio MediaRenderer
+            logger.info(
+                "No streamer specified, attempting to auto-discover a Cambridge Audio device"
+            )
+            devices = await async_discover_devices(
+                timeout=timeout,
+                device_filter=lambda d: (
+                    d.manufacturer == "Cambridge Audio"
+                    and "MediaRenderer" in d.device_type
+                ),
+            )
+
+            if not devices:
+                raise VibinError(
+                    "Could not find a Cambridge Audio MediaRenderer UPnP device"
+                )
+            return devices[0]
+
+        parsed_url = urlparse(streamer_input)
+
+        if parsed_url.hostname is not None:
+            # URL provided - use it directly
+            logger.info(
+                f"Attempting to find streamer at provided UPnP location URL: {streamer_input}"
+            )
+            try:
+                return await factory.async_create_device(streamer_input)
+            except Exception as e:
+                raise VibinError(
+                    f"Could not find a UPnP device at the provided streamer URL: {streamer_input}"
+                ) from e
+        else:
+            # Try as Cambridge Audio hostname first
+            try:
+                logger.info(
+                    f"Attempting to find streamer at provided hostname: {streamer_input}"
+                )
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://{streamer_input}:80/smoip/system/upnp",
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for device in data.get("data", {}).get("devices", []):
+                                if device.get("manufacturer") == "Cambridge Audio":
+                                    description_url = device.get("description_url")
+                                    if description_url:
+                                        return await factory.async_create_device(
+                                            description_url
+                                        )
+                            raise VibinError(
+                                f"Cambridge Audio device found at {streamer_input}, "
+                                + "but it did not specify any Cambridge Audio devices"
+                            )
+            except aiohttp.ClientError:
+                pass  # Not a Cambridge Audio hostname, try friendly name
+
+            # Try as UPnP friendly name
+            logger.info(
+                f"Attempting to find streamer by UPnP friendly name: {streamer_input}"
+            )
+            devices = await async_discover_devices(
+                timeout=timeout,
+                device_filter=lambda d: d.friendly_name == streamer_input,
+            )
+
+            if not devices:
+                raise VibinError(
+                    f"Could not find a UPnP device with friendly name '{streamer_input}'"
+                )
+            return devices[0]
+
+    @classmethod
+    async def _async_discover_media_server(
+        cls,
+        media_server_input: str | bool | None,
+        timeout: int,
+        streamer_device: VibinDevice,
+        factory: VibinDeviceFactory,
+    ) -> VibinDevice | None:
+        """Async version of media server discovery."""
+        from urllib.parse import urlparse
+        import aiohttp
+
+        if media_server_input is None or media_server_input is True:
+            # Auto-discover from Cambridge Audio streamer or via SSDP
+            if streamer_device.manufacturer == "Cambridge Audio":
+                logger.info(
+                    f"No media server specified; looking to the Cambridge Audio "
+                    + f"device '{streamer_device.friendly_name}' for its media server"
+                )
+                try:
+                    hostname = urlparse(streamer_device.location).hostname
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"http://{hostname}:80/smoip/system/upnp"
+                        ) as response:
+                            data = await response.json()
+                            for device in data.get("data", {}).get("devices", []):
+                                description_url = device.get("description_url")
+                                if description_url:
+                                    dev = await factory.async_create_device(description_url)
+                                    if "MediaServer" in dev.device_type:
+                                        return dev
+                except Exception as e:
+                    logger.warning(
+                        f"Could not determine media server from Cambridge Audio device: {e}"
+                    )
+                    return None
+            else:
+                # Auto-discover MediaServer
+                logger.info("No media server specified, attempting auto-discovery")
+                devices = await async_discover_devices(
+                    timeout=timeout,
+                    device_filter=lambda d: "MediaServer" in d.device_type,
+                )
+                return devices[0] if devices else None
+
+        if isinstance(media_server_input, str):
+            parsed_url = urlparse(media_server_input)
+
+            if parsed_url.hostname is not None:
+                # URL provided
+                logger.info(
+                    f"Attempting to find media server at provided URL: {media_server_input}"
+                )
+                try:
+                    return await factory.async_create_device(media_server_input)
+                except Exception as e:
+                    raise VibinError(
+                        f"Could not find a UPnP device at the provided media server URL: {media_server_input}"
+                    ) from e
+            else:
+                # Friendly name
+                logger.info(
+                    f"Attempting to find media server by UPnP friendly name: {media_server_input}"
+                )
+                devices = await async_discover_devices(
+                    timeout=timeout,
+                    device_filter=lambda d: d.friendly_name == media_server_input,
+                )
+                if not devices:
+                    raise VibinError(
+                        f"Could not find a UPnP device with friendly name '{media_server_input}'"
+                    )
+                return devices[0]
+
+        return None
+
+    @classmethod
+    async def _async_discover_amplifier(
+        cls,
+        amplifier_input: str | bool | None,
+        timeout: int,
+        streamer_device: VibinDevice,
+        factory: VibinDeviceFactory,
+    ) -> VibinDevice | None:
+        """Async version of amplifier discovery."""
+        from urllib.parse import urlparse
+
+        if amplifier_input is None or amplifier_input is True:
+            # Auto-discover MediaRenderer (that's not the streamer)
+            logger.info(
+                "No amplifier specified, attempting to auto-discover a UPnP MediaRenderer"
+            )
+            devices = await async_discover_devices(
+                timeout=timeout,
+                device_filter=lambda d: "MediaRenderer" in d.device_type,
+            )
+
+            if len(devices) == 1:
+                return devices[0]
+            elif len(devices) > 1:
+                # Return first one that isn't the streamer
+                for device in devices:
+                    if device.udn != streamer_device.udn:
+                        return device
+            return None
+
+        if isinstance(amplifier_input, str):
+            parsed_url = urlparse(amplifier_input)
+
+            if parsed_url.hostname is not None:
+                # URL provided
+                logger.info(
+                    f"Attempting to find amplifier at provided URL: {amplifier_input}"
+                )
+                try:
+                    return await factory.async_create_device(amplifier_input)
+                except Exception as e:
+                    raise VibinError(
+                        f"Could not find a UPnP device at the provided amplifier URL: {amplifier_input}"
+                    ) from e
+            else:
+                # Friendly name
+                logger.info(
+                    f"Attempting to find amplifier by UPnP friendly name: {amplifier_input}"
+                )
+                devices = await async_discover_devices(
+                    timeout=timeout,
+                    device_filter=lambda d: d.friendly_name == amplifier_input,
+                )
+                if not devices:
+                    raise VibinError(
+                        f"Could not find a UPnP device with friendly name '{amplifier_input}'"
+                    )
+                return devices[0]
+
+        return None
 
     @property
     def streamer(self) -> Streamer:

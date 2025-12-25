@@ -11,6 +11,7 @@ from vibin import VibinDeviceError, VibinError, VibinMissingDependencyError
 from vibin.constants import VIBIN_PORT, VIBIN_VER
 from vibin.logger import logger
 from vibin.server.dependencies import (
+    async_get_vibin_instance,
     get_vibin_instance,
     get_media_server_proxy_client,
     UPNP_EVENTS_BASE_ROUTE,
@@ -48,6 +49,7 @@ def server_start(
     discovery_timeout=5,
     vibinui=None,
     proxy_media_server=False,
+    async_init=False,
 ):
     """Start the Vibin server.
 
@@ -61,6 +63,11 @@ def server_start(
               and a media server proxy route.
         * Expose a /upnpevents/{service} endpoint to receive UPnP events and
           forward them to the Vibin instance for handling.
+
+    Args:
+        async_init: If True, use async device discovery and initialization.
+            This moves Vibin creation into the FastAPI lifespan for better
+            async performance. Default is False for backward compatibility.
     """
     local_ip = get_local_ip() if host == "0.0.0.0" else host
 
@@ -68,37 +75,52 @@ def server_start(
         logger.error(f"Cannot serve Web UI: Path does not exist: {vibinui}")
         return
 
-    # Create the Vibin instance. This instance is effectively a singleton and
-    # is created before the API is started. This means that the vibin instance
-    # will be available to any routers that need it via the 'dependencies'
-    # module.
-    try:
-        vibin = get_vibin_instance(
-            streamer=streamer,
-            streamer_type=streamer_type,
-            media_server=media_server,
-            media_server_type=media_server_type,
-            amplifier=amplifier,
-            amplifier_type=amplifier_type,
-            discovery_timeout=discovery_timeout,
-            upnp_subscription_callback_base=f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
-            proxy_media_server=proxy_media_server,
-            ui_static_root=vibinui,
-        )
-    except VibinError as e:
-        logger.error(f"Vibin server start unsuccessful: {e}")
-        logger.info("Vibin server start aborted")
-        return
+    # Store config for async init if needed
+    vibin_config = {
+        "streamer": streamer,
+        "streamer_type": streamer_type,
+        "media_server": media_server,
+        "media_server_type": media_server_type,
+        "amplifier": amplifier,
+        "amplifier_type": amplifier_type,
+        "discovery_timeout": discovery_timeout,
+        "upnp_subscription_callback_base": f"http://{local_ip}:{port}{UPNP_EVENTS_BASE_ROUTE}",
+        "proxy_media_server": proxy_media_server,
+        "ui_static_root": vibinui,
+    }
+
+    vibin = None
+
+    if not async_init:
+        # Sync initialization (original behavior)
+        # Create the Vibin instance before the API is started.
+        try:
+            vibin = get_vibin_instance(**vibin_config)
+        except VibinError as e:
+            logger.error(f"Vibin server start unsuccessful: {e}")
+            logger.info("Vibin server start aborted")
+            return
 
     @asynccontextmanager
     async def api_lifespan(app: FastAPI):
         """Handle the FastAPI lifecycle."""
-        # No FastAPI startup tasks.
+        nonlocal vibin
+
+        # Async startup tasks
+        if async_init:
+            try:
+                vibin = await async_get_vibin_instance(**vibin_config)
+            except VibinError as e:
+                logger.error(f"Vibin server start unsuccessful: {e}")
+                logger.info("Vibin server start aborted")
+                raise
+
         yield
 
         # FastAPI shutdown tasks.
         logger.info("Vibin server shutdown requested")
-        vibin.shutdown()
+        if vibin is not None:
+            vibin.shutdown()
 
         media_server_proxy_client = get_media_server_proxy_client()
 
