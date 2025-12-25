@@ -14,7 +14,6 @@ from async_upnp_client.ssdp_listener import SsdpDevice, SsdpListener
 
 from vibin.logger import logger
 from vibin.upnp.device import VibinDevice, wrap_device
-from vibin.upnp.factory import VibinDeviceFactory
 
 
 async def async_discover_devices(
@@ -99,86 +98,3 @@ async def async_discover_devices(
                 # Skip devices that fail to load (network issues, invalid XML, etc.)
 
     return devices
-
-
-async def async_discover_device_by_location(location: str) -> VibinDevice:
-    """Create a device directly from its UPnP description URL.
-
-    This is useful when you already know the device location and don't
-    need to perform SSDP discovery.
-
-    Args:
-        location: The URL to the device's XML description document.
-
-    Returns:
-        A VibinDevice object.
-
-    Raises:
-        Various async_upnp_client exceptions for network/parsing errors.
-    """
-    factory = VibinDeviceFactory.get_instance()
-    await factory.async_init()
-
-    return await factory.async_create_device(location)
-
-
-async def async_discover_cambridge_audio_streamer(
-    timeout: int = 5,
-) -> VibinDevice | None:
-    """Discover a Cambridge Audio MediaRenderer (streamer) on the network.
-
-    This is a convenience function that performs the common task of finding
-    a Cambridge Audio streaming device.
-
-    Args:
-        timeout: How long to wait for device responses (in seconds).
-
-    Returns:
-        The first Cambridge Audio MediaRenderer found, or None if not found.
-    """
-    devices = await async_discover_devices(
-        timeout=timeout,
-        device_filter=lambda d: (
-            d.manufacturer == "Cambridge Audio" and "MediaRenderer" in d.device_type
-        ),
-    )
-
-    return devices[0] if devices else None
-
-
-async def async_discover_media_server(timeout: int = 5) -> VibinDevice | None:
-    """Discover a UPnP MediaServer on the network.
-
-    Args:
-        timeout: How long to wait for device responses (in seconds).
-
-    Returns:
-        The first MediaServer found, or None if not found.
-    """
-    devices = await async_discover_devices(
-        timeout=timeout,
-        device_filter=lambda d: "MediaServer" in d.device_type,
-    )
-
-    return devices[0] if devices else None
-
-
-async def async_discover_device_by_name(
-    friendly_name: str,
-    timeout: int = 5,
-) -> VibinDevice | None:
-    """Discover a UPnP device by its friendly name.
-
-    Args:
-        friendly_name: The UPnP friendly name to search for.
-        timeout: How long to wait for device responses (in seconds).
-
-    Returns:
-        The device with the matching friendly name, or None if not found.
-    """
-    devices = await async_discover_devices(
-        timeout=timeout,
-        device_filter=lambda d: d.friendly_name == friendly_name,
-    )
-
-    return devices[0] if devices else None

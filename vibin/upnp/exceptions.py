@@ -1,19 +1,10 @@
-"""UPnP-related exceptions for vibin.
-
-These exceptions provide a consistent way to handle UPnP errors.
-"""
+"""UPnP-related exceptions for vibin."""
 
 
-class VibinUpnpError(Exception):
-    """Base exception for UPnP-related errors."""
-
-    pass
-
-
-class VibinSoapError(VibinUpnpError):
+class VibinSoapError(Exception):
     """Exception for SOAP action errors.
 
-    This wraps SOAP errors from either UPnP library, providing a consistent
+    This wraps SOAP errors from the UPnP library, providing a consistent
     interface for error handling.
     """
 
