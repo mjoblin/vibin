@@ -14,6 +14,7 @@ import upnpclient
 import xmltodict
 
 from vibin import VibinNotFoundError
+from vibin.upnp import VibinDevice
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -329,11 +330,11 @@ class CXNv2USB(MediaServer):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
-        self._device: upnpclient.Device = device
+        self._device: VibinDevice = device
 
     @property
     def name(self) -> str:

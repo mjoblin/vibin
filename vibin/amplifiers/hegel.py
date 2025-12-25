@@ -6,9 +6,8 @@ import time
 from typing import Callable, Literal
 from urllib.parse import urlparse
 
-import upnpclient
-
 from vibin import utils, VibinDeviceError, VibinError
+from vibin.upnp import VibinDevice
 from vibin.amplifiers import Amplifier
 from vibin.logger import logger
 from vibin.models import (
@@ -45,7 +44,7 @@ class Hegel(Amplifier):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_connect: Callable[[], None] | None = None,
         on_disconnect: Callable[[], None] | None = None,
@@ -68,7 +67,7 @@ class Hegel(Amplifier):
         Hegel reference documentation:
         https://support.hegel.com/component/jdownloads/send/3-files/81-h120-ip-control-codes
         """
-        self._device: upnpclient.Device = device
+        self._device: VibinDevice = device
         self._upnp_properties: UPnPProperties = {}
         self._on_connect = on_connect
         self._on_disconnect = on_disconnect

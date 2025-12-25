@@ -6,11 +6,12 @@ from urllib.parse import urlparse
 import xml
 import xml.etree.ElementTree as ET
 
-import upnpclient
 import untangle
+import upnpclient
 import xmltodict
 
 from vibin import VibinNotFoundError
+from vibin.upnp import VibinDevice
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -39,11 +40,11 @@ class Asset(MediaServer):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
-        self._device: upnpclient.Device = device
+        self._device: VibinDevice = device
 
         self._all_albums_path: str | None = None
         self._new_albums_path: str | None = None
