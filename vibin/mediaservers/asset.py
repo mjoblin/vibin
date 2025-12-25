@@ -218,9 +218,16 @@ class Asset(MediaServer):
             album_tracks_xml = self._get_children_xml(album.id)
             parsed_metadata = untangle.parse(album_tracks_xml)
 
+            # Handle case where album has no tracks (item attribute won't exist)
+            items = getattr(parsed_metadata.DIDL_Lite, "item", [])
+
+            # Ensure items is iterable (single item vs list)
+            if not isinstance(items, list):
+                items = [items]
+
             album_tracks = [
                 track
-                for item in parsed_metadata.DIDL_Lite.item
+                for item in items
                 if (track := self._track_from_item(item)) is not None
             ]
 
