@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -29,6 +27,7 @@ from vibin.models import (
 )
 from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
 from vibin.upnp import VibinDevice, VibinSoapError
+from vibin.utils import run_coroutine_sync
 
 
 # -----------------------------------------------------------------------------
@@ -667,21 +666,16 @@ class Asset(MediaServer):
         return self._sync_browse(id, "BrowseDirectChildren")
 
     def _sync_browse(self, object_id: str, browse_flag: str) -> str:
-        """Perform a synchronous UPnP Browse action.
+        """Perform a synchronous UPnP Browse action."""
 
-        Creates a fresh aiohttp session for each call to avoid event loop
-        lifecycle issues when called from sync code.
-        """
         async def _do_browse() -> str:
             async with aiohttp.ClientSession() as session:
                 requester = AiohttpSessionRequester(session, with_sleep=True)
                 factory = UpnpFactory(requester, non_strict=True)
-
                 device = await factory.async_create_device(self._device.location)
                 content_directory = device.service(
                     "urn:schemas-upnp-org:service:ContentDirectory:1"
                 )
-
                 result = await content_directory.async_call_action(
                     "Browse",
                     ObjectID=object_id,
@@ -693,24 +687,7 @@ class Asset(MediaServer):
                 )
                 return result["Result"]
 
-        def _run_in_new_loop() -> str:
-            return asyncio.run(_do_browse())
-
         try:
-            # Check if we're already in an event loop
-            try:
-                asyncio.get_running_loop()
-                in_loop = True
-            except RuntimeError:
-                in_loop = False
-
-            if in_loop:
-                # Already in an event loop - run in a separate thread
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_run_in_new_loop)
-                    return future.result()
-            else:
-                # Not in an event loop - use asyncio.run directly
-                return asyncio.run(_do_browse())
+            return run_coroutine_sync(_do_browse)()
         except (UpnpActionError, UpnpActionResponseError) as e:
             raise VibinSoapError(str(e), getattr(e, "error_code", None)) from e

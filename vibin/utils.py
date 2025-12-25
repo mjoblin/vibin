@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Iterable
+import concurrent.futures
 import dataclasses
 import functools
 import json
@@ -13,9 +14,10 @@ import socket
 import tempfile
 import threading
 import time
-from typing import Callable, Awaitable
+from typing import Awaitable, Callable, TypeVar
 import zipfile
 
+from asgiref.sync import async_to_sync
 from async_upnp_client.client import UpnpService
 from packaging.version import Version
 from pydantic import BaseModel
@@ -58,6 +60,44 @@ DB_ACCESS_LOCK_SETTINGS = threading.Lock()
 # =============================================================================
 # General utilities
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# Async helpers
+
+T = TypeVar("T")
+
+
+def run_coroutine_sync(coro_func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
+    """Create a sync wrapper for an async function.
+
+    Uses asgiref's async_to_sync when there's no running event loop (the common
+    case). Falls back to running in a separate thread when called from within
+    an async context, since async_to_sync doesn't support that case.
+
+    Usage:
+        async def my_async_func(arg1, arg2):
+            ...
+
+        # Call it synchronously
+        result = run_coroutine_sync(my_async_func)(arg1, arg2)
+    """
+
+    def wrapper(*args, **kwargs):
+        async def bound_coro():
+            return await coro_func(*args, **kwargs)
+
+        try:
+            asyncio.get_running_loop()
+            # We're inside an event loop - run in a separate thread
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(lambda: asyncio.run(bound_coro()))
+                return future.result()
+        except RuntimeError:
+            # No running loop - use async_to_sync
+            return async_to_sync(bound_coro)()
+
+    return wrapper
+
 
 # -----------------------------------------------------------------------------
 # Classes

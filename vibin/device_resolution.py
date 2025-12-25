@@ -4,7 +4,6 @@ This module provides functions to discover UPnP devices and determine
 which Vibin implementation classes to use for them.
 """
 
-import asyncio
 import inspect
 import json
 from urllib.parse import urlparse
@@ -27,6 +26,7 @@ from vibin.upnp import (
     async_discover_devices,
     wrap_device,
 )
+from vibin.utils import run_coroutine_sync
 
 _upnp_devices: list[VibinDevice] | None = None
 
@@ -34,26 +34,6 @@ _upnp_devices: list[VibinDevice] | None = None
 # =============================================================================
 # UPnP device discovery (sync wrappers around async functions)
 # =============================================================================
-
-
-def _run_async(coro):
-    """Run an async coroutine synchronously.
-
-    Creates a new event loop if needed. This is used to provide backward
-    compatibility for sync code that needs to use async discovery.
-    """
-    try:
-        asyncio.get_running_loop()
-        # We're already in an async context, can't use asyncio.run()
-        # This shouldn't happen in normal Vibin usage, but handle it gracefully
-        raise RuntimeError(
-            "Cannot use sync device discovery from within an async context."
-        )
-    except RuntimeError as e:
-        if "no running event loop" in str(e):
-            # No running loop, we can create one
-            return asyncio.run(coro)
-        raise
 
 
 async def _async_discover_all_devices(timeout: int) -> list[VibinDevice]:
@@ -73,7 +53,7 @@ def _discover_upnp_devices(timeout: int) -> list[VibinDevice]:
         return _upnp_devices
 
     logger.info("Discovering UPnP devices...")
-    devices = _run_async(_async_discover_all_devices(timeout))
+    devices = run_coroutine_sync(_async_discover_all_devices)(timeout)
 
     for device in devices:
         logger.info(
@@ -100,7 +80,7 @@ async def _async_create_device_from_url(url: str) -> VibinDevice:
 
 def _create_device_from_url(url: str) -> VibinDevice:
     """Sync wrapper to create a device from a UPnP description URL."""
-    return _run_async(_async_create_device_from_url(url))
+    return run_coroutine_sync(_async_create_device_from_url)(url)
 
 
 def _determine_streamer_device(
