@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Callable
 
-from vibin.upnp import VibinDevice
 from vibin.models import (
     AmplifierState,
     AudioSource,
@@ -15,6 +14,7 @@ from vibin.types import (
     UPnPProperties,
     AmplifierAction,
 )
+from vibin.upnp import VibinDevice
 
 
 # -----------------------------------------------------------------------------

@@ -14,14 +14,13 @@ from xml.etree import ElementTree
 
 import aiohttp
 from async_upnp_client.aiohttp import AiohttpSessionRequester
-from async_upnp_client.client import UpnpService
 from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
 import xmltodict
 
 from vibin import VibinNotFoundError
 from vibin.logger import logger
-from vibin.upnp import VibinDevice, VibinDeviceFactory, VibinSoapError
+from vibin.upnp import VibinDevice, VibinSoapError
 
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -34,7 +33,6 @@ from vibin.models import (
     UPnPServiceSubscriptions,
 )
 from vibin.types import UpdateMessageHandler, MediaId, UPnPProperties, MediaType
-from vibin.upnp.device import AsyncUpnpDeviceAdapter
 
 # -----------------------------------------------------------------------------
 # Implementation of MediaServer, using USB drives attached to a CXNv2.
@@ -365,127 +363,6 @@ class CXNv2USB(MediaServer):
 
     def on_shutdown(self) -> None:
         pass
-
-    # -------------------------------------------------------------------------
-    # Async initialization and operations
-    #
-    # These methods use async_upnp_client for async SOAP operations.
-    # They coexist with the sync methods during migration.
-
-    async def async_init(self) -> None:
-        """Initialize async components for SOAP operations.
-
-        This creates an async UPnP device from the device location URL and
-        caches the ContentDirectory service for subsequent async operations.
-
-        Must be called before using any async_* methods.
-        """
-        factory = VibinDeviceFactory.get_instance()
-        await factory.async_init()
-
-        # Create async device from the sync device's location
-        async_device: "AsyncUpnpDeviceAdapter" = await factory.async_create_device(
-            self._device.location
-        )
-
-        # Get the ContentDirectory service from the wrapped async_upnp_client device
-        self._async_content_directory: UpnpService = async_device.wrapped_device.service(
-            "urn:schemas-upnp-org:service:ContentDirectory:1"
-        )
-
-    async def async_browse(
-        self,
-        object_id: str,
-        browse_flag: str = "BrowseDirectChildren",
-        filter_criteria: str = "*",
-        starting_index: int = 0,
-        requested_count: int = 0,
-        sort_criteria: str = "",
-    ) -> dict:
-        """Async browse operation using ContentDirectory service.
-
-        Args:
-            object_id: The ObjectID to browse.
-            browse_flag: Either "BrowseDirectChildren" or "BrowseMetadata".
-            filter_criteria: Filter for returned properties (default "*" for all).
-            starting_index: Starting index for pagination.
-            requested_count: Number of items to return (0 = all).
-            sort_criteria: Sort criteria for results.
-
-        Returns:
-            The full result dict including Result, NumberReturned, TotalMatches.
-
-        Raises:
-            VibinSoapError: If the SOAP action fails.
-            RuntimeError: If async_init() has not been called.
-        """
-        if not hasattr(self, "_async_content_directory"):
-            raise RuntimeError("async_init() must be called before using async methods")
-
-        try:
-            return await self._async_content_directory.async_call_action(
-                "Browse",
-                ObjectID=object_id,
-                BrowseFlag=browse_flag,
-                Filter=filter_criteria,
-                StartingIndex=starting_index,
-                RequestedCount=requested_count,
-                SortCriteria=sort_criteria,
-            )
-        except (UpnpActionError, UpnpActionResponseError) as e:
-            raise VibinSoapError(str(e), getattr(e, "error_code", None)) from e
-
-    async def async_browse_direct_children(self, object_id: str) -> list["_BrowseResult"]:
-        """Async version of _browse_direct_children.
-
-        Args:
-            object_id: The ObjectID whose children to retrieve.
-
-        Returns:
-            List of _BrowseResult objects for each child.
-        """
-        # CXNv2 doesn't honor RequestedCount=0, so use a high value
-        response = await self.async_browse(
-            object_id=object_id,
-            browse_flag="BrowseDirectChildren",
-            requested_count=10000,
-        )
-
-        if response["TotalMatches"] > 10000:
-            response = await self.async_browse(
-                object_id=object_id,
-                browse_flag="BrowseDirectChildren",
-                requested_count=response["TotalMatches"],
-            )
-
-        return [
-            _BrowseResult(result)
-            for result in ElementTree.fromstring(response["Result"])
-        ]
-
-    async def async_get_metadata(self, media_id: str) -> str:
-        """Async version of get_metadata.
-
-        Args:
-            media_id: The MediaId to get metadata for.
-
-        Returns:
-            The DIDL-Lite XML result string containing metadata.
-
-        Raises:
-            VibinNotFoundError: If the object is not found.
-        """
-        path = self._catalogue().id_map.get_path(media_id)
-        result = self._traverse_path(path)
-
-        try:
-            response = await self.async_browse(
-                object_id=result.id,
-                browse_flag="BrowseMetadata",
-            )
-            return response["Result"]
-        except VibinSoapError as e:
-            raise VibinNotFoundError(f"Could not find media id {media_id}") from e
 
     # -------------------------------------------------------------------------
     # System
