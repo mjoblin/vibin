@@ -7,35 +7,34 @@ import xml
 from collections import deque, Counter
 from functools import cache
 from pathlib import Path
-from typing import Iterable, Deque, TYPE_CHECKING
+from typing import Iterable, Deque
 from urllib.parse import urlparse
 from urllib.request import urlopen
 from xml.etree import ElementTree
 
 import aiohttp
-import xmltodict
 from async_upnp_client.aiohttp import AiohttpSessionRequester
 from async_upnp_client.client import UpnpService
 from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
+import xmltodict
 
 from vibin import VibinNotFoundError
-from vibin.upnp import VibinDevice, VibinDeviceFactory, VibinSoapError
 from vibin.logger import logger
+from vibin.upnp import VibinDevice, VibinDeviceFactory, VibinSoapError
 
-if TYPE_CHECKING:
-    from vibin.upnp.device import AsyncUpnpDeviceAdapter
 from vibin.mediaservers import MediaServer
 from vibin.models import (
-    MediaServerState,
     Album,
     Artist,
-    Track,
-    UPnPServiceSubscriptions,
     MediaBrowseSingleLevel,
     MediaFolder,
+    MediaServerState,
+    Track,
+    UPnPServiceSubscriptions,
 )
 from vibin.types import UpdateMessageHandler, MediaId, UPnPProperties, MediaType
+from vibin.upnp.device import AsyncUpnpDeviceAdapter
 
 # -----------------------------------------------------------------------------
 # Implementation of MediaServer, using USB drives attached to a CXNv2.

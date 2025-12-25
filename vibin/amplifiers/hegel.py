@@ -7,7 +7,6 @@ from typing import Callable, Literal
 from urllib.parse import urlparse
 
 from vibin import utils, VibinDeviceError, VibinError
-from vibin.upnp import VibinDevice
 from vibin.amplifiers import Amplifier
 from vibin.logger import logger
 from vibin.models import (
@@ -23,6 +22,7 @@ from vibin.types import (
     UpdateMessageHandler,
     UPnPProperties,
 )
+from vibin.upnp import VibinDevice
 
 # -----------------------------------------------------------------------------
 # Implementation of Amplifier for Hegel amplifiers.

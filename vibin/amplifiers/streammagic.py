@@ -7,7 +7,6 @@ from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
 from vibin.amplifiers import Amplifier
-from vibin.upnp import VibinDevice
 from vibin.logger import logger
 from vibin.models import (
     AmplifierState,
@@ -22,6 +21,7 @@ from vibin.types import (
     UPnPProperties,
     AmplifierAction,
 )
+from vibin.upnp import VibinDevice
 from vibin.utils import WebsocketThread
 
 
