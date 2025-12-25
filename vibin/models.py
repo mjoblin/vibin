@@ -1,7 +1,7 @@
 from typing import Any
 
+from async_upnp_client.client import UpnpService
 from pydantic import BaseModel, Field
-import upnpclient
 
 from vibin.types import (
     AmplifierAction,
@@ -503,4 +503,4 @@ class UPnPSubscription(BaseModel):
     next_renewal: int | None
 
 
-UPnPServiceSubscriptions = dict[upnpclient.Service, UPnPSubscription]
+UPnPServiceSubscriptions = dict[UpnpService, UPnPSubscription]

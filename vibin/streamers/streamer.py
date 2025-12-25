@@ -1,8 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Literal
 
-import upnpclient
-
+from vibin.upnp import VibinDevice
 from vibin.mediaservers import MediaServer
 from vibin.models import (
     CurrentlyPlaying,
@@ -61,7 +60,7 @@ class Streamer(metaclass=ABCMeta):
     @abstractmethod
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
@@ -75,7 +74,7 @@ class Streamer(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def device(self) -> upnpclient.Device:
+    def device(self) -> VibinDevice:
         """The UPnP device instance associated with the Streamer."""
         pass
 

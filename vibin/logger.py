@@ -124,11 +124,9 @@ logger.setLevel(logging.INFO)
 # Have the uvicorn logger adhere to the vibin log format.
 uvicorn_logger = logging.getLogger("uvicorn")
 
-# Have the upnpclient loggers adhere to the vibin log format.
+# Have the UPnP-related loggers adhere to the vibin log format.
 ssdp_logger = logging.getLogger("ssdp")
-soap_logger = logging.getLogger("Soap")
-device_logger = logging.getLogger("Device")
+async_upnp_logger = logging.getLogger("async_upnp_client")
 ssdp_logger.addHandler(log_handler)
-soap_logger.addHandler(log_handler)
-device_logger.addHandler(log_handler)
+async_upnp_logger.addHandler(log_handler)
 uvicorn_logger.addHandler(log_handler)

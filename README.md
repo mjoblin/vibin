@@ -22,10 +22,6 @@
 
 The following assumes you already have Python 3.10 (or higher) and Git installed.
 
-> Note: Currently Python 3.12 is the highest version of Python supported. Python 3.13 or higher
->   will produce an error during installation due to dependency conflicts (between `upnpclient`
->   and `lxml`).
-
 ### 1. Install `vibin`
 
 #### Mac, Linux
@@ -78,6 +74,16 @@ at `http://localhost:8080`.
 Run `vibin --help` to see all commandline options. To see all the `serve` options, run
 `vibin serve --help`.
 
+## Persisted data
+
+`vibin` persists its data (settings, stored playlists, etc) to JSON files in a `_data` directory
+under the installation folder. These files can be found in a directory like
+`venv-vibin/lib/python3.14/site-packages/vibin/_data/`.
+
+The persisted data can also be retrieved using the `vibin` REST API endpoints
+`/api/vibin/db/{database_name}`, which can be accessed from the Swagger UI or using a commandline
+tool like `curl`.
+
 ## Overview
 
 `vibin` sits between the Vibin UI (`vibinui`) and the hardware devices (such as the music streamer,
@@ -95,19 +101,12 @@ See the [Developers README] for more information.
 recommended to install on an always-on device which maintains an active network connection at all
 times -- such as a Raspberry Pi or a server.
 
-`vibin` has been tested on:
-
-* Ubuntu 22.10 on a Raspberry Pi (Python 3.10)
-* MacOS 13.4 (Python 3.11)
-* Windows 11 (Python 3.11)
+`vibin` 2.0.0 has been tested on macOS, with Python 3.10 - 3.14. Previous versions have been tested
+on Ubuntu and Windows.
 
 ### Installing `vibin`
 
 `vibin` requires [Python 3.10] or higher.
-
-> Note: Currently Python 3.12 is the highest version of Python supported. Python 3.13 or higher
->   will produce an error during installation due to dependency conflicts (between `upnpclient`
->   and `lxml`).
 
 > The following installs `vibin` into a Python virtual environment. A virtual environment is
 > recommended for isolation/cleanliness, but is not required.

@@ -6,7 +6,10 @@ from urllib.parse import urlparse
 import xml
 import xml.etree.ElementTree as ET
 
-import upnpclient
+import aiohttp
+from async_upnp_client.aiohttp import AiohttpSessionRequester
+from async_upnp_client.client_factory import UpnpFactory
+from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
 import untangle
 import xmltodict
 
@@ -23,6 +26,8 @@ from vibin.models import (
     UPnPServiceSubscriptions,
 )
 from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
+from vibin.upnp import VibinDevice, VibinSoapError
+from vibin.utils import run_coroutine_sync
 
 
 # -----------------------------------------------------------------------------
@@ -39,11 +44,11 @@ class Asset(MediaServer):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
-        self._device: upnpclient.Device = device
+        self._device: VibinDevice = device
 
         self._all_albums_path: str | None = None
         self._new_albums_path: str | None = None
@@ -213,9 +218,16 @@ class Asset(MediaServer):
             album_tracks_xml = self._get_children_xml(album.id)
             parsed_metadata = untangle.parse(album_tracks_xml)
 
+            # Handle case where album has no tracks (item attribute won't exist)
+            items = getattr(parsed_metadata.DIDL_Lite, "item", [])
+
+            # Ensure items is iterable (single item vs list)
+            if not isinstance(items, list):
+                items = [items]
+
             album_tracks = [
                 track
-                for item in parsed_metadata.DIDL_Lite.item
+                for item in items
                 if (track := self._track_from_item(item)) is not None
             ]
 
@@ -337,18 +349,9 @@ class Asset(MediaServer):
 
     def get_metadata(self, id: str):
         try:
-            browse_result = self._device.ContentDirectory.Browse(
-                ObjectID=id,
-                BrowseFlag="BrowseMetadata",
-                Filter="*",
-                StartingIndex=0,
-                RequestedCount=0,
-                SortCriteria="",
-            )
-
-            return browse_result["Result"]
-        except upnpclient.soap.SOAPProtocolError as e:
-            raise VibinNotFoundError(f"Could not find media id {id}")
+            return self._sync_browse(id, "BrowseMetadata")
+        except VibinSoapError as e:
+            raise VibinNotFoundError(f"Could not find media id {id}") from e
 
     def get_audio_file_url(self, track_id: MediaId) -> str | None:
         """Get the audio file URL for a track by MediaId."""
@@ -667,13 +670,31 @@ class Asset(MediaServer):
 
     def _get_children_xml(self, id):
         """Get the children of the given id from the Media Server."""
-        browse_result = self._device.ContentDirectory.Browse(
-            ObjectID=id,
-            BrowseFlag="BrowseDirectChildren",
-            Filter="*",
-            StartingIndex=0,
-            RequestedCount=0,
-            SortCriteria="",
-        )
+        return self._sync_browse(id, "BrowseDirectChildren")
 
-        return browse_result["Result"]
+    def _sync_browse(self, object_id: str, browse_flag: str) -> str:
+        """Perform a synchronous UPnP Browse action."""
+
+        async def _do_browse() -> str:
+            async with aiohttp.ClientSession() as session:
+                requester = AiohttpSessionRequester(session, with_sleep=True)
+                factory = UpnpFactory(requester, non_strict=True)
+                device = await factory.async_create_device(self._device.location)
+                content_directory = device.service(
+                    "urn:schemas-upnp-org:service:ContentDirectory:1"
+                )
+                result = await content_directory.async_call_action(
+                    "Browse",
+                    ObjectID=object_id,
+                    BrowseFlag=browse_flag,
+                    Filter="*",
+                    StartingIndex=0,
+                    RequestedCount=0,
+                    SortCriteria="",
+                )
+                return result["Result"]
+
+        try:
+            return run_coroutine_sync(_do_browse)()
+        except (UpnpActionError, UpnpActionResponseError) as e:
+            raise VibinSoapError(str(e), getattr(e, "error_code", None)) from e

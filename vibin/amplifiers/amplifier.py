@@ -1,8 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Callable
 
-import upnpclient
-
 from vibin.models import (
     AmplifierState,
     AudioSource,
@@ -16,6 +14,7 @@ from vibin.types import (
     UPnPProperties,
     AmplifierAction,
 )
+from vibin.upnp import VibinDevice
 
 
 # -----------------------------------------------------------------------------
@@ -47,7 +46,7 @@ class Amplifier(metaclass=ABCMeta):
     @abstractmethod
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_connect: Callable[[], None] | None = None,
         on_disconnect: Callable[[], None] | None = None,
@@ -69,7 +68,7 @@ class Amplifier(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def device(self) -> upnpclient.Device:
+    def device(self) -> VibinDevice:
         """The UPnP device instance associated with the Amplifier."""
         pass
 

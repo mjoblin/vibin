@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 
 from deepdiff import DeepDiff
 import requests
-import upnpclient
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
@@ -47,6 +46,7 @@ from vibin.types import (
     UPnPProperties,
 )
 from vibin.streamers import Streamer
+from vibin.upnp import VibinDevice
 from vibin.utils import WebsocketThread
 
 
@@ -67,12 +67,12 @@ class StreamMagic(Streamer):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,  # Deprecated, unused
         on_update: UpdateMessageHandler | None = None,
     ):
         """Implement the Streamer interface for StreamMagic streamers."""
-        self._device = device
+        self._device: VibinDevice = device
         self._on_update = on_update
 
         self._device_hostname = urlparse(device.location).hostname

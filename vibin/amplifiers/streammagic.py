@@ -3,7 +3,6 @@ from typing import Callable
 from urllib.parse import urlparse
 
 import requests
-import upnpclient
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
@@ -22,6 +21,7 @@ from vibin.types import (
     UPnPProperties,
     AmplifierAction,
 )
+from vibin.upnp import VibinDevice
 from vibin.utils import WebsocketThread
 
 
@@ -49,13 +49,13 @@ class StreamMagic(Amplifier):
 
     def __init__(
         self,
-        device: upnpclient.Device,
+        device: VibinDevice,
         upnp_subscription_callback_base: str | None = None,
         on_connect: Callable[[], None] | None = None,
         on_disconnect: Callable[[], None] | None = None,
         on_update: UpdateMessageHandler | None = None,
     ):
-        self._device = device
+        self._device: VibinDevice = device
         self._on_connect = on_connect
         self._on_disconnect = on_disconnect
         self._on_update = on_update
@@ -84,7 +84,7 @@ class StreamMagic(Amplifier):
         return self._websocket_thread.connected()
 
     @property
-    def device(self) -> upnpclient.Device:
+    def device(self) -> VibinDevice:
         """The UPnP device instance associated with the Amplifier."""
         return self._device
 
