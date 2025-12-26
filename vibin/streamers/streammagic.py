@@ -643,8 +643,12 @@ class StreamMagic(Streamer):
 
         # Populate stream URL from media server
         if track_id and self._media_server:
-            audio_url = self._media_server.get_audio_file_url(track_id)
-            self._currently_playing.stream = MediaStream(url=audio_url)
+            try:
+                audio_url = self._media_server.get_audio_file_url(track_id)
+                self._currently_playing.stream = MediaStream(url=audio_url)
+            except Exception as e:
+                logger.warning(f"Failed to get audio URL for track {track_id}: {e}")
+                self._currently_playing.stream = MediaStream(url=None)
         else:
             self._currently_playing.stream = MediaStream(url=None)
 

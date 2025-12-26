@@ -102,7 +102,8 @@ class ConnectionManager:
             )
             del self.active_connections[websocket]
         except KeyError:
-            logger.warning(
+            # Client already removed by another path - harmless race condition
+            logger.debug(
                 "Could not find WebSocket client for removal in active connections"
             )
 
@@ -220,7 +221,8 @@ class ConnectionManager:
                 message_payload_str = self.message_payload_to_str(to_send.payload)
                 defunct_clients = []
 
-                for client_websocket in self.active_connections.keys():
+                # Iterate over a copy to avoid "dictionary changed size" errors
+                for client_websocket in list(self.active_connections.keys()):
                     client_id = "(unknown)"
 
                     try:

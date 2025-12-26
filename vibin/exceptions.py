@@ -12,11 +12,16 @@ class VibinInputError(VibinError):
     pass
 
 
-class VibinNotFoundError(VibinError):
-    """Something was not found."""
+class VibinMissingDependencyError(VibinError):
+    """A required dependency is unavailable."""
     pass
 
 
-class VibinMissingDependencyError(VibinError):
-    """A required dependency is unavailable."""
+class VibinMediaServerError(VibinError):
+    """Media Server error (e.g. unreachable or timed out)."""
+    pass
+
+
+class VibinNotFoundError(VibinError):
+    """Something was not found."""
     pass

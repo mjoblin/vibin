@@ -2,6 +2,7 @@ from vibin.exceptions import (
     VibinDeviceError,
     VibinInputError,
     VibinError,
+    VibinMediaServerError,
     VibinNotFoundError,
     VibinMissingDependencyError,
 )
@@ -11,6 +12,7 @@ from .base import Vibin
 (
     Vibin,
     VibinError,
+    VibinMediaServerError,
     VibinNotFoundError,
     VibinMissingDependencyError,
 )

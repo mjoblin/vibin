@@ -376,12 +376,27 @@ class WebsocketThread(StoppableThread):
                             # The thread we're running in has been told to stop
                             wait_for_message = False
                         if self._on_data:
-                            self._on_data(update)
+                            try:
+                                self._on_data(update)
+                            except Exception as e:
+                                logger.error(
+                                    f"Error processing WebSocket data from "
+                                    f"{self._friendly_name}: {e}"
+                                )
 
                     logger.info(f"WebSocket connection to {self.name} closed by Vibin")
                     self._connected = False
+
                     if self._on_disconnect:
                         self._on_disconnect()
+
+                    # Close gracefully, but don't wait for the streamer's close frame
+                    try:
+                        await asyncio.wait_for(websocket.close(), timeout=1.0)
+                    except (asyncio.TimeoutError, websockets.ConnectionClosed):
+                        # Expected during shutdown - streamer may not respond
+                        pass
+
                     return
                 except websockets.ConnectionClosed:
                     # Attempt a re-connect when the streamer drops the connection

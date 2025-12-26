@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 import os
 from pathlib import Path
@@ -6,8 +7,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from websockets.exceptions import ConnectionClosedError
 
-from vibin import VibinDeviceError, VibinError, VibinMissingDependencyError
+from vibin import (
+    VibinDeviceError,
+    VibinError,
+    VibinMediaServerError,
+    VibinMissingDependencyError,
+)
 from vibin.constants import VIBIN_PORT, VIBIN_VER
 from vibin.logger import logger
 from vibin.server.dependencies import (
@@ -90,10 +97,22 @@ def server_start(
         logger.info("Vibin server start aborted")
         return
 
+    def custom_exception_handler(loop, context):
+        """Custom asyncio exception handler to reduce noise from expected errors."""
+        exception = context.get("exception")
+
+        if isinstance(exception, ConnectionClosedError):
+            # Log WebSocket close errors without the noisy traceback
+            logger.warning(f"WebSocket connection closed: {exception}")
+        else:
+            loop.default_exception_handler(context)
+
     @asynccontextmanager
     async def api_lifespan(app: FastAPI):
         """Handle the FastAPI lifecycle."""
-        # No FastAPI startup tasks.
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(custom_exception_handler)
+
         yield
 
         # FastAPI shutdown tasks.
@@ -218,6 +237,13 @@ def server_start(
         return JSONResponse(
             status_code=500,
             content={"detail": f"Unhandled Vibin device error: {exc}"},
+        )
+
+    @vibin_app.exception_handler(VibinMediaServerError)
+    async def media_server_exception_handler(request, exc: VibinMediaServerError):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": str(exc), "error": "media_server_unavailable"},
         )
 
     @vibin_app.exception_handler(VibinMissingDependencyError)
