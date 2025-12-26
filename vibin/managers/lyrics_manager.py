@@ -27,10 +27,10 @@ class LyricsManager:
     """
 
     def __init__(
-            self,
-            db: Table,
-            media_server: MediaServer,
-            genius_service: ExternalService | None = None,
+        self,
+        db: Table,
+        media_server: MediaServer,
+        genius_service: ExternalService | None = None,
     ):
         self._db = db
         self._media_server = media_server

@@ -363,9 +363,7 @@ def _determine_amplifier_device(
 
         try:
             media_renderers = [
-                device
-                for device in devices
-                if "MediaRenderer" in device.device_type
+                device for device in devices if "MediaRenderer" in device.device_type
             ]
 
             if len(media_renderers) == 1:
@@ -387,9 +385,7 @@ def _determine_amplifier_device(
 
     if amplifier_input_as_url.hostname is not None:
         # Check UPnP location url
-        logger.info(
-            f"Attempting to find amplifier at provided URL: {amplifier_input}"
-        )
+        logger.info(f"Attempting to find amplifier at provided URL: {amplifier_input}")
 
         try:
             return _create_device_from_url(amplifier_input)
@@ -406,9 +402,7 @@ def _determine_amplifier_device(
 
         try:
             return [
-                device
-                for device in devices
-                if device.friendly_name == amplifier_input
+                device for device in devices if device.friendly_name == amplifier_input
             ][0]
         except IndexError:
             raise VibinError(
@@ -471,7 +465,7 @@ def determine_streamer_class(streamer_device: VibinDevice, streamer_type: str | 
         # case and whitespace in an attempt to be reasonably flexible
         model_fuzzy = streamer_device.model_name.lower().replace(" ", "")
 
-        for (known_model, klass) in known_streamers_by_model.items():
+        for known_model, klass in known_streamers_by_model.items():
             if known_model.lower().replace(" ", "") == model_fuzzy:
                 streamer_class = klass
                 break
@@ -485,10 +479,11 @@ def determine_streamer_class(streamer_device: VibinDevice, streamer_type: str | 
         # A specific Streamer implementation was requested.
         streamer_class = next(
             (
-                streamer for streamer in known_streamers
+                streamer
+                for streamer in known_streamers
                 if streamer.__name__ == streamer_type
             ),
-            None
+            None,
         )
 
         if streamer_class is None:
@@ -528,10 +523,11 @@ def determine_media_server_class(
             # A specific MediaServer implementation was requested.
             media_server_class = next(
                 (
-                    media_server for media_server in known_media_servers
+                    media_server
+                    for media_server in known_media_servers
                     if media_server.__name__ == media_server_type
                 ),
-                None
+                None,
             )
 
             if media_server_class is None:
@@ -569,17 +565,16 @@ def determine_amplifier_class(
     # Determine which Amplifier implementation to use
     try:
         if amplifier_type is None:
-            amplifier_class = known_amplifiers_by_model[
-                amplifier_device.model_name
-            ]
+            amplifier_class = known_amplifiers_by_model[amplifier_device.model_name]
         else:
             # A specific Amplifier implementation was requested.
             amplifier_class = next(
                 (
-                    amplifier for amplifier in known_amplifiers
+                    amplifier
+                    for amplifier in known_amplifiers
                     if amplifier.__name__ == amplifier_type
                 ),
-                None
+                None,
             )
 
             if amplifier_class is None:

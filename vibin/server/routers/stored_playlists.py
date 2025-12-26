@@ -97,7 +97,9 @@ def playlists_id_make_current(playlist_id: str) -> StoredPlaylist:
     # TODO: Is it possible to configure FastAPI to always treat
     #   VibinNotFoundError as a 404 and VibinDeviceError as a 503?
     try:
-        return get_vibin_instance().playlists_manager.activate_stored_playlist(playlist_id)
+        return get_vibin_instance().playlists_manager.activate_stored_playlist(
+            playlist_id
+        )
     except VibinNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Playlist not found: {playlist_id}"

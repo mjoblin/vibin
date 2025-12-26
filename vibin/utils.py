@@ -103,12 +103,14 @@ def run_coroutine_sync(coro_func: Callable[..., Awaitable[T]]) -> Callable[..., 
 # -----------------------------------------------------------------------------
 # Classes
 
+
 class StoppableThread(threading.Thread):
     """A Thread class which allows for external stopping.
 
     The thread can be stopped externally by calling thread.stop(). Requires the
     thread target to frequently check whether stop_event is set.
     """
+
     def __init__(self, *args, **kwargs):
         super(StoppableThread, self).__init__(*args, **kwargs, daemon=True)
         self.stop_event = threading.Event()
@@ -421,6 +423,7 @@ class WebsocketThread(StoppableThread):
 # -----------------------------------------------------------------------------
 # Functions
 
+
 def get_local_ip() -> str:
     """Determine the IP address of the local host."""
 
@@ -473,6 +476,7 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
     later accesses the proxied URL then the proxy will retrieve the data from
     the media server and send it back to the client.
     """
+
     def transform(item):
         item_is_iterable = isinstance(item, Iterable)
 
@@ -521,6 +525,7 @@ def replace_media_server_urls_with_proxy(payload, media_server_url_prefix):
 # -----------------------------------------------------------------------------
 # Decorators
 
+
 def requires_media_server(return_val=None):
     """Decorator to only allow the call if the object has a media server reference.
 
@@ -531,12 +536,11 @@ def requires_media_server(return_val=None):
     If a media server is not available then return_val is returned as the result
     of the call.
     """
+
     def decorator_requires_media_server(func):
         @functools.wraps(func)
         def wrapper_requires_media_server(self, *args, **kwargs):
-            if (
-                hasattr(self, "media_server") and self.media_server is not None
-            ) or (
+            if (hasattr(self, "media_server") and self.media_server is not None) or (
                 hasattr(self, "_media_server") and self._media_server is not None
             ):
                 return func(self, *args, **kwargs)
@@ -570,6 +574,7 @@ def requires_external_service_token(func):
 
 # -----------------------------------------------------------------------------
 # UI installation
+
 
 def install_vibinui():
     """Install the Vibin Web UI's static files.

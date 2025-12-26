@@ -162,7 +162,9 @@ class Vibin:
 
         # Amplifier
         if amplifier_device:
-            amplifier_class = determine_amplifier_class(amplifier_device, amplifier_type)
+            amplifier_class = determine_amplifier_class(
+                amplifier_device, amplifier_type
+            )
 
             # Create an instance of the Amplifier subclass which we can use to
             # manage our amplifier
@@ -190,7 +192,9 @@ class Vibin:
             albums = self.media_server.albums
             tracks = self.media_server.tracks
 
-            logger.info(f"Media server has {len(albums)} albums and {len(tracks)} tracks")
+            logger.info(
+                f"Media server has {len(albums)} albums and {len(tracks)} tracks"
+            )
 
         # Initialize the managers for features like favorites, playlists, etc.
         self._favorites_manager = FavoritesManager(
@@ -315,9 +319,11 @@ class Vibin:
             power=system_power,
             streamer=self.streamer.device_state,
             media=self.media_server.device_state if self.media_server else None,
-            amplifier=self.amplifier.device_state
-            if self.amplifier and self.amplifier.connected
-            else None,
+            amplifier=(
+                self.amplifier.device_state
+                if self.amplifier and self.amplifier.connected
+                else None
+            ),
         )
 
     @property
@@ -326,7 +332,9 @@ class Vibin:
 
         all_upnp_properties = {
             "streamer": self.streamer.upnp_properties,
-            "media_server": self.media_server.upnp_properties if self.media_server else None,
+            "media_server": (
+                self.media_server.upnp_properties if self.media_server else None
+            ),
         }
 
         return all_upnp_properties
@@ -341,7 +349,9 @@ class Vibin:
             UpdateMessage(
                 message_type="TransportState", payload=self.streamer.transport_state
             ),
-            UpdateMessage(message_type="CurrentlyPlaying", payload=self.currently_playing),
+            UpdateMessage(
+                message_type="CurrentlyPlaying", payload=self.currently_playing
+            ),
             UpdateMessage(
                 message_type="Favorites",
                 payload=FavoritesPayload(favorites=self.favorites_manager.all),
@@ -403,7 +413,9 @@ class Vibin:
 
         # TODO: Consider adding a hard max_count limit
         for album in self.favorites_manager.albums[:max_count]:
-            self.playlists_manager.modify_streamer_queue_with_id(album["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(
+                album["media_id"], "APPEND"
+            )
 
         self.playlists_manager.play_streamer_queue_index(0)
 
@@ -414,7 +426,9 @@ class Vibin:
 
         # TODO: Consider adding a hard max_count limit
         for track in self.favorites_manager.tracks[:max_count]:
-            self.playlists_manager.modify_streamer_queue_with_id(track["media_id"], "APPEND")
+            self.playlists_manager.modify_streamer_queue_with_id(
+                track["media_id"], "APPEND"
+            )
 
         self.playlists_manager.play_streamer_queue_index(0)
 
@@ -451,7 +465,9 @@ class Vibin:
             )
         else:
             # Pass event to the device to handle.
-            subscribed_service_names = [service.name for service in upnp_subscriptions.keys()]
+            subscribed_service_names = [
+                service.name for service in upnp_subscriptions.keys()
+            ]
 
             if service_name in subscribed_service_names:
                 if device == "streamer":

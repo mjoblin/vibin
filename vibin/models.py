@@ -384,7 +384,9 @@ class StoredPlaylist(BaseModel):
     created: float
     updated: float
     entry_ids: list[StoredPlaylistEntryId]
-    entry_metadata: dict[StoredPlaylistEntryId, StoredPlaylistEntryMetadata] | None = None
+    entry_metadata: dict[StoredPlaylistEntryId, StoredPlaylistEntryMetadata] | None = (
+        None
+    )
 
 
 class StoredPlaylistStatus(BaseModel):
