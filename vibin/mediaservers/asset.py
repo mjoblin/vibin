@@ -1,6 +1,9 @@
+import asyncio
 from functools import lru_cache
 from pathlib import Path
 import re
+import threading
+import time
 from typing import Any
 from urllib.parse import urlparse
 import xml
@@ -9,11 +12,17 @@ import xml.etree.ElementTree as ET
 import aiohttp
 from async_upnp_client.aiohttp import AiohttpSessionRequester
 from async_upnp_client.client_factory import UpnpFactory
-from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
+from async_upnp_client.exceptions import (
+    UpnpActionError,
+    UpnpActionResponseError,
+    UpnpConnectionError,
+    UpnpConnectionTimeoutError,
+)
 import untangle
 import xmltodict
 
 from vibin import VibinNotFoundError
+from vibin.exceptions import VibinMediaServerError
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.models import (
@@ -60,6 +69,19 @@ class Asset(MediaServer):
 
         self._upnp_properties: UPnPProperties = {}
 
+        # Request tracking for debugging
+        self._inflight_requests = 0
+        self._inflight_lock = threading.Lock()
+
+        # Limit concurrent requests to prevent overwhelming Asset UPnP server
+        # (4 concurrent requests was observed to cause 17+ second timeouts)
+        self._request_semaphore = threading.Semaphore(2)
+
+        # TTL cache for metadata to avoid hammering Asset with duplicate requests
+        self._metadata_cache: dict[str, tuple[float, str]] = {}
+        self._metadata_cache_ttl = 5.0  # seconds
+        self._metadata_cache_lock = threading.Lock()
+
         self._media_namespaces = {
             "didl": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
             "dc": "http://purl.org/dc/elements/1.1/",
@@ -97,6 +119,9 @@ class Asset(MediaServer):
         self._new_albums.cache_clear()
         self._artists.cache_clear()
         self._tracks.cache_clear()
+
+        with self._metadata_cache_lock:
+            self._metadata_cache.clear()
 
     @property
     def url_prefix(self):
@@ -348,10 +373,37 @@ class Asset(MediaServer):
         )
 
     def get_metadata(self, id: str):
+        now = time.time()
+
+        # Check cache first
+        with self._metadata_cache_lock:
+            if id in self._metadata_cache:
+                cached_time, cached_result = self._metadata_cache[id]
+
+                if now - cached_time < self._metadata_cache_ttl:
+                    return cached_result
+
+        # Fetch from Asset
         try:
-            return self._sync_browse(id, "BrowseMetadata")
+            result = self._sync_browse(id, "BrowseMetadata")
         except VibinSoapError as e:
             raise VibinNotFoundError(f"Could not find media id {id}") from e
+
+        # Cache the result
+        with self._metadata_cache_lock:
+            self._metadata_cache[id] = (now, result)
+
+            # Clean up old entries
+            expired = [
+                k
+                for k, (t, _) in self._metadata_cache.items()
+                if now - t >= self._metadata_cache_ttl
+            ]
+
+            for k in expired:
+                del self._metadata_cache[k]
+
+        return result
 
     def get_audio_file_url(self, track_id: MediaId) -> str | None:
         """Get the audio file URL for a track by MediaId."""
@@ -674,6 +726,19 @@ class Asset(MediaServer):
 
     def _sync_browse(self, object_id: str, browse_flag: str) -> str:
         """Perform a synchronous UPnP Browse action."""
+        # Limit concurrent requests to prevent overwhelming Asset
+        self._request_semaphore.acquire()
+
+        # Track in-flight requests
+        with self._inflight_lock:
+            self._inflight_requests += 1
+            inflight = self._inflight_requests
+
+        start_time = time.time()
+        flag_short = "Meta" if browse_flag == "BrowseMetadata" else "Children"
+        logger.debug(
+            f"Asset UPnP: {flag_short}({object_id}) started [inflight: {inflight}]"
+        )
 
         async def _do_browse() -> str:
             async with aiohttp.ClientSession() as session:
@@ -695,6 +760,29 @@ class Asset(MediaServer):
                 return result["Result"]
 
         try:
-            return run_coroutine_sync(_do_browse)()
+            result = run_coroutine_sync(_do_browse)()
+            elapsed = time.time() - start_time
+            logger.debug(
+                f"Asset UPnP: {flag_short}({object_id}) completed in {elapsed:.2f}s"
+            )
+
+            return result
+        except asyncio.CancelledError as e:
+            elapsed = time.time() - start_time
+            logger.warning(
+                f"Asset UPnP: {flag_short}({object_id}) cancelled after {elapsed:.2f}s"
+            )
+            raise VibinMediaServerError("Media server request cancelled") from e
+        except (UpnpConnectionError, UpnpConnectionTimeoutError) as e:
+            elapsed = time.time() - start_time
+            logger.warning(
+                f"Asset UPnP: {flag_short}({object_id}) failed after {elapsed:.2f}s: {e}"
+            )
+            raise VibinMediaServerError(f"Media server connection failed: {e}") from e
         except (UpnpActionError, UpnpActionResponseError) as e:
             raise VibinSoapError(str(e), getattr(e, "error_code", None)) from e
+        finally:
+            with self._inflight_lock:
+                self._inflight_requests -= 1
+
+            self._request_semaphore.release()
