@@ -276,8 +276,7 @@ class PlaylistsManager:
                     item.trackMediaId for item in queue_items if item.trackMediaId
                 ],
                 "entry_metadata": {
-                    entry_id: meta.dict()
-                    for entry_id, meta in entry_metadata.items()
+                    entry_id: meta.dict() for entry_id, meta in entry_metadata.items()
                 },
             }
 

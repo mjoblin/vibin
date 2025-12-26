@@ -136,11 +136,15 @@ class ConnectionManager:
             return message_payload
         elif isinstance(message_payload, BaseModel):
             # TODO: Consider "message_payload.json()" instead
-            return json.dumps(message_payload.dict(
-                by_alias=message_payload._emit_aliases
-                if hasattr(message_payload, "_emit_aliases")
-                else True
-            ))
+            return json.dumps(
+                message_payload.dict(
+                    by_alias=(
+                        message_payload._emit_aliases
+                        if hasattr(message_payload, "_emit_aliases")
+                        else True
+                    )
+                )
+            )
         else:
             try:
                 return json.dumps(message_payload)
@@ -229,7 +233,7 @@ class ConnectionManager:
                         client_id = self.active_connections[client_websocket]["id"]
                     except KeyError:
                         pass
-                    
+
                     try:
                         await client_websocket.send_text(
                             self.build_message(
@@ -252,7 +256,9 @@ class ConnectionManager:
                 for defunct_client in defunct_clients:
                     self._remove_client(defunct_client)
             except VibinError as e:
-                logger.warning(f"Could not send broadcast message to all WebSocket clients: {e}")
+                logger.warning(
+                    f"Could not send broadcast message to all WebSocket clients: {e}"
+                )
             except Exception as e:
                 # TODO: Reconsider this "except Exception" approach; it's heavy-handed
                 logger.warning(

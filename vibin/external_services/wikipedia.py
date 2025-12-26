@@ -9,6 +9,7 @@ class Wikipedia(ExternalService):
 
     https://wikipedia.org
     """
+
     service_name = "Wikipedia"
 
     def __init__(self, user_agent: str, token: str | None):

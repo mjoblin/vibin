@@ -12,6 +12,7 @@ class Genius(ExternalService):
 
     https://www.genius.com
     """
+
     service_name = "Genius"
 
     def __init__(self, user_agent: str, token: str | None):

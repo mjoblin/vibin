@@ -84,6 +84,7 @@ def system_upnp_properties() -> SystemUPnPProperties:
 # -----------------------------------------------------------------------------
 # Streamer
 
+
 @system_router.get(
     "/streamer/state",
     summary="Get the Streamer's state",
@@ -169,6 +170,7 @@ def streamer_device_display() -> StreamerDeviceDisplay:
 # -----------------------------------------------------------------------------
 # Amplifier
 
+
 @system_router.get(
     "/amplifier/state",
     summary="Get the Amplifier's state",
@@ -194,6 +196,7 @@ def amplifier_power_on():
         get_vibin_instance().amplifier.power = "on"
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
+
 
 @system_router.post(
     "/amplifier/power/off",
@@ -221,6 +224,7 @@ def amplifier_power_toggle():
         get_vibin_instance().amplifier.power_toggle()
     except VibinError as e:
         raise HTTPException(status_code=500, detail=f"{e}")
+
 
 @system_router.post(
     "/amplifier/volume/up",

@@ -411,7 +411,10 @@ class Hegel(Amplifier):
                         old_parameter_value = self._state[command.name]
                         self._state[command.name] = command.parameter
 
-                        if self._on_update and self._state[command.name] != old_parameter_value:
+                        if (
+                            self._on_update
+                            and self._state[command.name] != old_parameter_value
+                        ):
                             self._on_update("System", self.device_state)
                     except VibinError as e:
                         logger.error(f"Error processing Hegel response: {e}")
@@ -557,6 +560,8 @@ class Hegel(Amplifier):
                     f"Got error response from Hegel: {result_parameter_value}"
                 )
 
-            return HegelCommand(name=result_command_name, parameter=result_parameter_value)
+            return HegelCommand(
+                name=result_command_name, parameter=result_parameter_value
+            )
         except (AttributeError, IndexError) as e:
             raise VibinError(f"Could not parse Hegel response: {response}")

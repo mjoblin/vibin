@@ -20,7 +20,10 @@ class FavoritesManager:
     """
 
     def __init__(
-        self, db: Table, media_server: MediaServer, updates_handler: UpdateMessageHandler
+        self,
+        db: Table,
+        media_server: MediaServer,
+        updates_handler: UpdateMessageHandler,
     ):
         self._db = db
         self._media_server = media_server
@@ -28,7 +31,7 @@ class FavoritesManager:
 
     @property
     def all(self) -> list[Favorite]:
-        """ All favorites."""
+        """All favorites."""
         return self._favorites_getter()
 
     @property
@@ -121,7 +124,9 @@ class FavoritesManager:
                                 type=favorite["type"],
                                 media_id=favorite["media_id"],
                                 when_favorited=favorite["when_favorited"],
-                                media=media_hydrators[favorite["type"]](favorite["media_id"]),
+                                media=media_hydrators[favorite["type"]](
+                                    favorite["media_id"]
+                                ),
                             )
                         )
                     except VibinNotFoundError:

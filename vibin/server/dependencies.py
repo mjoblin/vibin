@@ -27,6 +27,7 @@ _ui_static_root = None
 #   is initialized (see server.py), before the API is ready to receive incoming
 #   requests.
 
+
 def get_vibin_instance(
     streamer=None,
     streamer_type=None,
@@ -126,6 +127,7 @@ def transform_media_server_urls_if_proxying(func):
     the media server, then the payload has its URLs transformed to point to the
     proxy.
     """
+
     @functools.wraps(func)
     def wrapper_transform_media_server_urls_if_proxying(*args, **kwargs):
         if _is_proxy_for_media_server:
@@ -140,6 +142,7 @@ def transform_media_server_urls_if_proxying(func):
 
 def requires_media(func):
     """Decorator to return a 404 if the vibin server does not have a media server."""
+
     @functools.wraps(func)
     def wrapper_requires_media(*args, **kwargs):
         if _vibin is None or _vibin.media_server is None:
@@ -153,7 +156,7 @@ def requires_media(func):
     return wrapper_requires_media
 
 
-def requires_amplifier(actions: list[AmplifierAction]=None, allow_if_off=False):
+def requires_amplifier(actions: list[AmplifierAction] = None, allow_if_off=False):
     """Decorator to check for valid amplifier state.
 
     Returns a 404 if the vibin server does not have an amplifier.
