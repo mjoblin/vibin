@@ -21,7 +21,7 @@ from async_upnp_client.exceptions import (
 import untangle
 import xmltodict
 
-from vibin import VibinNotFoundError
+from vibin import VibinNotFoundError, VibinSoapError
 from vibin.exceptions import VibinMediaServerError
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
@@ -35,7 +35,7 @@ from vibin.models import (
     UPnPServiceSubscriptions,
 )
 from vibin.types import MediaId, MediaType, UpdateMessageHandler, UPnPProperties
-from vibin.upnp import VibinDevice, VibinSoapError
+from vibin.upnp import VibinDevice
 from vibin.utils import run_coroutine_sync
 
 

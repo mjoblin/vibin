@@ -16,9 +16,9 @@ from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.exceptions import UpnpActionError, UpnpActionResponseError
 import xmltodict
 
-from vibin import VibinNotFoundError
+from vibin import VibinNotFoundError, VibinSoapError
 from vibin.logger import logger
-from vibin.upnp import VibinDevice, VibinSoapError
+from vibin.upnp import VibinDevice
 
 from vibin.mediaservers import MediaServer
 from vibin.models import (

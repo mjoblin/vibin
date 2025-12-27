@@ -26,11 +26,11 @@ import websockets
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
-from vibin import VibinError, VibinMissingDependencyError
+from vibin import VibinError, VibinMissingDependencyError, VibinSoapError
 from vibin.constants import UI_APPNAME, UI_BUILD_DIR, UI_REPOSITORY, UI_ROOT
 from vibin.logger import logger
 from vibin.models import UPnPServiceSubscriptions, UPnPSubscription
-from vibin.upnp import VibinDevice, VibinSoapError
+from vibin.upnp import VibinDevice
 
 ONE_HOUR_IN_SECS = 60 * 60
 ONE_MIN_IN_SECS = 60

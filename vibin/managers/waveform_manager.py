@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from vibin import VibinError, VibinMissingDependencyError
+from vibin import VibinError, VibinMediaServerError, VibinMissingDependencyError
 from vibin.logger import logger
 from vibin.mediaservers import MediaServer
 from vibin.types import MediaId, WaveformFormat
@@ -82,8 +82,13 @@ class WaveformManager:
             with tempfile.NamedTemporaryFile(
                 prefix="vibin_", suffix=pathlib.Path(audio_file).suffix
             ) as audio_temp_file:
-                with requests.get(audio_file, stream=True) as response:
-                    shutil.copyfileobj(response.raw, audio_temp_file)
+                try:
+                    with requests.get(audio_file, stream=True) as response:
+                        shutil.copyfileobj(response.raw, audio_temp_file)
+                except requests.exceptions.RequestException as e:
+                    raise VibinMediaServerError(
+                        f"Failed to download audio file from media server: {e}"
+                    ) from e
 
                 # Explanation for 8-bit data (--bits 8):
                 # https://github.com/bbc/peaks.js#pre-computed-waveform-data
