@@ -6,7 +6,7 @@
 * [FastAPI] (for the REST API, WebSocket server, and proxies)
 * [Pydantic] (for data models)
 * [TinyDB] (for local persistence)
-* [uPnPclient] (for communicating with UPnP devices)
+* [async_upnp_client] (for communicating with UPnP devices)
 * [untangle] (for XML parsing)
 * [websockets] (for communicating with the StreamMagic streamer)
 
@@ -106,16 +106,17 @@ The project structure is broadly laid out as follows:
 │   ├── asset.py
 │   ├── cxnv2usb.py
 │   └── mediasource.py
+├── models.py                          Application models
 ├── server/                            The REST API, WebSocket server, and proxies (FastAPI)
 │   ├── dependencies.py                Dependencies relied on by various routers
 │   ├── routers/                       REST API routers
-│   │   ├── active_playlist.py
 │   │   ├── albums.py
 │   │   ├── artists.py
 │   │   ├── browse.py
 │   │   ├── favorites.py
 │   │   ├── media_server_proxy.py
 │   │   ├── presets.py
+│   │   ├── queue.py
 │   │   ├── stored_playlists.py
 │   │   ├── system.py
 │   │   ├── tracks.py
@@ -128,8 +129,10 @@ The project structure is broadly laid out as follows:
 ├── streamers/                         Streamer ABC and its implementations (StreamMagic)
 │   ├── streammagic.py
 │   └── streamer.py
-├── models.py                          Application models
 ├── types.py                           Application types
+├── upnp/                              UPnP handling
+│   ├── device.py 
+│   ├── discovery.py
 └── utils.py                           General utilities
 ```
 
@@ -144,7 +147,7 @@ The main hub of `vibin` is the [`Vibin()`](vibin/base.py) class, which:
   retrieving media metadata, etc.
 * Acts as a hub for all the feature managers (Favorites, Links, Lyrics, etc).
 * Announces any updates as messages over a WebSocket connection (such as playhead position updates,
-  playlist updates, etc) to any interested subscribers.
+  queue updates, etc) to any interested subscribers.
 
 The REST API is mostly a thin API layer that sits in front of `Vibin`. The WebSocket server
 subscribes to any `Vibin` updates, which it then passes on to any connected clients.
@@ -157,7 +160,7 @@ The WebSocket server is hosted at `/ws`.
 
 The following message types are published:
 
-* `CurrentlyPlaying`: Information about what's currently playing (current track, current playlist,
+* `CurrentlyPlaying`: Information about what's currently playing (current track, current queue,
    format details, stream details, etc).
 * `Favorites`: Information on Favorite Albums and Tracks.
 * `Position`: Playhead position.
@@ -216,8 +219,8 @@ The top-level REST routes (all nested under the `/api` prefix) include:
 | `/tracks`           | Interact with the Media Server's **Tracks**                                                   |
 | `/browse`           | **Browse media** on the Media Server                                                          |
 | `/transport`        | Interact with the Streamer's **Transport** (pause, play, etc)                                 |
+| `/queue`            | Interact with the Streamer's **Queue**                                                        |
 | `/presets`          | Interact with the Streamer's **Presets** (internet radio, etc)                                |
-| `/active_playlist`  | Interact with the Streamer's **Active Playlist**                                              |
 | `/stored_playlists` | Interact with Vibin's **Stored Playlists**                                                    |
 | `/favorites`        | Interact with Vibin's **Favorites** (favorited Albums and Tracks)                             |
 
@@ -275,7 +278,7 @@ aspirational dev dependency.
 [FastAPI]: https://fastapi.tiangolo.com/
 [Pydantic]: https://pydantic.dev
 [TinyDB]: https://github.com/msiemens/tinydb
-[uPnPclient]: https://github.com/flyte/upnpclient
+[async_upnp_client]: https://github.com/StevenLooman/async_upnp_client
 [untangle]: https://untangle.readthedocs.io/
 [websockets]: https://github.com/python-websockets/websockets
 [Black]: https://github.com/psf/black
