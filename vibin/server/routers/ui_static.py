@@ -40,8 +40,9 @@ def serve_ui_index_html(resource: str):
         "artists",
         "current",
         "favorites",
-        "playlist",
+        "playlist",  # Deprecated in favor of queue
         "presets",
+        "queue",
         "status",
         "tracks",
     ]:

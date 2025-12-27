@@ -30,3 +30,11 @@ class VibinNotFoundError(VibinError):
     """Something was not found."""
 
     pass
+
+
+class VibinSoapError(VibinError):
+    """Exception for SOAP action errors."""
+
+    def __init__(self, message: str, error_code: int | None = None):
+        super().__init__(message)
+        self.error_code = error_code

@@ -5,6 +5,7 @@ from vibin.exceptions import (
     VibinMediaServerError,
     VibinNotFoundError,
     VibinMissingDependencyError,
+    VibinSoapError,
 )
 from .base import Vibin
 
@@ -15,4 +16,5 @@ from .base import Vibin
     VibinMediaServerError,
     VibinNotFoundError,
     VibinMissingDependencyError,
+    VibinSoapError,
 )
