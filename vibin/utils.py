@@ -23,6 +23,7 @@ from packaging.version import Version
 from pydantic import BaseModel
 import requests
 import websockets
+from websockets.exceptions import ConnectionClosedError
 from websockets.legacy.client import WebSocketClientProtocol
 from websockets.typing import Data
 
@@ -339,6 +340,17 @@ class WebsocketThread(StoppableThread):
         return self._connected
 
     async def _handle_websocket(self):
+        def websocket_exception_handler(loop, context):
+            exception = context.get("exception")
+
+            if isinstance(exception, ConnectionClosedError):
+                logger.warning(f"WebSocket connection closed: {exception}")
+            else:
+                loop.default_exception_handler(context)
+
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(websocket_exception_handler)
+
         logger.info(
             f"Connecting to {self._friendly_name} WebSocket server on {self._uri}"
         )
