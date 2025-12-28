@@ -489,6 +489,44 @@ class StreamMagic(Streamer):
         # it does for radio presets).
         self._send_presets_update()
 
+    def preset_add(self, preset_id: int, media_id: str) -> None:
+        """Add a Track or Album to a Preset slot."""
+        if not 1 <= preset_id <= 99:
+            raise VibinInputError(f"Preset slot must be 1-99, got {preset_id}")
+
+        didl = self._media_server.get_metadata(media_id)
+
+        requests.post(
+            f"http://{self._device_hostname}/smoip/queue/add",
+            json={
+                "action": "PRESET",
+                "preset": preset_id,
+                "server_udn": self._media_server.device_udn,
+                "type": "didl",
+                "didl": didl,
+            },
+        )
+
+    def preset_delete(self, preset_id: int) -> None:
+        """Delete a Preset."""
+        if not 1 <= preset_id <= 99:
+            raise VibinInputError(f"Preset slot must be 1-99, got {preset_id}")
+
+        requests.post(
+            f"http://{self._device_hostname}/smoip/presets/delete",
+            json={"preset": preset_id},
+        )
+
+    def preset_move(self, from_id: int, to_id: int) -> None:
+        """Move a Preset (overwrites destination)."""
+        if not 1 <= from_id <= 99 or not 1 <= to_id <= 99:
+            raise VibinInputError("Preset slots must be 1-99")
+
+        requests.post(
+            f"http://{self._device_hostname}/smoip/presets/move",
+            json={"from": from_id, "to": to_id},
+        )
+
     # -------------------------------------------------------------------------
     # UPnP (no-op stubs - StreamMagic uses SMOIP instead of UPnP)
 

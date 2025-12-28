@@ -311,6 +311,21 @@ class Streamer(metaclass=ABCMeta):
         """
         pass
 
+    @abstractmethod
+    def preset_add(self, preset_id: int, media_id: str) -> None:
+        """Add a Track or Album to a Preset slot."""
+        pass
+
+    @abstractmethod
+    def preset_delete(self, preset_id: int) -> None:
+        """Delete a Preset."""
+        pass
+
+    @abstractmethod
+    def preset_move(self, from_id: int, to_id: int) -> None:
+        """Move a Preset (overwrites destination)."""
+        pass
+
     # -------------------------------------------------------------------------
     # UPnP
 
