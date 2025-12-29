@@ -87,8 +87,8 @@ def preset_delete(preset_id: int):
     tags=["Presets"],
     response_class=Response,
 )
-def preset_move(preset_id: int, to_preset_id: int):
+def preset_move(preset_id: int, to_id: int):
     try:
-        get_vibin_instance().streamer.preset_move(preset_id, to_preset_id)
+        get_vibin_instance().streamer.preset_move(preset_id, to_id)
     except VibinInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
